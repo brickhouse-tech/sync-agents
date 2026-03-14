@@ -2,6 +2,8 @@
 
 # Resolve the script under test relative to this test file
 SCRIPT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../src/sh" && pwd)/sync-agents.sh"
+# Read version from package.json so the test stays in sync after bumps
+PACKAGE_VERSION="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/package.json" | head -1)"
 
 setup() {
   # Create a temporary directory for each test
@@ -41,7 +43,7 @@ teardown() {
 @test "--version shows version from package.json" {
   run bash "$SCRIPT" --version
   [ "$status" -eq 0 ]
-  [[ "$output" == *"sync-agents v0.1.0"* ]]
+  [[ "$output" == *"sync-agents v${PACKAGE_VERSION}"* ]]
 }
 
 # --------------------------------------------------------------------------
