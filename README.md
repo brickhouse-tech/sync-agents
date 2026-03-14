@@ -35,7 +35,7 @@ AGENTS.md will point to .agents directory, which will contain all the rules, ski
   |── STATE.md
 ```
 
-Syncing is symlinks from .agents to .claude, .windsurf, and .codex. This allows for easy updates and maintenance of the agents, as any changes made to the .agents directory will automatically be reflected in the individual agent directories.
+Syncing is symlinks from .agents to .claude, and .windsurf. This allows for easy updates and maintenance of the agents, as any changes made to the .agents directory will automatically be reflected in the individual agent directories.
 
 For explcitness the AGENTS.md file will also be symlinked to CLAUDE.md.
 
