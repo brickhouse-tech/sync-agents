@@ -8,8 +8,12 @@ PACKAGE_JSON="${SCRIPT_DIR}/../../package.json"
 TEMPLATES_DIR="${SCRIPT_DIR}/../md"
 
 # Pull version from package.json
+# Try relative path first (works in repo / npm local install),
+# then resolve via node for global installs where the symlink target differs.
 if [[ -f "$PACKAGE_JSON" ]]; then
   VERSION="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$PACKAGE_JSON" | head -1)"
+elif command -v node >/dev/null 2>&1; then
+  VERSION="$(node -p "require('@brickhouse-tech/sync-agents/package.json').version" 2>/dev/null || echo "unknown")"
 else
   VERSION="unknown"
 fi
@@ -246,8 +250,10 @@ cmd_sync() {
     # Sync subdirectories: rules, skills, workflows
     for subdir in rules skills workflows; do
       if [[ -d "$agents_abs/$subdir" ]]; then
-        local source_rel
-        source_rel="$(python3 -c "import os.path; print(os.path.relpath('$agents_abs/$subdir', '$(dirname "$target_dir/$subdir")'))" 2>/dev/null || echo "../$AGENTS_DIR/$subdir")"
+        # Both .agents/ and .<target>/ live at PROJECT_ROOT, so the relative
+        # path from .<target>/<subdir> back to .agents/<subdir> is always one
+        # level up: ../.agents/<subdir>
+        local source_rel="../$AGENTS_DIR/$subdir"
         create_symlink "$source_rel" "$target_dir/$subdir" "$DRY_RUN"
       fi
     done
