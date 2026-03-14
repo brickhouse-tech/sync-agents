@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.3](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.2...v0.1.3) (2026-03-14)
+
+
+### Bug Fixes
+
+* remove python3 dependency, fix version on global install ([bd3f3a4](https://github.com/brickhouse-tech/sync-agents/commit/bd3f3a4cdeffd819ee69c4702a6959f059b1b3f1))
+
 ## [0.1.2](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.1...v0.1.2) (2026-03-14)
 
 
