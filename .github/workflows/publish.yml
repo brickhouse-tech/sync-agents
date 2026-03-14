@@ -1,0 +1,17 @@
+name: publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+  publish-npm:
+    needs: [tests]
+    uses: brickhouse-tech/.github/.github/workflows/publish.yml@main
+    permissions:
+      contents: read
+      id-token: write
+    secrets: inherit
