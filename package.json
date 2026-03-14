@@ -20,6 +20,7 @@
     "sync-agents": "src/sh/sync-agents.sh"
   },
   "scripts": {
+    "test": "npx bats test/"
   },
   "dependencies": {
   },

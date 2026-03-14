@@ -1,22 +1,24 @@
 # sync-agents
 
-This is a shell based repository utilizing npm for easy installation and management. 
+One set of agent rules to rule them all. `sync-agents` keeps your AI coding agent configurations in a single `.agents/` directory and syncs them to agent-specific directories (`.claude/`, `.windsurf/`) via symlinks. This ensures all agents follow the same rules, skills, and workflows without duplicating files.
 
-One set of agent rules to rule them all. Sync agents are a set of rules that can be applied to any agent to make it more effective. They are designed to be flexible and adaptable, allowing you to customize them to fit your specific needs.
-
-The goal is to utilize AGENTS.md pointing to .agents as a source of truth for agent rules, skills, worflflows, and best practices. By doing so, we can ensure that all agents are following the same guidelines and standards, which will lead to better performance and more consistent results.
-
-Goal is to sync for .claude, .windsurf, and .codex via utilziing .agents directory as the root source.
+AGENTS.md serves as an auto-generated index of everything in `.agents/` and is symlinked to CLAUDE.md for Claude compatibility.
 
 ## Installation
 
-`npm install @brickhouse-tech/sync-agents` or 
+```bash
+npm install @brickhouse-tech/sync-agents
+```
 
-globally with `npm install -g @brickhouse-tech/sync-agents`
+or globally:
 
-## Topology:
+```bash
+npm install -g @brickhouse-tech/sync-agents
+```
 
-AGENTS.md will point to .agents directory, which will contain all the rules, skills, workflows, and best practices for the agents. The structure of the .agents directory will be as follows. The AGENTS.md file will explicitly index the rules, skills, workflows, and best practices for each agent, making it easy to find and apply the relevant information. This structure will allow for easy maintenance and updates to the agents, as all the information will be centralized in one location.
+## Topology
+
+`.agents/` is the source of truth. It contains all rules, skills, workflows, and state for your agents:
 
 ```
 .agents/
@@ -32,21 +34,75 @@ AGENTS.md will point to .agents directory, which will contain all the rules, ski
   │   ├── workflow1.md
   │   ├── workflow2.md
   │   └── ...
-  |── STATE.md
+  └── STATE.md
 ```
 
-Syncing is symlinks from .agents to .claude, and .windsurf. This allows for easy updates and maintenance of the agents, as any changes made to the .agents directory will automatically be reflected in the individual agent directories.
+Running `sync-agents sync` creates symlinks from `.agents/` subdirectories into `.claude/` and `.windsurf/`. Any changes to `.agents/` are automatically reflected in the target directories because they are symlinks, not copies.
 
-For explcitness the AGENTS.md file will also be symlinked to CLAUDE.md.
+AGENTS.md is also symlinked to CLAUDE.md so that Claude reads the index natively.
 
 ## STATE.md
 
-This file will contain the current state of the agents and any relevant information about their performance, issues, or updates. It will serve as a central location for tracking the progress and status of the agents, allowing for easy monitoring and management. The STATE.md file will be updated regularly to reflect any changes or developments in the agents, ensuring that all stakeholders have access to the most up-to-date information. This way the Agent can resume work easily after a failure or interruption, as it can refer to the STATE.md file to determine where it left off and what tasks still need to be completed.
+`.agents/STATE.md` tracks the current state of your project from the agent's perspective. It serves as a resumption point after failures or interruptions -- the agent can read STATE.md to determine where it left off and what tasks remain. Update it regularly to keep agents in sync with progress.
+
+## Commands
+
+| Command | Description |
+|---|---|
+| `init` | Initialize the `.agents/` directory structure with `rules/`, `skills/`, `workflows/`, `STATE.md`, and generate `AGENTS.md` |
+| `sync` | Create symlinks from `.agents/` into `.claude/` and `.windsurf/`, and symlink `AGENTS.md` to `CLAUDE.md` |
+| `status` | Show the current sync status of all targets and symlinks |
+| `add <type> <name>` | Add a new rule, skill, or workflow from a template (type is `rule`, `skill`, or `workflow`) |
+| `index` | Regenerate `AGENTS.md` by scanning the contents of `.agents/` |
+| `clean` | Remove all synced symlinks and empty target directories (does not remove `.agents/`) |
+
+## Options
+
+| Option | Description |
+|---|---|
+| `-h`, `--help` | Show help message |
+| `-v`, `--version` | Show version |
+| `-d`, `--dir <path>` | Set project root directory (default: current directory) |
+| `--targets <list>` | Comma-separated list of sync targets (default: `claude,windsurf`) |
+| `--dry-run` | Show what would be done without making changes |
+| `--force` | Overwrite existing files and symlinks |
 
 ## Usage
 
 ```bash
-sync-agents --help
+# Initialize .agents/ structure in the current project
+sync-agents init
+
+# Add a new rule
+sync-agents add rule no-eval
+
+# Add a new skill
+sync-agents add skill debugging
+
+# Add a new workflow
+sync-agents add workflow deploy
+
+# Sync to all targets (.claude/ and .windsurf/)
+sync-agents sync
+
+# Sync to a specific target only
+sync-agents sync --targets claude
+
+# Preview sync without making changes
+sync-agents sync --dry-run
+
+# Force overwrite existing symlinks
+sync-agents sync --force
+
+# Check sync status
+sync-agents status
+
+# Regenerate the AGENTS.md index
+sync-agents index
+
+# Remove all synced symlinks
+sync-agents clean
+
+# Work in a different directory
+sync-agents sync --dir /path/to/project
 ```
-
-
