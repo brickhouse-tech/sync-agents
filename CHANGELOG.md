@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.2](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.1...v0.1.2) (2026-03-14)
+
+
+### Bug Fixes
+
+* dynamic version test + upgrade setup-node to v4 ([868c705](https://github.com/brickhouse-tech/sync-agents/commit/868c70511ab0e055f84c2b0798ee5705778ec68e))
+
 ## 0.1.1 (2026-03-14)
 
 
