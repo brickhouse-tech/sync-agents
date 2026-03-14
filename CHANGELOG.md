@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.4](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.3...v0.1.4) (2026-03-14)
+
+
+### Features
+
+* add cursor/codex/copilot targets, watch, import, hook, templates, LICENSE ([5cf1831](https://github.com/brickhouse-tech/sync-agents/commit/5cf1831eeaec7771ff4d850659bf95ec8fac6f93)), closes [#4](https://github.com/brickhouse-tech/sync-agents/issues/4) [#5](https://github.com/brickhouse-tech/sync-agents/issues/5) [#6](https://github.com/brickhouse-tech/sync-agents/issues/6) [#7](https://github.com/brickhouse-tech/sync-agents/issues/7) [#8](https://github.com/brickhouse-tech/sync-agents/issues/8) [#9](https://github.com/brickhouse-tech/sync-agents/issues/9) [#10](https://github.com/brickhouse-tech/sync-agents/issues/10) [#12](https://github.com/brickhouse-tech/sync-agents/issues/12)
+
 ## [0.1.3](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.2...v0.1.3) (2026-03-14)
 
 
