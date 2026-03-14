@@ -19,7 +19,7 @@ else
 fi
 
 # Agent target directories
-TARGETS=("claude" "windsurf")
+TARGETS=("claude" "windsurf" "cursor" "copilot")
 
 # Colors (disabled if not a terminal)
 if [[ -t 1 ]]; then
@@ -37,6 +37,27 @@ info()  { echo -e "${GREEN}[info]${RESET} $*"; }
 warn()  { echo -e "${YELLOW}[warn]${RESET} $*"; }
 error() { echo -e "${RED}[error]${RESET} $*" >&2; }
 
+# Resolve target directory path (copilot uses .github/copilot/ instead of .copilot/)
+resolve_target_dir() {
+  local target="$1"
+  local root="$2"
+  if [[ "$target" == "copilot" ]]; then
+    echo "$root/.github/copilot"
+  else
+    echo "$root/.$target"
+  fi
+}
+
+# Resolve relative path from target dir back to .agents/ (accounts for depth)
+resolve_agents_rel() {
+  local target="$1"
+  if [[ "$target" == "copilot" ]]; then
+    echo "../../$AGENTS_DIR"
+  else
+    echo "../$AGENTS_DIR"
+  fi
+}
+
 usage() {
   cat <<EOF
 ${BOLD}sync-agents${RESET} v${VERSION} - One set of agent rules to rule them all.
@@ -46,17 +67,20 @@ ${BOLD}USAGE${RESET}
 
 ${BOLD}COMMANDS${RESET}
   init                          Initialize .agents/ directory structure and AGENTS.md
-  sync                          Sync .agents/ to .claude/ and .windsurf/ via symlinks
+  sync                          Sync .agents/ to agent directories via symlinks
   status                        Show current sync status
   add <type> <name>             Add a new rule, skill, or workflow from template
   index                         Regenerate AGENTS.md index from .agents/ contents
   clean                         Remove all synced symlinks (does not remove .agents/)
+  watch                         Watch .agents/ for changes and auto-regenerate index
+  import <url>                  Import a rule/skill/workflow from a URL
+  hook                          Install a pre-commit git hook for auto-sync
 
 ${BOLD}OPTIONS${RESET}
   -h, --help                    Show this help message
   -v, --version                 Show version
   -d, --dir <path>              Set project root directory (default: current directory)
-  --targets <list>              Comma-separated targets to sync (default: claude,windsurf)
+  --targets <list>              Comma-separated targets (overrides .agents/config)
   --dry-run                     Show what would be done without making changes
   --force                       Overwrite existing files/symlinks
 
@@ -174,6 +198,19 @@ STATE_EOF
     warn "$AGENTS_DIR/STATE.md already exists, skipping"
   fi
 
+  # Create default config if it doesn't exist
+  if [[ ! -f "$PROJECT_ROOT/$AGENTS_DIR/config" ]]; then
+    cat > "$PROJECT_ROOT/$AGENTS_DIR/config" <<CONFIG_EOF
+# sync-agents configuration
+# Comma-separated list of sync targets (available: claude, windsurf, cursor, copilot)
+# Override per-command with: sync-agents sync --targets claude,cursor
+targets = claude,windsurf,cursor,copilot
+CONFIG_EOF
+    info "Created $AGENTS_DIR/config"
+  else
+    warn "$AGENTS_DIR/config already exists, skipping"
+  fi
+
   # Generate AGENTS.md if it doesn't exist
   if [[ ! -f "$PROJECT_ROOT/$AGENTS_MD" ]]; then
     generate_agents_md
@@ -214,8 +251,19 @@ cmd_add() {
     exit 1
   fi
 
-  # Use RULE_TEMPLATE for all types, substituting name
-  if [[ -f "$TEMPLATES_DIR/RULE_TEMPLATE.md" ]]; then
+  # Use type-specific template (RULE_TEMPLATE, SKILL_TEMPLATE, WORKFLOW_TEMPLATE)
+  local template_name
+  case "$type" in
+    rules)     template_name="RULE_TEMPLATE.md" ;;
+    skills)    template_name="SKILL_TEMPLATE.md" ;;
+    workflows) template_name="WORKFLOW_TEMPLATE.md" ;;
+    *)         template_name="RULE_TEMPLATE.md" ;;
+  esac
+
+  if [[ -f "$TEMPLATES_DIR/$template_name" ]]; then
+    sed "s/\${NAME}/$name/g" "$TEMPLATES_DIR/$template_name" > "$filepath"
+  elif [[ -f "$TEMPLATES_DIR/RULE_TEMPLATE.md" ]]; then
+    # Fallback to rule template if type-specific template missing
     sed "s/\${NAME}/$name/g" "$TEMPLATES_DIR/RULE_TEMPLATE.md" > "$filepath"
   else
     cat > "$filepath" <<TMPL_EOF
@@ -244,16 +292,16 @@ cmd_sync() {
   info "Syncing $AGENTS_DIR/ to agent directories..."
 
   for target in "${ACTIVE_TARGETS[@]}"; do
-    local target_dir="$PROJECT_ROOT/.$target"
-    info "Syncing to .${target}/"
+    local target_dir
+    target_dir="$(resolve_target_dir "$target" "$PROJECT_ROOT")"
+    local agents_rel
+    agents_rel="$(resolve_agents_rel "$target")"
+    info "Syncing to ${target_dir#"$PROJECT_ROOT"/}/"
 
     # Sync subdirectories: rules, skills, workflows
     for subdir in rules skills workflows; do
       if [[ -d "$agents_abs/$subdir" ]]; then
-        # Both .agents/ and .<target>/ live at PROJECT_ROOT, so the relative
-        # path from .<target>/<subdir> back to .agents/<subdir> is always one
-        # level up: ../.agents/<subdir>
-        local source_rel="../$AGENTS_DIR/$subdir"
+        local source_rel="$agents_rel/$subdir"
         create_symlink "$source_rel" "$target_dir/$subdir" "$DRY_RUN"
       fi
     done
@@ -303,9 +351,11 @@ cmd_status() {
 
   # Check each target
   for target in "${TARGETS[@]}"; do
-    local target_dir="$PROJECT_ROOT/.$target"
+    local target_dir
+    target_dir="$(resolve_target_dir "$target" "$PROJECT_ROOT")"
+    local display_dir="${target_dir#"$PROJECT_ROOT"/}"
     if [[ -d "$target_dir" ]] || [[ -L "$target_dir/rules" ]]; then
-      echo -e "${CYAN}.$target/${RESET}"
+      echo -e "${CYAN}${display_dir}/${RESET}"
       for subdir in rules skills workflows; do
         if [[ -L "$target_dir/$subdir" ]]; then
           local link_target
@@ -318,7 +368,7 @@ cmd_status() {
         fi
       done
     else
-      echo -e "${RED}[not synced]${RESET} .$target/"
+      echo -e "${RED}[not synced]${RESET} ${display_dir}/"
     fi
   done
 }
@@ -329,22 +379,141 @@ cmd_index() {
   info "Regenerated $AGENTS_MD"
 }
 
+cmd_watch() {
+  ensure_agents_dir
+
+  local watch_dir="$PROJECT_ROOT/$AGENTS_DIR"
+
+  if command -v fswatch >/dev/null 2>&1; then
+    info "Watching $AGENTS_DIR/ for changes... (Ctrl+C to stop)"
+    cmd_index
+    fswatch -o "$watch_dir" | while read -r _; do
+      info "Change detected, regenerating index..."
+      cmd_index
+    done
+  elif command -v inotifywait >/dev/null 2>&1; then
+    info "Watching $AGENTS_DIR/ for changes... (Ctrl+C to stop)"
+    cmd_index
+    inotifywait -m -r -e modify,create,delete,move --format '%w%f' "$watch_dir" | while read -r _; do
+      info "Change detected, regenerating index..."
+      cmd_index
+    done
+  else
+    error "Neither fswatch (macOS) nor inotifywait (Linux) found."
+    error "Install with: brew install fswatch  OR  apt install inotify-tools"
+    exit 1
+  fi
+}
+
+cmd_import() {
+  local url="${1:-}"
+  if [[ -z "$url" ]]; then
+    error "Usage: sync-agents import <url>"
+    exit 1
+  fi
+
+  ensure_agents_dir
+
+  local filename
+  filename="$(basename "$url")"
+  if [[ "$filename" != *.md ]]; then
+    filename="${filename}.md"
+  fi
+
+  # Auto-detect type from URL path
+  local type=""
+  case "$url" in
+    */rules/*)    type="rules" ;;
+    */skills/*)   type="skills" ;;
+    */workflows/*) type="workflows" ;;
+  esac
+
+  if [[ -z "$type" ]]; then
+    echo "Could not detect type from URL. Choose:"
+    echo "  1) rule"
+    echo "  2) skill"
+    echo "  3) workflow"
+    read -rp "Selection (1-3): " choice
+    case "$choice" in
+      1) type="rules" ;;
+      2) type="skills" ;;
+      3) type="workflows" ;;
+      *) error "Invalid selection"; exit 1 ;;
+    esac
+  fi
+
+  mkdir -p "$PROJECT_ROOT/$AGENTS_DIR/$type"
+  local dest="$PROJECT_ROOT/$AGENTS_DIR/$type/$filename"
+
+  info "Importing $url → $AGENTS_DIR/$type/$filename"
+
+  if ! curl -fsSL "$url" -o "$dest"; then
+    error "Failed to download: $url"
+    exit 1
+  fi
+
+  info "Imported successfully."
+  cmd_index
+}
+
+cmd_hook() {
+  if [[ ! -d "$PROJECT_ROOT/.git" ]]; then
+    error "Not a git repository (no .git/ found)."
+    exit 1
+  fi
+
+  local hook_dir="$PROJECT_ROOT/.git/hooks"
+  local hook_file="$hook_dir/pre-commit"
+  mkdir -p "$hook_dir"
+
+  local marker="sync-agents start"
+
+  if [[ -f "$hook_file" ]] && grep -q "$marker" "$hook_file"; then
+    info "Git hook already installed in $hook_file"
+    return 0
+  fi
+
+  local hook_block
+  hook_block="$(cat <<'HOOK'
+
+# --- sync-agents start ---
+if command -v sync-agents >/dev/null 2>&1; then
+  sync-agents sync 2>/dev/null
+  sync-agents index 2>/dev/null
+  git add AGENTS.md CLAUDE.md .claude/ .windsurf/ .cursor/ .github/copilot/ 2>/dev/null || true
+fi
+# --- sync-agents end ---
+HOOK
+)"
+
+  if [[ -f "$hook_file" ]]; then
+    echo "$hook_block" >> "$hook_file"
+    info "Appended sync-agents hook to existing $hook_file"
+  else
+    printf '#!/bin/sh\n%s\n' "$hook_block" > "$hook_file"
+    chmod +x "$hook_file"
+    info "Created git hook: $hook_file"
+  fi
+}
+
 cmd_clean() {
   info "Removing synced symlinks..."
 
   for target in "${ACTIVE_TARGETS[@]}"; do
-    local target_dir="$PROJECT_ROOT/.$target"
+    local target_dir
+    target_dir="$(resolve_target_dir "$target" "$PROJECT_ROOT")"
+    local display_dir="${target_dir#"$PROJECT_ROOT"/}"
     for subdir in rules skills workflows; do
       if [[ -L "$target_dir/$subdir" ]]; then
         rm "$target_dir/$subdir"
-        info "Removed: .$target/$subdir"
+        info "Removed: ${display_dir}/$subdir"
       fi
     done
 
     # Remove target dir if empty
     if [[ -d "$target_dir" ]] && [[ -z "$(ls -A "$target_dir" 2>/dev/null)" ]]; then
       rmdir "$target_dir"
-      info "Removed empty directory: .$target/"
+      info "Removed empty directory: ${display_dir}/"
     fi
   done
 
@@ -535,11 +704,22 @@ main() {
     PROJECT_ROOT="$(find_project_root)"
   fi
 
-  # Resolve active targets
+  # Resolve active targets (priority: --targets flag > .agents/config > built-in defaults)
   if [[ -n "$custom_targets" ]]; then
     IFS=',' read -ra ACTIVE_TARGETS <<< "$custom_targets"
   else
-    ACTIVE_TARGETS=("${TARGETS[@]}")
+    local config_file="$PROJECT_ROOT/$AGENTS_DIR/config"
+    if [[ -f "$config_file" ]]; then
+      local config_targets
+      config_targets="$(sed -n 's/^targets *= *//p' "$config_file" | tr -d ' ')"
+      if [[ -n "$config_targets" ]]; then
+        IFS=',' read -ra ACTIVE_TARGETS <<< "$config_targets"
+      else
+        ACTIVE_TARGETS=("${TARGETS[@]}")
+      fi
+    else
+      ACTIVE_TARGETS=("${TARGETS[@]}")
+    fi
   fi
 
   # Dispatch command
@@ -561,6 +741,15 @@ main() {
       ;;
     clean)
       cmd_clean
+      ;;
+    watch)
+      cmd_watch
+      ;;
+    import)
+      cmd_import "$@"
+      ;;
+    hook)
+      cmd_hook
       ;;
     "")
       usage
