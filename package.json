@@ -1,11 +1,14 @@
 {
   "name": "@brickhouse-tech/sync-agents",
   "version": "0.1.0",
-  "description": "AWS CFT Utilities to fill the gaps for Cloud Formation",
+  "description": "Simple scripts to DRY up common agent interactions across multiple LLM providers.",
   "keywords": [
-    "cft",
-    "aws",
-    "cloudformation"
+    "agents",
+    "claude",
+    "sync",
+    "codex",
+    "gpt",
+    "windsurf"
   ],
   "homepage": "https://github.com/brickhouse-tech/sync-agents#readme",
   "bugs": {
