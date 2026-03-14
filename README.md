@@ -1,10 +1,12 @@
 # sync-agents
 
-One set of agent rules to rule them all. `sync-agents` keeps your AI coding agent configurations in a single `.agents/` directory and syncs them to agent-specific directories (`.claude/`, `.windsurf/`) via symlinks. This ensures all agents follow the same rules, skills, and workflows without duplicating files.
+One set of agent rules to rule them all. `sync-agents` keeps your AI coding agent configurations in a single `.agents/` directory and syncs them to agent-specific directories (`.claude/`, `.windsurf/`, `.cursor/`, `.github/copilot/`) via symlinks. This ensures all agents follow the same rules, skills, and workflows without duplicating files.
 
 AGENTS.md serves as an auto-generated index of everything in `.agents/` and is symlinked to CLAUDE.md for Claude compatibility.
 
 ## Installation
+
+### npm
 
 ```bash
 npm install @brickhouse-tech/sync-agents
@@ -14,6 +16,13 @@ or globally:
 
 ```bash
 npm install -g @brickhouse-tech/sync-agents
+```
+
+### Standalone (no npm required)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/brickhouse-tech/sync-agents/main/src/sh/sync-agents.sh -o /usr/local/bin/sync-agents
+chmod +x /usr/local/bin/sync-agents
 ```
 
 ## Topology
@@ -37,7 +46,7 @@ npm install -g @brickhouse-tech/sync-agents
   └── STATE.md
 ```
 
-Running `sync-agents sync` creates symlinks from `.agents/` subdirectories into `.claude/` and `.windsurf/`. Any changes to `.agents/` are automatically reflected in the target directories because they are symlinks, not copies.
+Running `sync-agents sync` creates symlinks from `.agents/` subdirectories into `.claude/`, `.windsurf/`, `.cursor/`, and `.github/copilot/`. Any changes to `.agents/` are automatically reflected in the target directories because they are symlinks, not copies.
 
 AGENTS.md is also symlinked to CLAUDE.md so that Claude reads the index natively.
 
@@ -50,7 +59,10 @@ AGENTS.md is also symlinked to CLAUDE.md so that Claude reads the index natively
 | Command | Description |
 |---|---|
 | `init` | Initialize the `.agents/` directory structure with `rules/`, `skills/`, `workflows/`, `STATE.md`, and generate `AGENTS.md` |
-| `sync` | Create symlinks from `.agents/` into `.claude/` and `.windsurf/`, and symlink `AGENTS.md` to `CLAUDE.md` |
+| `sync` | Create symlinks from `.agents/` into all target directories, and symlink `AGENTS.md` to `CLAUDE.md` |
+| `watch` | Watch `.agents/` for changes and auto-regenerate `AGENTS.md` |
+| `import <url>` | Import a rule/skill/workflow from a URL |
+| `hook` | Install a pre-commit git hook for auto-sync |
 | `status` | Show the current sync status of all targets and symlinks |
 | `add <type> <name>` | Add a new rule, skill, or workflow from a template (type is `rule`, `skill`, or `workflow`) |
 | `index` | Regenerate `AGENTS.md` by scanning the contents of `.agents/` |
@@ -63,7 +75,7 @@ AGENTS.md is also symlinked to CLAUDE.md so that Claude reads the index natively
 | `-h`, `--help` | Show help message |
 | `-v`, `--version` | Show version |
 | `-d`, `--dir <path>` | Set project root directory (default: current directory) |
-| `--targets <list>` | Comma-separated list of sync targets (default: `claude,windsurf`) |
+| `--targets <list>` | Comma-separated list of sync targets (default: `claude,windsurf,cursor,copilot`) |
 | `--dry-run` | Show what would be done without making changes |
 | `--force` | Overwrite existing files and symlinks |
 
