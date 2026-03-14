@@ -374,53 +374,55 @@ This file indexes all rules, skills, and workflows defined in `.agents/`.
 
 HEADER
 
-  # Rules
-  echo "## Rules" >> "$outfile"
-  echo "" >> "$outfile"
-  if compgen -G "$agents_dir/rules/*.md" > /dev/null 2>&1; then
-    for f in "$agents_dir/rules/"*.md; do
-      local name
-      name="$(basename "$f" .md)"
-      echo "- [$name](.agents/rules/$name.md)" >> "$outfile"
-    done
-  else
-    echo "_No rules defined yet. Add one with \`sync-agents add rule <name>\`._" >> "$outfile"
-  fi
-  echo "" >> "$outfile"
+  {
+    # Rules
+    echo "## Rules"
+    echo ""
+    if compgen -G "$agents_dir/rules/*.md" > /dev/null 2>&1; then
+      for f in "$agents_dir/rules/"*.md; do
+        local name
+        name="$(basename "$f" .md)"
+        echo "- [$name](.agents/rules/$name.md)"
+      done
+    else
+      echo "_No rules defined yet. Add one with \`sync-agents add rule <name>\`._"
+    fi
+    echo ""
 
-  # Skills
-  echo "## Skills" >> "$outfile"
-  echo "" >> "$outfile"
-  if compgen -G "$agents_dir/skills/*.md" > /dev/null 2>&1; then
-    for f in "$agents_dir/skills/"*.md; do
-      local name
-      name="$(basename "$f" .md)"
-      echo "- [$name](.agents/skills/$name.md)" >> "$outfile"
-    done
-  else
-    echo "_No skills defined yet. Add one with \`sync-agents add skill <name>\`._" >> "$outfile"
-  fi
-  echo "" >> "$outfile"
+    # Skills
+    echo "## Skills"
+    echo ""
+    if compgen -G "$agents_dir/skills/*.md" > /dev/null 2>&1; then
+      for f in "$agents_dir/skills/"*.md; do
+        local name
+        name="$(basename "$f" .md)"
+        echo "- [$name](.agents/skills/$name.md)"
+      done
+    else
+      echo "_No skills defined yet. Add one with \`sync-agents add skill <name>\`._"
+    fi
+    echo ""
 
-  # Workflows
-  echo "## Workflows" >> "$outfile"
-  echo "" >> "$outfile"
-  if compgen -G "$agents_dir/workflows/*.md" > /dev/null 2>&1; then
-    for f in "$agents_dir/workflows/"*.md; do
-      local name
-      name="$(basename "$f" .md)"
-      echo "- [$name](.agents/workflows/$name.md)" >> "$outfile"
-    done
-  else
-    echo "_No workflows defined yet. Add one with \`sync-agents add workflow <name>\`._" >> "$outfile"
-  fi
-  echo "" >> "$outfile"
+    # Workflows
+    echo "## Workflows"
+    echo ""
+    if compgen -G "$agents_dir/workflows/*.md" > /dev/null 2>&1; then
+      for f in "$agents_dir/workflows/"*.md; do
+        local name
+        name="$(basename "$f" .md)"
+        echo "- [$name](.agents/workflows/$name.md)"
+      done
+    else
+      echo "_No workflows defined yet. Add one with \`sync-agents add workflow <name>\`._"
+    fi
+    echo ""
 
-  # State reference
-  echo "## State" >> "$outfile"
-  echo "" >> "$outfile"
-  echo "- [STATE.md](.agents/STATE.md)" >> "$outfile"
-  echo "" >> "$outfile"
+    # State reference
+    echo "## State"
+    echo ""
+    echo "- [STATE.md](.agents/STATE.md)"
+    echo ""
+  } >> "$outfile"
 }
 
 # --------------------------------------------------------------------------
@@ -435,7 +437,7 @@ print_tree() {
   # Collect entries
   while IFS= read -r entry; do
     entries+=("$entry")
-  done < <(ls -1A "$dir" 2>/dev/null | sort)
+  done < <(find "$dir" -maxdepth 1 -mindepth 1 -exec basename {} \; 2>/dev/null | sort)
 
   local count=${#entries[@]}
   if [[ $count -eq 0 ]]; then
