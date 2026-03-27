@@ -639,10 +639,12 @@ cmd_inherit() {
       # Write inherits section after the description paragraph (first line starting with "This file")
       if [[ "$header_done" == "false" ]] && [[ "$line" == "This file indexes"* ]]; then
         header_done="true"
-        echo "" >> "$tmp"
-        echo "## Inherits" >> "$tmp"
-        echo "" >> "$tmp"
-        echo "- [$label]($path)" >> "$tmp"
+        {
+          echo ""
+          echo "## Inherits"
+          echo ""
+          echo "- [$label]($path)"
+        } >> "$tmp"
         inherits_written="true"
       fi
     done < "$PROJECT_ROOT/$AGENTS_MD"
@@ -652,10 +654,12 @@ cmd_inherit() {
       tmp="$(mktemp)"
       while IFS= read -r line; do
         if [[ "$line" == "## Rules" ]] && [[ "$inherits_written" == "false" ]]; then
-          echo "## Inherits" >> "$tmp"
-          echo "" >> "$tmp"
-          echo "- [$label]($path)" >> "$tmp"
-          echo "" >> "$tmp"
+          {
+            echo "## Inherits"
+            echo ""
+            echo "- [$label]($path)"
+            echo ""
+          } >> "$tmp"
           inherits_written="true"
         fi
         echo "$line" >> "$tmp"
@@ -681,11 +685,13 @@ cmd_inherit() {
       fi
       # When we hit the next section or blank line after entries, insert
       if [[ "$in_section" == "true" ]] && [[ "$added" == "false" ]]; then
-        if [[ "$line" =~ ^## ]] || { [[ -z "$line" ]] && ! grep -q "^- \[" <<< "$(echo "")"; }; then
+        if [[ "$line" =~ ^## ]] || [[ -z "$line" ]]; then
           # Check if previous content had entries; add after them
           if [[ "$line" =~ ^## ]]; then
-            echo "- [$label]($path)" >> "$tmp"
-            echo "" >> "$tmp"
+            {
+              echo "- [$label]($path)"
+              echo ""
+            } >> "$tmp"
             added="true"
             in_section="false"
           fi
