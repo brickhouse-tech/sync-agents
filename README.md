@@ -214,6 +214,18 @@ sync-agents inherit --remove global
 sync-agents inherit global ../../AGENTS.md
 ```
 
+## Examples
+
+The [`examples/`](examples/) directory contains ready-to-use rules, skills, and workflows. Import them directly:
+
+```bash
+sync-agents import https://raw.githubusercontent.com/brickhouse-tech/sync-agents/main/examples/rules/no-secrets.md
+sync-agents import https://raw.githubusercontent.com/brickhouse-tech/sync-agents/main/examples/skills/code-review.md
+sync-agents import https://raw.githubusercontent.com/brickhouse-tech/sync-agents/main/examples/workflows/pr-checklist.md
+```
+
+See [examples/README.md](examples/README.md) for the full list.
+
 ## Usage
 
 ```bash
