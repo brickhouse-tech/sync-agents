@@ -75,6 +75,9 @@ ${BOLD}COMMANDS${RESET}
   watch                         Watch .agents/ for changes and auto-regenerate index
   import <url>                  Import a rule/skill/workflow from a URL
   hook                          Install a pre-commit git hook for auto-sync
+  inherit <label> <path>        Add an inheritance link to AGENTS.md (convention-based)
+  inherit --list                List current inheritance links
+  inherit --remove <label>      Remove an inheritance link by label
 
 ${BOLD}OPTIONS${RESET}
   -h, --help                    Show this help message
@@ -527,12 +530,217 @@ cmd_clean() {
 }
 
 # --------------------------------------------------------------------------
+# Inherit
+# --------------------------------------------------------------------------
+
+cmd_inherit() {
+  local action="${1:-}"
+
+  # --list: show current inherits
+  if [[ "$action" == "--list" ]]; then
+    if [[ ! -f "$PROJECT_ROOT/$AGENTS_MD" ]]; then
+      info "No AGENTS.md found."
+      return 0
+    fi
+    local in_section="false"
+    while IFS= read -r line; do
+      if [[ "$line" =~ ^##[[:space:]]+Inherits ]]; then
+        in_section="true"
+        continue
+      fi
+      if [[ "$in_section" == "true" ]] && [[ "$line" =~ ^## ]]; then
+        break
+      fi
+      if [[ "$in_section" == "true" ]] && [[ "$line" =~ ^-[[:space:]]+\[ ]]; then
+        echo "$line"
+      fi
+    done < "$PROJECT_ROOT/$AGENTS_MD"
+    return 0
+  fi
+
+  # --remove <label>: remove an inherit entry
+  if [[ "$action" == "--remove" ]]; then
+    local label="${2:-}"
+    if [[ -z "$label" ]]; then
+      error "Usage: sync-agents inherit --remove <label>"
+      exit 1
+    fi
+    if [[ ! -f "$PROJECT_ROOT/$AGENTS_MD" ]]; then
+      error "No AGENTS.md found."
+      exit 1
+    fi
+    # Remove the line matching [label](...) from the Inherits section
+    local tmp
+    tmp="$(mktemp)"
+    local in_section="false"
+    local removed="false"
+    while IFS= read -r line; do
+      if [[ "$line" =~ ^##[[:space:]]+Inherits ]]; then
+        in_section="true"
+        echo "$line" >> "$tmp"
+        continue
+      fi
+      if [[ "$in_section" == "true" ]] && [[ "$line" =~ ^## ]]; then
+        in_section="false"
+      fi
+      if [[ "$in_section" == "true" ]] && [[ "$line" == *"[$label]("* ]]; then
+        removed="true"
+        continue
+      fi
+      echo "$line" >> "$tmp"
+    done < "$PROJECT_ROOT/$AGENTS_MD"
+    mv "$tmp" "$PROJECT_ROOT/$AGENTS_MD"
+    if [[ "$removed" == "true" ]]; then
+      info "Removed inherit: $label"
+    else
+      warn "No inherit found with label: $label"
+    fi
+    return 0
+  fi
+
+  # Default: add <label> <path>
+  local label="$action"
+  local path="${2:-}"
+
+  if [[ -z "$label" ]] || [[ -z "$path" ]]; then
+    error "Usage: sync-agents inherit <label> <path>"
+    error "       sync-agents inherit --list"
+    error "       sync-agents inherit --remove <label>"
+    exit 1
+  fi
+
+  # Validate the path exists (resolve relative to PROJECT_ROOT)
+  local resolved_path
+  if [[ "$path" == /* ]] || [[ "$path" == ~* ]]; then
+    resolved_path="${path/#\~/$HOME}"
+  else
+    resolved_path="$PROJECT_ROOT/$path"
+  fi
+
+  if [[ ! -f "$resolved_path" ]] && [[ ! -d "$resolved_path" ]]; then
+    warn "Path does not exist: $path (link will be added anyway)"
+  fi
+
+  # Check if AGENTS.md exists
+  if [[ ! -f "$PROJECT_ROOT/$AGENTS_MD" ]]; then
+    error "No AGENTS.md found. Run 'sync-agents init' first."
+    exit 1
+  fi
+
+  # Check if Inherits section exists; if not, add it after the header
+  if ! grep -q "^## Inherits" "$PROJECT_ROOT/$AGENTS_MD"; then
+    # Insert Inherits section right after the header block (after first blank line following description)
+    local tmp
+    tmp="$(mktemp)"
+    local header_done="false"
+    local inherits_written="false"
+    while IFS= read -r line; do
+      echo "$line" >> "$tmp"
+      # Write inherits section after the description paragraph (first line starting with "This file")
+      if [[ "$header_done" == "false" ]] && [[ "$line" == "This file indexes"* ]]; then
+        header_done="true"
+        echo "" >> "$tmp"
+        echo "## Inherits" >> "$tmp"
+        echo "" >> "$tmp"
+        echo "- [$label]($path)" >> "$tmp"
+        inherits_written="true"
+      fi
+    done < "$PROJECT_ROOT/$AGENTS_MD"
+    # Fallback: if header pattern wasn't found, append at the end before ## Rules
+    if [[ "$inherits_written" == "false" ]]; then
+      rm "$tmp"
+      tmp="$(mktemp)"
+      while IFS= read -r line; do
+        if [[ "$line" == "## Rules" ]] && [[ "$inherits_written" == "false" ]]; then
+          echo "## Inherits" >> "$tmp"
+          echo "" >> "$tmp"
+          echo "- [$label]($path)" >> "$tmp"
+          echo "" >> "$tmp"
+          inherits_written="true"
+        fi
+        echo "$line" >> "$tmp"
+      done < "$PROJECT_ROOT/$AGENTS_MD"
+    fi
+    mv "$tmp" "$PROJECT_ROOT/$AGENTS_MD"
+  else
+    # Inherits section exists — check for duplicate label
+    if grep -q "\[$label\](" "$PROJECT_ROOT/$AGENTS_MD"; then
+      warn "Inherit with label '$label' already exists. Use --remove first to update."
+      return 1
+    fi
+    # Append to existing Inherits section (after last inherit entry or section header)
+    local tmp
+    tmp="$(mktemp)"
+    local in_section="false"
+    local added="false"
+    while IFS= read -r line; do
+      if [[ "$line" =~ ^##[[:space:]]+Inherits ]]; then
+        in_section="true"
+        echo "$line" >> "$tmp"
+        continue
+      fi
+      # When we hit the next section or blank line after entries, insert
+      if [[ "$in_section" == "true" ]] && [[ "$added" == "false" ]]; then
+        if [[ "$line" =~ ^## ]] || { [[ -z "$line" ]] && ! grep -q "^- \[" <<< "$(echo "")"; }; then
+          # Check if previous content had entries; add after them
+          if [[ "$line" =~ ^## ]]; then
+            echo "- [$label]($path)" >> "$tmp"
+            echo "" >> "$tmp"
+            added="true"
+            in_section="false"
+          fi
+        fi
+        if [[ "$line" =~ ^-[[:space:]]+\[ ]]; then
+          echo "$line" >> "$tmp"
+          continue
+        fi
+        if [[ -z "$line" ]] && [[ "$added" == "false" ]]; then
+          echo "- [$label]($path)" >> "$tmp"
+          added="true"
+          in_section="false"
+          echo "$line" >> "$tmp"
+          continue
+        fi
+      fi
+      echo "$line" >> "$tmp"
+    done < "$PROJECT_ROOT/$AGENTS_MD"
+    # If we never added (section was at end of file)
+    if [[ "$added" == "false" ]]; then
+      echo "- [$label]($path)" >> "$tmp"
+      echo "" >> "$tmp"
+    fi
+    mv "$tmp" "$PROJECT_ROOT/$AGENTS_MD"
+  fi
+
+  info "Added inherit: [$label]($path)"
+}
+
+# --------------------------------------------------------------------------
 # Index generator
 # --------------------------------------------------------------------------
 
 generate_agents_md() {
   local outfile="$PROJECT_ROOT/$AGENTS_MD"
   local agents_dir="$PROJECT_ROOT/$AGENTS_DIR"
+
+  # Preserve existing Inherits section before regenerating
+  local inherits_block=""
+  if [[ -f "$outfile" ]]; then
+    local in_section="false"
+    while IFS= read -r line; do
+      if [[ "$line" =~ ^##[[:space:]]+Inherits ]]; then
+        in_section="true"
+        inherits_block+="$line"$'\n'
+        continue
+      fi
+      if [[ "$in_section" == "true" ]] && [[ "$line" =~ ^## ]]; then
+        break
+      fi
+      if [[ "$in_section" == "true" ]]; then
+        inherits_block+="$line"$'\n'
+      fi
+    done < "$outfile"
+  fi
 
   cat > "$outfile" <<'HEADER'
 
@@ -550,6 +758,11 @@ This file indexes all rules, skills, and workflows defined in `.agents/`.
 HEADER
 
   {
+    # Inherits (preserved from previous AGENTS.md)
+    if [[ -n "$inherits_block" ]]; then
+      printf '%s\n' "$inherits_block"
+    fi
+
     # Rules
     echo "## Rules"
     echo ""
@@ -681,6 +894,10 @@ main() {
         shift
         ;;
       -*)
+        if [[ -n "$command" ]]; then
+          # Unknown flag after command — pass to subcommand
+          break
+        fi
         error "Unknown option: $1"
         usage
         exit 1
@@ -750,6 +967,9 @@ main() {
       ;;
     hook)
       cmd_hook
+      ;;
+    inherit)
+      cmd_inherit "$@"
       ;;
     "")
       usage
