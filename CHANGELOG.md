@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.6](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.5...v0.1.6) (2026-03-27)
+
+
+### Features
+
+* add inheritance convention support ([7017e39](https://github.com/brickhouse-tech/sync-agents/commit/7017e39127e51d7168c05fc70451df862d71df6c))
+
+
+### Bug Fixes
+
+* resolve shellcheck lint warnings in inherit command ([673131e](https://github.com/brickhouse-tech/sync-agents/commit/673131ec60b522409cd685db9c037ec3ddb14699))
+
 ## [0.1.5](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.4...v0.1.5) (2026-03-26)
 
 ## [0.1.4](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.3...v0.1.4) (2026-03-14)
