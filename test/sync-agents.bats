@@ -588,6 +588,100 @@ teardown() {
   [ ! -d "$TEST_DIR/.windsurf" ]
 }
 
+# --------------------------------------------------------------------------
+# Inheritance
+# --------------------------------------------------------------------------
+
+@test "inherit adds Inherits section to AGENTS.md" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  run bash "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
+  [ "$status" -eq 0 ]
+  grep -q "## Inherits" "$TEST_DIR/AGENTS.md"
+  grep -q "\[global\](../../AGENTS.md)" "$TEST_DIR/AGENTS.md"
+}
+
+@test "inherit adds multiple entries" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  bash "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
+  run bash "$SCRIPT" -d "$TEST_DIR" inherit team ../AGENTS.md
+  [ "$status" -eq 0 ]
+  grep -q "\[global\]" "$TEST_DIR/AGENTS.md"
+  grep -q "\[team\]" "$TEST_DIR/AGENTS.md"
+}
+
+@test "inherit --list shows entries" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  bash "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
+  bash "$SCRIPT" -d "$TEST_DIR" inherit team ../AGENTS.md
+  run bash "$SCRIPT" -d "$TEST_DIR" inherit --list
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"global"* ]]
+  [[ "$output" == *"team"* ]]
+}
+
+@test "inherit --remove removes an entry" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  bash "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
+  bash "$SCRIPT" -d "$TEST_DIR" inherit team ../AGENTS.md
+  run bash "$SCRIPT" -d "$TEST_DIR" inherit --remove global
+  [ "$status" -eq 0 ]
+  ! grep -q "\[global\]" "$TEST_DIR/AGENTS.md"
+  grep -q "\[team\]" "$TEST_DIR/AGENTS.md"
+}
+
+@test "inherit rejects duplicate labels" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  bash "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
+  run bash "$SCRIPT" -d "$TEST_DIR" inherit global ../other/AGENTS.md
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"already exists"* ]]
+}
+
+@test "inherit without arguments fails" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  run bash "$SCRIPT" -d "$TEST_DIR" inherit
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Usage"* ]]
+}
+
+@test "inherit section preserved across index regeneration" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  bash "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
+  bash "$SCRIPT" -d "$TEST_DIR" add rule my-rule
+  # index regenerates AGENTS.md
+  bash "$SCRIPT" -d "$TEST_DIR" index
+  grep -q "## Inherits" "$TEST_DIR/AGENTS.md"
+  grep -q "\[global\](../../AGENTS.md)" "$TEST_DIR/AGENTS.md"
+  grep -q "my-rule" "$TEST_DIR/AGENTS.md"
+}
+
+@test "inherit Inherits section appears before Rules in AGENTS.md" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  bash "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
+  local inherits_line rules_line
+  inherits_line=$(grep -n "## Inherits" "$TEST_DIR/AGENTS.md" | head -1 | cut -d: -f1)
+  rules_line=$(grep -n "## Rules" "$TEST_DIR/AGENTS.md" | head -1 | cut -d: -f1)
+  [ "$inherits_line" -lt "$rules_line" ]
+}
+
+@test "inherit --list with no inherits shows nothing" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  run bash "$SCRIPT" -d "$TEST_DIR" inherit --list
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "inherit --remove nonexistent label warns" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  run bash "$SCRIPT" -d "$TEST_DIR" inherit --remove nonexistent
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"No inherit found"* ]]
+}
+
+# --------------------------------------------------------------------------
+# STATE_TEMPLATE
+# --------------------------------------------------------------------------
+
 @test "init creates trimmed STATE.md" {
   bash "$SCRIPT" -d "$TEST_DIR" init
   local line_count
