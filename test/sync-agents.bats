@@ -589,6 +589,60 @@ teardown() {
 }
 
 # --------------------------------------------------------------------------
+# .gitignore
+# --------------------------------------------------------------------------
+
+@test "sync adds symlink entries to .gitignore" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  bash "$SCRIPT" -d "$TEST_DIR" sync
+  [ -f "$TEST_DIR/.gitignore" ]
+  grep -qxF ".claude/" "$TEST_DIR/.gitignore"
+  grep -qxF ".windsurf/" "$TEST_DIR/.gitignore"
+  grep -qxF ".cursor/" "$TEST_DIR/.gitignore"
+  grep -qxF ".github/copilot/" "$TEST_DIR/.gitignore"
+  grep -qxF "CLAUDE.md" "$TEST_DIR/.gitignore"
+}
+
+@test "sync adds header comment to .gitignore" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  bash "$SCRIPT" -d "$TEST_DIR" sync
+  grep -qF "# sync-agents" "$TEST_DIR/.gitignore"
+}
+
+@test "sync does not duplicate .gitignore entries" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  bash "$SCRIPT" -d "$TEST_DIR" sync
+  bash "$SCRIPT" -d "$TEST_DIR" sync
+  local count
+  count=$(grep -cxF "CLAUDE.md" "$TEST_DIR/.gitignore")
+  [ "$count" -eq 1 ]
+}
+
+@test "sync preserves existing .gitignore content" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  echo "node_modules/" > "$TEST_DIR/.gitignore"
+  bash "$SCRIPT" -d "$TEST_DIR" sync
+  grep -qxF "node_modules/" "$TEST_DIR/.gitignore"
+  grep -qxF "CLAUDE.md" "$TEST_DIR/.gitignore"
+}
+
+@test "sync --targets only adds relevant entries to .gitignore" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  bash "$SCRIPT" -d "$TEST_DIR" sync --targets claude
+  grep -qxF ".claude/" "$TEST_DIR/.gitignore"
+  grep -qxF "CLAUDE.md" "$TEST_DIR/.gitignore"
+  ! grep -qxF ".windsurf/" "$TEST_DIR/.gitignore"
+}
+
+@test "sync --dry-run does not modify .gitignore" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  bash "$SCRIPT" -d "$TEST_DIR" sync --dry-run
+  if [ -f "$TEST_DIR/.gitignore" ]; then
+    ! grep -qxF "CLAUDE.md" "$TEST_DIR/.gitignore"
+  fi
+}
+
+# --------------------------------------------------------------------------
 # Inheritance
 # --------------------------------------------------------------------------
 

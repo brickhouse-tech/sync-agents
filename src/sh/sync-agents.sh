@@ -315,7 +315,63 @@ cmd_sync() {
     create_symlink "$AGENTS_MD" "$PROJECT_ROOT/CLAUDE.md" "$DRY_RUN"
   fi
 
+  # Update .gitignore with synced symlink entries
+  update_gitignore
+
   info "Sync complete."
+}
+
+# --------------------------------------------------------------------------
+# .gitignore management
+# --------------------------------------------------------------------------
+
+update_gitignore() {
+  local gitignore="$PROJECT_ROOT/.gitignore"
+
+  # Build list of entries that should be ignored (synced symlinks)
+  local entries=()
+  for target in "${ACTIVE_TARGETS[@]}"; do
+    local target_dir
+    target_dir="$(resolve_target_dir "$target" "$PROJECT_ROOT")"
+    local rel_path="${target_dir#"$PROJECT_ROOT"/}/"
+    entries+=("$rel_path")
+  done
+  entries+=("CLAUDE.md")
+
+  if [[ "$DRY_RUN" == "true" ]]; then
+    for entry in "${entries[@]}"; do
+      if [[ ! -f "$gitignore" ]] || ! grep -qxF "$entry" "$gitignore"; then
+        echo "  would add to .gitignore: $entry"
+      fi
+    done
+    return 0
+  fi
+
+  # Create .gitignore if it doesn't exist
+  [[ -f "$gitignore" ]] || touch "$gitignore"
+
+  local added=0
+  for entry in "${entries[@]}"; do
+    if ! grep -qxF "$entry" "$gitignore"; then
+      # Add sync-agents header on first addition
+      if [[ "$added" -eq 0 ]]; then
+        # Check if header already exists
+        if ! grep -qF "# sync-agents" "$gitignore"; then
+          # Add a blank line separator if file is non-empty
+          if [[ -s "$gitignore" ]]; then
+            echo "" >> "$gitignore"
+          fi
+          echo "# sync-agents (generated symlinks)" >> "$gitignore"
+        fi
+      fi
+      echo "$entry" >> "$gitignore"
+      added=$((added + 1))
+    fi
+  done
+
+  if [[ "$added" -gt 0 ]]; then
+    info "Added $added entries to .gitignore"
+  fi
 }
 
 cmd_status() {
