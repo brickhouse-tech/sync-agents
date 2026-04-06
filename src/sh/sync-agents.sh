@@ -375,14 +375,15 @@ add_default_gitignore_entries() {
         if [[ "$line" == "$marker" ]]; then
           in_section=true
           # Output the marker
-          echo "$line" >> "$tmp"
-          # Output all default entries
-          echo ".cursor/*" >> "$tmp"
-          echo "!.cursor/rules" >> "$tmp"
-          echo ".codex/*" >> "$tmp"
-          echo "!.codex/instructions.md" >> "$tmp"
-          echo ".github/copilot/*" >> "$tmp"
-          echo "!.github/copilot/instructions.md" >> "$tmp"
+          {
+            echo "$line"
+            echo ".cursor/*"
+            echo "!.cursor/rules"
+            echo ".codex/*"
+            echo "!.codex/instructions.md"
+            echo ".github/copilot/*"
+            echo "!.github/copilot/instructions.md"
+          } >> "$tmp"
           continue
         fi
         
