@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.9](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.8...v0.1.9) (2026-04-06)
+
+
+### Features
+
+* add default .gitignore entries during init ([#7](https://github.com/brickhouse-tech/sync-agents/issues/7)) ([bda26e1](https://github.com/brickhouse-tech/sync-agents/commit/bda26e176728f66b8ecf651c300000a99d2ac280))
+* auto-update .gitignore with synced symlink entries ([eb61d2a](https://github.com/brickhouse-tech/sync-agents/commit/eb61d2a3b7c8f6f9b3103a74bb5f1938607a367c))
+
+
+### Bug Fixes
+
+* **sync-agents.sh:** combine file appends to fix SC2129 style warning ([e55eb02](https://github.com/brickhouse-tech/sync-agents/commit/e55eb02d52dee77b4cb7adc27008fe6659440d9c))
+
 ## [0.1.8](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.7...v0.1.8) (2026-04-04)
 
 ## [0.1.7](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.6...v0.1.7) (2026-04-01)
