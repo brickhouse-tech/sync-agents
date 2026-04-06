@@ -33,3 +33,15 @@ temp
 yarn.lock
 # package-lock.json # OIDC
 dist/
+# sync-agents — ignore tool artifacts, keep symlinks
+.cursor/*
+!.cursor/rules
+.codex/*
+!.codex/instructions.md
+.github/copilot/*
+!.github/copilot/instructions.md
+.claude/
+.windsurf/
+.cursor/
+.github/copilot/
+CLAUDE.md
