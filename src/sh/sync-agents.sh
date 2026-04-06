@@ -370,6 +370,7 @@ add_default_gitignore_entries() {
       local tmp
       tmp="$(mktemp)"
       local in_section=false
+      # shellcheck disable=SC2034
       local section_found=false
       
       while IFS= read -r line; do
@@ -377,14 +378,15 @@ add_default_gitignore_entries() {
           in_section=true
           section_found=true
           # Output the marker
-          echo "$line" >> "$tmp"
-          # Output all default entries
-          echo ".cursor/*" >> "$tmp"
-          echo "!.cursor/rules" >> "$tmp"
-          echo ".codex/*" >> "$tmp"
-          echo "!.codex/instructions.md" >> "$tmp"
-          echo ".github/copilot/*" >> "$tmp"
-          echo "!.github/copilot/instructions.md" >> "$tmp"
+          {
+            echo "$line"
+            echo ".cursor/*"
+            echo "!.cursor/rules"
+            echo ".codex/*"
+            echo "!.codex/instructions.md"
+            echo ".github/copilot/*"
+            echo "!.github/copilot/instructions.md"
+          } >> "$tmp"
           continue
         fi
         
