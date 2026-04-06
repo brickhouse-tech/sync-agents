@@ -1,3 +1,7 @@
+---
+trigger: git commit
+---
+
 # commitlint Rule
 
 Trigger: On git commit or PR event

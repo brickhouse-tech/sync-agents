@@ -184,7 +184,6 @@ cmd_init() {
     else
       # Inline fallback if template not found
       cat > "$PROJECT_ROOT/$AGENTS_DIR/STATE.md" <<'STATE_EOF'
-
 ---
 trigger: always_on
 ---
@@ -273,7 +272,6 @@ cmd_add() {
     sed "s/\${NAME}/$name/g" "$TEMPLATES_DIR/RULE_TEMPLATE.md" > "$filepath"
   else
     cat > "$filepath" <<TMPL_EOF
-
 ---
 trigger: always_on
 ---
@@ -905,7 +903,6 @@ generate_agents_md() {
   fi
 
   cat > "$outfile" <<'HEADER'
-
 ---
 trigger: always_on
 ---
