@@ -184,7 +184,6 @@ cmd_init() {
     else
       # Inline fallback if template not found
       cat > "$PROJECT_ROOT/$AGENTS_DIR/STATE.md" <<'STATE_EOF'
-
 ---
 trigger: always_on
 ---
@@ -221,6 +220,9 @@ CONFIG_EOF
   else
     warn "$AGENTS_MD already exists, skipping (run 'sync-agents index' to regenerate)"
   fi
+
+  # Add default .gitignore entries for agent tool directories
+  add_default_gitignore_entries
 
   info "Initialization complete. Directory structure:"
   print_tree "$PROJECT_ROOT/$AGENTS_DIR"
@@ -270,7 +272,6 @@ cmd_add() {
     sed "s/\${NAME}/$name/g" "$TEMPLATES_DIR/RULE_TEMPLATE.md" > "$filepath"
   else
     cat > "$filepath" <<TMPL_EOF
-
 ---
 trigger: always_on
 ---
@@ -315,7 +316,160 @@ cmd_sync() {
     create_symlink "$AGENTS_MD" "$PROJECT_ROOT/CLAUDE.md" "$DRY_RUN"
   fi
 
+  # Update .gitignore with synced symlink entries
+  update_gitignore
+
   info "Sync complete."
+}
+
+# --------------------------------------------------------------------------
+# .gitignore management
+# --------------------------------------------------------------------------
+
+# Add default .gitignore entries for agent tool directories (called during init)
+add_default_gitignore_entries() {
+  local gitignore="$PROJECT_ROOT/.gitignore"
+  
+  # Create .gitignore if it doesn't exist
+  if [[ ! -f "$gitignore" ]]; then
+    touch "$gitignore"
+    info "Created .gitignore"
+  fi
+
+  # Check if .DS_Store is already present (case-insensitive check)
+  if ! grep -qiE "^\.DS_Store$" "$gitignore" 2>/dev/null; then
+    # Add .DS_Store if not present
+    if [[ -s "$gitignore" ]] && ! tail -c1 "$gitignore" | grep -q '^$'; then
+      echo "" >> "$gitignore"
+    fi
+    echo ".DS_Store" >> "$gitignore"
+    info "Added .DS_Store to .gitignore"
+  fi
+
+  # Define default entries (tool artifacts, not symlinks)
+  # Using pattern: ignore everything in dir, except specific files we want to track
+  local marker="# sync-agents — ignore tool artifacts, keep symlinks"
+  
+  # Check if sync-agents section already exists
+  if grep -qF "$marker" "$gitignore"; then
+    # Section exists - check if we need to add any missing entries
+    local needs_update=false
+    
+    # Check for each pattern
+    if ! grep -qF ".cursor/*" "$gitignore"; then needs_update=true; fi
+    if ! grep -qF "!.cursor/rules" "$gitignore"; then needs_update=true; fi
+    if ! grep -qF ".codex/*" "$gitignore"; then needs_update=true; fi
+    if ! grep -qF "!.codex/instructions.md" "$gitignore"; then needs_update=true; fi
+    if ! grep -qF ".github/copilot/*" "$gitignore"; then needs_update=true; fi
+    if ! grep -qF "!.github/copilot/instructions.md" "$gitignore"; then needs_update=true; fi
+    
+    if [[ "$needs_update" == "true" ]]; then
+      # Rebuild section by reading the file, preserving everything else
+      local tmp
+      tmp="$(mktemp)"
+      local in_section=false
+      
+      while IFS= read -r line; do
+        if [[ "$line" == "$marker" ]]; then
+          in_section=true
+          # Output the marker
+          {
+            echo "$line"
+            echo ".cursor/*"
+            echo "!.cursor/rules"
+            echo ".codex/*"
+            echo "!.codex/instructions.md"
+            echo ".github/copilot/*"
+            echo "!.github/copilot/instructions.md"
+          } >> "$tmp"
+          continue
+        fi
+        
+        # Skip old entries in the sync-agents section (until we hit empty line or new section)
+        if [[ "$in_section" == "true" ]]; then
+          if [[ -z "$line" ]] || [[ "$line" == "#"* ]]; then
+            in_section=false
+            echo "$line" >> "$tmp"
+          fi
+          # Skip old entry lines (they're replaced above)
+          continue
+        fi
+        
+        echo "$line" >> "$tmp"
+      done < "$gitignore"
+      
+      mv "$tmp" "$gitignore"
+      info "Updated sync-agents section in .gitignore"
+    fi
+  else
+    # Section doesn't exist, add entire block
+    # Add separator if file is non-empty
+    if [[ -s "$gitignore" ]] && ! tail -c1 "$gitignore" | grep -q '^$'; then
+      echo "" >> "$gitignore"
+    fi
+    
+    # Add all entries
+    {
+      echo "$marker"
+      echo ".cursor/*"
+      echo "!.cursor/rules"
+      echo ".codex/*"
+      echo "!.codex/instructions.md"
+      echo ".github/copilot/*"
+      echo "!.github/copilot/instructions.md"
+    } >> "$gitignore"
+    
+    info "Added sync-agents section to .gitignore with 7 entries"
+  fi
+}
+
+update_gitignore() {
+  local gitignore="$PROJECT_ROOT/.gitignore"
+
+  # Build list of entries that should be ignored (synced symlinks)
+  local entries=()
+  for target in "${ACTIVE_TARGETS[@]}"; do
+    local target_dir
+    target_dir="$(resolve_target_dir "$target" "$PROJECT_ROOT")"
+    local rel_path="${target_dir#"$PROJECT_ROOT"/}/"
+    entries+=("$rel_path")
+  done
+  entries+=("CLAUDE.md")
+
+  if [[ "$DRY_RUN" == "true" ]]; then
+    for entry in "${entries[@]}"; do
+      if [[ ! -f "$gitignore" ]] || ! grep -qxF "$entry" "$gitignore"; then
+        echo "  would add to .gitignore: $entry"
+      fi
+    done
+    return 0
+  fi
+
+  # Create .gitignore if it doesn't exist
+  [[ -f "$gitignore" ]] || touch "$gitignore"
+
+  local added=0
+  for entry in "${entries[@]}"; do
+    if ! grep -qxF "$entry" "$gitignore"; then
+      # Add sync-agents header on first addition
+      if [[ "$added" -eq 0 ]]; then
+        # Check if header already exists
+        if ! grep -qF "# sync-agents" "$gitignore"; then
+          # Add a blank line separator if file is non-empty
+          if [[ -s "$gitignore" ]]; then
+            echo "" >> "$gitignore"
+          fi
+          echo "# sync-agents (generated symlinks)" >> "$gitignore"
+        fi
+      fi
+      echo "$entry" >> "$gitignore"
+      added=$((added + 1))
+    fi
+  done
+
+  if [[ "$added" -gt 0 ]]; then
+    info "Added $added entries to .gitignore"
+  fi
 }
 
 cmd_status() {
@@ -749,7 +903,6 @@ generate_agents_md() {
   fi
 
   cat > "$outfile" <<'HEADER'
-
 ---
 trigger: always_on
 ---
