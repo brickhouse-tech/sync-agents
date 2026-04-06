@@ -370,12 +370,10 @@ add_default_gitignore_entries() {
       local tmp
       tmp="$(mktemp)"
       local in_section=false
-      local section_found=false
       
       while IFS= read -r line; do
         if [[ "$line" == "$marker" ]]; then
           in_section=true
-          section_found=true
           # Output the marker
           echo "$line" >> "$tmp"
           # Output all default entries
