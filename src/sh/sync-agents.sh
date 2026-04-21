@@ -350,7 +350,7 @@ cmd_fix() {
         mv "$item" "$agents_subdir/$name"
         info "Moved: $subdir/$name -> $AGENTS_DIR/$subdir/$name"
       fi
-      ((fixed++))
+      fixed=$((fixed + 1))
     done
 
     # Also move any top-level files (e.g. loose .md rules)
@@ -370,7 +370,7 @@ cmd_fix() {
         mv "$item" "$agents_subdir/$name"
         info "Moved: $subdir/$name -> $AGENTS_DIR/$subdir/$name"
       fi
-      ((fixed++))
+      fixed=$((fixed + 1))
     done
 
     # Remove the now-empty legacy dir and replace with symlink
