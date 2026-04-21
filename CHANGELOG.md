@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.14](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.13...v0.1.14) (2026-04-21)
+
+
+### Features
+
+* **rules:** add git workflow rule ([2ec3935](https://github.com/brickhouse-tech/sync-agents/commit/2ec39359f1e66b3771cc4d75f5e037992018fac8))
+
+
+### Bug Fixes
+
+* **sh:** resolve sync-agents version command for global npm installs ([1e4ab65](https://github.com/brickhouse-tech/sync-agents/commit/1e4ab6578e52c4bdef7dacfa8084ca8add3cdb58))
+
 ## [0.1.13](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.12...v0.1.13) (2026-04-21)
 
 
