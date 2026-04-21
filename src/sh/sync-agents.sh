@@ -385,7 +385,7 @@ cmd_fix() {
       else
         warn "$subdir/ is not empty after migration — skipping symlink replacement"
         warn "Remaining items:"
-        ls -A "$legacy_dir" | sed 's/^/    /'
+        find "$legacy_dir" -mindepth 1 -maxdepth 1 -exec basename {} \; | sed 's/^/    /'
       fi
     fi
   done
