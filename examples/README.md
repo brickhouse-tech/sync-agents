@@ -31,6 +31,18 @@ sync-agents import https://raw.githubusercontent.com/brickhouse-tech/sync-agents
 |---|---|
 | [pr-checklist](workflows/pr-checklist.md) | Pre-flight checklist before opening a PR |
 
+### Demos
+
+| Directory | Description |
+|---|---|
+| [fix/](fix/) | Reproducible demo of `sync-agents fix` — migrates legacy dirs, converts flat skills to directory layout, repairs symlinks |
+
+Run it:
+
+```bash
+bash examples/fix/run-demo.sh
+```
+
 ## Contributing
 
 Add your own examples via PR! Follow the templates in `src/md/` for consistent formatting.
