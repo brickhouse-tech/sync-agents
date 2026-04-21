@@ -25,6 +25,10 @@
   "files": [
     "src/**/*"
   ],
+  "overrides": {
+    "file-type": ">=22",
+    "picomatch": ">=4.0.4"
+  },
   "scripts": {
     "lint": "shellcheck src/sh/*.sh",
     "test": "npx bats test/"
@@ -34,6 +38,6 @@
     "@commitlint/config-conventional": "^20",
     "commitlint": "20",
     "shellcheck": "^4.1.0",
-    "sort-package-json": "3.6"
+    "sort-package-json": ">=3"
   }
 }
