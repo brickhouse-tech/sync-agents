@@ -466,6 +466,49 @@ cmd_fix() {
     fi
   done
 
+  # --- Phase 1b: Convert flat skill files to directory layout ---
+  # e.g. .agents/skills/foo.md -> .agents/skills/foo/SKILL.md
+  for subdir in "${subdirs[@]}"; do
+    [[ "$subdir" == "skills" ]] || continue
+    local skills_dir="$agents_abs/skills"
+    [[ -d "$skills_dir" ]] || continue
+
+    for flat_file in "$skills_dir"/*.md; do
+      [[ -f "$flat_file" ]] || continue
+      local name
+      name="$(basename "$flat_file" .md)"
+      local target_dir="$skills_dir/$name"
+      local target_file="$target_dir/SKILL.md"
+
+      if [[ -d "$target_dir" ]] && [[ -f "$target_file" ]]; then
+        if [[ "$no_clobber" == "true" ]]; then
+          warn "Skipping flat skill $name.md — $name/SKILL.md already exists (--no-clobber)"
+          skipped=$((skipped + 1))
+          continue
+        fi
+        # Flat file wins (same merge behavior as legacy migration)
+        if [[ "$DRY_RUN" == "true" ]]; then
+          echo "  would convert: skills/$name.md -> skills/$name/SKILL.md (overwrite)"
+        else
+          mv "$flat_file" "$target_file"
+          info "Converted: skills/$name.md -> skills/$name/SKILL.md (overwrote existing)"
+        fi
+        merged=$((merged + 1))
+        fixed=$((fixed + 1))
+        continue
+      fi
+
+      if [[ "$DRY_RUN" == "true" ]]; then
+        echo "  would convert: skills/$name.md -> skills/$name/SKILL.md"
+      else
+        mkdir -p "$target_dir"
+        mv "$flat_file" "$target_file"
+        info "Converted: skills/$name.md -> skills/$name/SKILL.md"
+      fi
+      fixed=$((fixed + 1))
+    done
+  done
+
   # --- Phase 2: Repair broken/missing symlinks ---
   local repaired=0
 

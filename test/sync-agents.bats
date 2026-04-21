@@ -1106,6 +1106,74 @@ teardown() {
 # STATE_TEMPLATE
 # --------------------------------------------------------------------------
 
+# --------------------------------------------------------------------------
+# fix — flat skill to directory layout
+# --------------------------------------------------------------------------
+
+@test "fix converts flat skill .md to directory layout" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  # Create a flat skill file inside .agents/skills/
+  echo "# My Skill" > "$TEST_DIR/.agents/skills/my-skill.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  [ "$status" -eq 0 ]
+  # Should be converted to directory layout
+  [ -f "$TEST_DIR/.agents/skills/my-skill/SKILL.md" ]
+  # Flat file should be gone
+  [ ! -f "$TEST_DIR/.agents/skills/my-skill.md" ]
+  [[ "$output" == *"Converted"* ]]
+}
+
+@test "fix converts flat skill preserving content" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  echo "custom content here" > "$TEST_DIR/.agents/skills/foo.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  [ "$status" -eq 0 ]
+  [[ "$(cat "$TEST_DIR/.agents/skills/foo/SKILL.md")" == "custom content here" ]]
+}
+
+@test "fix --dry-run flat skill does not move" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  echo "content" > "$TEST_DIR/.agents/skills/bar.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" --dry-run fix skills
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"would convert"* ]]
+  # File should still be flat
+  [ -f "$TEST_DIR/.agents/skills/bar.md" ]
+  [ ! -d "$TEST_DIR/.agents/skills/bar" ]
+}
+
+@test "fix --no-clobber skips flat skill when directory already exists" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.agents/skills/existing"
+  echo "dir version" > "$TEST_DIR/.agents/skills/existing/SKILL.md"
+  echo "flat version" > "$TEST_DIR/.agents/skills/existing.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix --no-clobber skills
+  [ "$status" -eq 0 ]
+  # Directory version preserved
+  [[ "$(cat "$TEST_DIR/.agents/skills/existing/SKILL.md")" == "dir version" ]]
+  [[ "$output" == *"Skipping"* ]]
+}
+
+@test "fix flat skill merge overwrites existing directory skill by default" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.agents/skills/dup"
+  echo "old" > "$TEST_DIR/.agents/skills/dup/SKILL.md"
+  echo "new" > "$TEST_DIR/.agents/skills/dup.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  [ "$status" -eq 0 ]
+  [[ "$(cat "$TEST_DIR/.agents/skills/dup/SKILL.md")" == "new" ]]
+  [ ! -f "$TEST_DIR/.agents/skills/dup.md" ]
+}
+
+# --------------------------------------------------------------------------
+# STATE_TEMPLATE
+# --------------------------------------------------------------------------
+
 @test "init creates trimmed STATE.md" {
   bash "$SCRIPT" -d "$TEST_DIR" init
   local line_count
