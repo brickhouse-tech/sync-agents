@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.13](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.12...v0.1.13) (2026-04-21)
+
+
+### Features
+
+* **rules:** add documentation sync rule for keeping docs and examples in sync ([cd1b2c5](https://github.com/brickhouse-tech/sync-agents/commit/cd1b2c5386ec9308a41a04fb30c5f01a427a482c))
+
 ## [0.1.12](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.11...v0.1.12) (2026-04-21)
 
 
