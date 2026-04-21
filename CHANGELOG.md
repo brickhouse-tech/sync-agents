@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.11](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.10...v0.1.11) (2026-04-21)
+
+
+### Bug Fixes
+
+* convert flat skill files to directory layout in fix command ([53c9130](https://github.com/brickhouse-tech/sync-agents/commit/53c913032b92a9bb81bf5577561fde1b747364ba))
+* make fix command merge by default, detect same-inode dirs ([af07927](https://github.com/brickhouse-tech/sync-agents/commit/af07927ea70385813ff0ceb302c5cb6d95786e52))
+* make fix command repair broken/missing symlinks ([1d8d603](https://github.com/brickhouse-tech/sync-agents/commit/1d8d603b01245eb99e55f3adcfad2072a61887b5))
+
 ## [0.1.10](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.9...v0.1.10) (2026-04-21)
 
 
