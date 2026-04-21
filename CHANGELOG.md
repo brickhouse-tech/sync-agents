@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.10](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.9...v0.1.10) (2026-04-21)
+
+
+### Features
+
+* add fix command to migrate legacy dirs into .agents/ ([38bff08](https://github.com/brickhouse-tech/sync-agents/commit/38bff08fedc717321eb6ff2bf92579a8de31ac2f))
+* skills use directory layout (skills/name/SKILL.md) ([95960d9](https://github.com/brickhouse-tech/sync-agents/commit/95960d922ae0e0188f13a1210777cfce662f96ec))
+
+
+### Bug Fixes
+
+* replace ls with find to satisfy shellcheck SC2012 ([095f2b8](https://github.com/brickhouse-tech/sync-agents/commit/095f2b8be33138ebdf94850ccf3f0f9dd8bdb407))
+* use arithmetic assignment instead of ((fixed++)) ([7fdd3e0](https://github.com/brickhouse-tech/sync-agents/commit/7fdd3e04e17970bdf5ad5bd47b38b55cc3923c19))
+
 ## [0.1.9](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.8...v0.1.9) (2026-04-06)
 
 
