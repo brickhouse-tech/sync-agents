@@ -46,6 +46,12 @@ teardown() {
   [[ "$output" == *"sync-agents v${PACKAGE_VERSION}"* ]]
 }
 
+@test "version subcommand shows same output as --version" {
+  run bash "$SCRIPT" version
+  [ "$status" -eq 0 ]
+  [[ "$output" == "sync-agents v${PACKAGE_VERSION}" ]]
+}
+
 # --------------------------------------------------------------------------
 # init
 # --------------------------------------------------------------------------

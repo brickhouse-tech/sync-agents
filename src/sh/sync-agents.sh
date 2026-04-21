@@ -81,6 +81,7 @@ ${BOLD}COMMANDS${RESET}
   inherit <label> <path>        Add an inheritance link to AGENTS.md (convention-based)
   inherit --list                List current inheritance links
   inherit --remove <label>      Remove an inheritance link by label
+  version                       Show version (same as --version)
 
 ${BOLD}OPTIONS${RESET}
   -h, --help                    Show this help message
@@ -1461,6 +1462,10 @@ main() {
       ;;
     inherit)
       cmd_inherit "$@"
+      ;;
+    version)
+      echo "sync-agents v${VERSION}"
+      exit 0
       ;;
     "")
       usage
