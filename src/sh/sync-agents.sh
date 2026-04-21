@@ -75,7 +75,9 @@ ${BOLD}COMMANDS${RESET}
   watch                         Watch .agents/ for changes and auto-regenerate index
   import <url>                  Import a rule/skill/workflow from a URL
   hook                          Install a pre-commit git hook for auto-sync
-  fix [type]                    Migrate legacy dirs into .agents/ (type: skills, rules, workflows, or all)
+  fix [type]                    Migrate legacy dirs + repair broken symlinks
+                                  type: skills, rules, workflows, or all
+                                  --no-clobber: skip items that already exist in .agents/
   inherit <label> <path>        Add an inheritance link to AGENTS.md (convention-based)
   inherit --list                List current inheritance links
   inherit --remove <label>      Remove an inheritance link by label
@@ -301,7 +303,17 @@ TMPL_EOF
 cmd_fix() {
   ensure_agents_dir
 
-  local fix_type="${1:-all}"
+  # Parse fix-specific flags
+  local no_clobber="false"
+  local fix_args=()
+  for arg in "$@"; do
+    case "$arg" in
+      --no-clobber) no_clobber="true" ;;
+      *)            fix_args+=("$arg") ;;
+    esac
+  done
+
+  local fix_type="${fix_args[0]:-all}"
   local subdirs=()
 
   case "$fix_type" in
@@ -320,13 +332,50 @@ cmd_fix() {
   local agents_abs
   agents_abs="$(cd "$PROJECT_ROOT/$AGENTS_DIR" && pwd)"
   local fixed=0
+  local skipped=0
+  local merged=0
+
+  # Helper: compare inodes of two directories (portable across macOS/Linux)
+  same_inode() {
+    local inode_a inode_b
+    if stat --version >/dev/null 2>&1; then
+      # GNU stat (Linux)
+      inode_a="$(stat -c '%i' "$1" 2>/dev/null)"
+      inode_b="$(stat -c '%i' "$2" 2>/dev/null)"
+    else
+      # BSD stat (macOS)
+      inode_a="$(stat -f '%i' "$1" 2>/dev/null)"
+      inode_b="$(stat -f '%i' "$2" 2>/dev/null)"
+    fi
+    [[ -n "$inode_a" ]] && [[ "$inode_a" == "$inode_b" ]]
+  }
 
   for subdir in "${subdirs[@]}"; do
     local legacy_dir="$PROJECT_ROOT/$subdir"
     local agents_subdir="$agents_abs/$subdir"
 
     # Skip if legacy dir doesn't exist or is already a symlink
-    if [[ ! -d "$legacy_dir" ]] || [[ -L "$legacy_dir" ]]; then
+    if [[ ! -d "$legacy_dir" ]]; then
+      continue
+    fi
+    if [[ -L "$legacy_dir" ]]; then
+      info "$subdir/ is already a symlink — nothing to do."
+      continue
+    fi
+
+    # Detect same-inode (legacy dir IS .agents/subdir — e.g. hardlink or bind mount)
+    if [[ -d "$agents_subdir" ]] && same_inode "$legacy_dir" "$agents_subdir"; then
+      warn "$subdir/ and $AGENTS_DIR/$subdir/ are the same directory (same inode)."
+      warn "Replacing $subdir/ with a symlink to $AGENTS_DIR/$subdir/."
+      if [[ "$DRY_RUN" == "true" ]]; then
+        echo "  would remove $subdir/ (same inode as $AGENTS_DIR/$subdir/)"
+        echo "  would create symlink $subdir/ -> $AGENTS_DIR/$subdir"
+      else
+        rm -rf "$legacy_dir"
+        ln -s "$AGENTS_DIR/$subdir" "$legacy_dir"
+        info "Replaced $subdir/ with symlink -> $AGENTS_DIR/$subdir"
+      fi
+      fixed=$((fixed + 1))
       continue
     fi
 
@@ -340,7 +389,21 @@ cmd_fix() {
       name="$(basename "$item")"
 
       if [[ -d "$agents_subdir/$name" ]]; then
-        warn "Skipping $subdir/$name — already exists in $AGENTS_DIR/$subdir/"
+        if [[ "$no_clobber" == "true" ]]; then
+          warn "Skipping $subdir/$name — already exists in $AGENTS_DIR/$subdir/ (--no-clobber)"
+          skipped=$((skipped + 1))
+          continue
+        fi
+        # Merge: legacy content wins (overwrite into .agents/)
+        if [[ "$DRY_RUN" == "true" ]]; then
+          echo "  would merge: $subdir/$name -> $AGENTS_DIR/$subdir/$name (overwrite)"
+        else
+          rm -rf "${agents_subdir:?}/${name:?}"
+          mv "$item" "$agents_subdir/$name"
+          info "Merged: $subdir/$name -> $AGENTS_DIR/$subdir/$name (overwrote existing)"
+        fi
+        merged=$((merged + 1))
+        fixed=$((fixed + 1))
         continue
       fi
 
@@ -360,7 +423,20 @@ cmd_fix() {
       name="$(basename "$item")"
 
       if [[ -f "$agents_subdir/$name" ]]; then
-        warn "Skipping $subdir/$name — already exists in $AGENTS_DIR/$subdir/"
+        if [[ "$no_clobber" == "true" ]]; then
+          warn "Skipping $subdir/$name — already exists in $AGENTS_DIR/$subdir/ (--no-clobber)"
+          skipped=$((skipped + 1))
+          continue
+        fi
+        # Merge: legacy content wins
+        if [[ "$DRY_RUN" == "true" ]]; then
+          echo "  would merge: $subdir/$name -> $AGENTS_DIR/$subdir/$name (overwrite)"
+        else
+          mv "$item" "$agents_subdir/$name"
+          info "Merged: $subdir/$name -> $AGENTS_DIR/$subdir/$name (overwrote existing)"
+        fi
+        merged=$((merged + 1))
+        fixed=$((fixed + 1))
         continue
       fi
 
@@ -390,10 +466,139 @@ cmd_fix() {
     fi
   done
 
-  if [[ "$fixed" -eq 0 ]]; then
-    info "Nothing to fix — all directories are already in $AGENTS_DIR/ or symlinked."
+  # --- Phase 1b: Convert flat skill files to directory layout ---
+  # e.g. .agents/skills/foo.md -> .agents/skills/foo/SKILL.md
+  for subdir in "${subdirs[@]}"; do
+    [[ "$subdir" == "skills" ]] || continue
+    local skills_dir="$agents_abs/skills"
+    [[ -d "$skills_dir" ]] || continue
+
+    for flat_file in "$skills_dir"/*.md; do
+      [[ -f "$flat_file" ]] || continue
+      local name
+      name="$(basename "$flat_file" .md)"
+      local target_dir="$skills_dir/$name"
+      local target_file="$target_dir/SKILL.md"
+
+      if [[ -d "$target_dir" ]] && [[ -f "$target_file" ]]; then
+        if [[ "$no_clobber" == "true" ]]; then
+          warn "Skipping flat skill $name.md — $name/SKILL.md already exists (--no-clobber)"
+          skipped=$((skipped + 1))
+          continue
+        fi
+        # Flat file wins (same merge behavior as legacy migration)
+        if [[ "$DRY_RUN" == "true" ]]; then
+          echo "  would convert: skills/$name.md -> skills/$name/SKILL.md (overwrite)"
+        else
+          mv "$flat_file" "$target_file"
+          info "Converted: skills/$name.md -> skills/$name/SKILL.md (overwrote existing)"
+        fi
+        merged=$((merged + 1))
+        fixed=$((fixed + 1))
+        continue
+      fi
+
+      if [[ "$DRY_RUN" == "true" ]]; then
+        echo "  would convert: skills/$name.md -> skills/$name/SKILL.md"
+      else
+        mkdir -p "$target_dir"
+        mv "$flat_file" "$target_file"
+        info "Converted: skills/$name.md -> skills/$name/SKILL.md"
+      fi
+      fixed=$((fixed + 1))
+    done
+  done
+
+  # --- Phase 2: Repair broken/missing symlinks ---
+  local repaired=0
+
+  for target in "${ACTIVE_TARGETS[@]}"; do
+    local target_dir
+    target_dir="$(resolve_target_dir "$target" "$PROJECT_ROOT")"
+    local agents_rel
+    agents_rel="$(resolve_agents_rel "$target")"
+
+    for subdir in "${subdirs[@]}"; do
+      if [[ ! -d "$agents_abs/$subdir" ]]; then
+        continue
+      fi
+      local expected_link="$target_dir/$subdir"
+      local expected_source="$agents_rel/$subdir"
+
+      if [[ -L "$expected_link" ]]; then
+        local current_target
+        current_target="$(readlink "$expected_link")"
+        if [[ "$current_target" == "$expected_source" ]]; then
+          continue  # Already correct
+        fi
+        # Symlink exists but points to wrong target
+        if [[ "$DRY_RUN" == "true" ]]; then
+          echo "  would relink: $expected_link -> $expected_source (was $current_target)"
+        else
+          rm "$expected_link"
+          create_symlink "$expected_source" "$expected_link" "false"
+          info "Repaired: $expected_link -> $expected_source (was $current_target)"
+        fi
+        repaired=$((repaired + 1))
+      elif [[ -e "$expected_link" ]]; then
+        # Something exists but isn't a symlink — skip unless --force
+        if [[ "$FORCE" == "true" ]]; then
+          if [[ "$DRY_RUN" == "true" ]]; then
+            echo "  would replace: $expected_link with symlink -> $expected_source"
+          else
+            rm -rf "$expected_link"
+            create_symlink "$expected_source" "$expected_link" "false"
+            info "Repaired: replaced $expected_link with symlink -> $expected_source"
+          fi
+          repaired=$((repaired + 1))
+        else
+          warn "$expected_link exists but is not a symlink (use --force to replace)"
+        fi
+      else
+        # Missing entirely
+        if [[ "$DRY_RUN" == "true" ]]; then
+          echo "  would create: $expected_link -> $expected_source"
+        else
+          create_symlink "$expected_source" "$expected_link" "false"
+        fi
+        repaired=$((repaired + 1))
+      fi
+    done
+  done
+
+  # Repair CLAUDE.md symlink
+  if [[ -f "$PROJECT_ROOT/$AGENTS_MD" ]]; then
+    if [[ -L "$PROJECT_ROOT/CLAUDE.md" ]]; then
+      local current_target
+      current_target="$(readlink "$PROJECT_ROOT/CLAUDE.md")"
+      if [[ "$current_target" != "$AGENTS_MD" ]]; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+          echo "  would relink: CLAUDE.md -> $AGENTS_MD (was $current_target)"
+        else
+          rm "$PROJECT_ROOT/CLAUDE.md"
+          create_symlink "$AGENTS_MD" "$PROJECT_ROOT/CLAUDE.md" "false"
+        fi
+        repaired=$((repaired + 1))
+      fi
+    elif [[ ! -e "$PROJECT_ROOT/CLAUDE.md" ]]; then
+      if [[ "$DRY_RUN" == "true" ]]; then
+        echo "  would create: CLAUDE.md -> $AGENTS_MD"
+      else
+        create_symlink "$AGENTS_MD" "$PROJECT_ROOT/CLAUDE.md" "false"
+      fi
+      repaired=$((repaired + 1))
+    fi
+  fi
+
+  # Summary
+  if [[ "$fixed" -eq 0 ]] && [[ "$skipped" -eq 0 ]] && [[ "$repaired" -eq 0 ]]; then
+    info "Nothing to fix — all directories and symlinks are correct."
   else
-    info "Fixed $fixed item(s). Run 'sync-agents sync' to update agent target symlinks."
+    if [[ "$fixed" -gt 0 ]]; then info "Fixed $fixed item(s)."; fi
+    if [[ "$merged" -gt 0 ]]; then info "Merged $merged item(s) (legacy overwrote existing)."; fi
+    if [[ "$skipped" -gt 0 ]]; then warn "Skipped $skipped item(s) (use without --no-clobber to merge)."; fi
+    if [[ "$repaired" -gt 0 ]]; then info "Repaired $repaired symlink(s)."; fi
+    if [[ "$fixed" -gt 0 ]]; then info "Run 'sync-agents sync' to update agent target symlinks."; fi
   fi
 }
 

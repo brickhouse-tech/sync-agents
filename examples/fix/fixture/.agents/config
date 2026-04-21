@@ -1,0 +1,2 @@
+# sync-agents configuration
+targets = claude,windsurf,cursor,copilot

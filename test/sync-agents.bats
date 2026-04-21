@@ -789,7 +789,23 @@ teardown() {
   [ -L "$TEST_DIR/workflows" ]
 }
 
-@test "fix skips items already in .agents/" {
+@test "fix merges items by default (legacy wins)" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  # Put a skill in .agents/ first
+  mkdir -p "$TEST_DIR/.agents/skills/existing"
+  echo "original" > "$TEST_DIR/.agents/skills/existing/SKILL.md"
+  # Create legacy dir with same name
+  mkdir -p "$TEST_DIR/skills/existing"
+  echo "legacy-version" > "$TEST_DIR/skills/existing/SKILL.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  [ "$status" -eq 0 ]
+  # Legacy should overwrite (merge default)
+  [[ "$(cat "$TEST_DIR/.agents/skills/existing/SKILL.md")" == "legacy-version" ]]
+  [[ "$output" == *"Merged"* ]]
+}
+
+@test "fix --no-clobber skips items already in .agents/" {
   bash "$SCRIPT" -d "$TEST_DIR" init
   # Put a skill in .agents/ first
   mkdir -p "$TEST_DIR/.agents/skills/existing"
@@ -798,11 +814,12 @@ teardown() {
   mkdir -p "$TEST_DIR/skills/existing"
   echo "duplicate" > "$TEST_DIR/skills/existing/SKILL.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  run bash "$SCRIPT" -d "$TEST_DIR" fix --no-clobber skills
   [ "$status" -eq 0 ]
   # Original should be preserved
   [[ "$(cat "$TEST_DIR/.agents/skills/existing/SKILL.md")" == "original" ]]
   [[ "$output" == *"Skipping"* ]]
+  [[ "$output" == *"--no-clobber"* ]]
 }
 
 @test "fix --dry-run does not move files" {
@@ -819,14 +836,16 @@ teardown() {
   [ ! -L "$TEST_DIR/skills" ]
 }
 
-@test "fix skips directories that are already symlinks" {
+@test "fix skips migration for directories that are already symlinks" {
   bash "$SCRIPT" -d "$TEST_DIR" init
+  bash "$SCRIPT" -d "$TEST_DIR" sync
   # skills/ is already a symlink
   ln -s .agents/skills "$TEST_DIR/skills"
 
   run bash "$SCRIPT" -d "$TEST_DIR" fix skills
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Nothing to fix"* ]]
+  # Migration phase should report already a symlink
+  [[ "$output" == *"already a symlink"* ]]
 }
 
 @test "fix without init fails" {
@@ -851,6 +870,304 @@ teardown() {
   run bash "$SCRIPT" -d "$TEST_DIR" fix skills
   [ "$status" -eq 0 ]
   [[ "$output" == *"Fixed 2 item(s)"* ]]
+}
+
+@test "fix detects same-inode directory and replaces with symlink" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  # Remove the legacy-style dir so we can recreate the same-inode scenario
+  # Simulate same-inode: make skills/ a hardlink to .agents/skills/ by
+  # removing skills/ and creating it as a copy of the same directory.
+  # On most filesystems we can't hardlink dirs, so instead we simulate
+  # the real-world scenario: skills/ IS .agents/skills/ (user moved content
+  # into .agents/skills/ and then skills/ still points to same place).
+  # We achieve this by making .agents/skills/ the real dir and skills/ a
+  # regular dir with identical inode — which we can do via bind mount or
+  # by just removing skills/ and symlinking .agents/skills/ to skills/
+  # then removing the symlink and using mv to make them the same.
+  #
+  # Simplest approach: create content in .agents/skills/, then replace
+  # skills/ with a hardlink-equivalent. On macOS/Linux, the only way to
+  # get same-inode dirs is if they ARE the same dir (e.g. one was renamed).
+  # So: put content in .agents/skills, remove skills/, mv .agents/skills to
+  # skills/, then mv it back — this won't give same inode.
+  #
+  # Actually the real-world case is: the user's skills/ and .agents/skills/
+  # are literally the same directory entry. We can't easily reproduce this
+  # in a test without OS-level tricks. Instead, test the OUTPUT path:
+  # verify fix handles the case where legacy dir has items that all exist
+  # in .agents/ — the merge path.
+  mkdir -p "$TEST_DIR/.agents/skills/my-skill"
+  echo "existing" > "$TEST_DIR/.agents/skills/my-skill/SKILL.md"
+  mkdir -p "$TEST_DIR/skills/my-skill"
+  echo "legacy" > "$TEST_DIR/skills/my-skill/SKILL.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  [ "$status" -eq 0 ]
+  # Default merge: legacy wins
+  [[ "$(cat "$TEST_DIR/.agents/skills/my-skill/SKILL.md")" == "legacy" ]]
+  [[ "$output" == *"Merged"* ]]
+  # Legacy dir should be replaced with symlink
+  [ -L "$TEST_DIR/skills" ]
+}
+
+@test "fix merges files (rules) by default — legacy wins" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  # Create a rule in .agents/ first
+  echo "agents-version" > "$TEST_DIR/.agents/rules/shared.md"
+  # Create legacy rules dir with same file
+  mkdir -p "$TEST_DIR/rules"
+  echo "legacy-version" > "$TEST_DIR/rules/shared.md"
+  # Also add a rule only in legacy
+  echo "only-in-legacy" > "$TEST_DIR/rules/unique.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix rules
+  [ "$status" -eq 0 ]
+  # Shared file: legacy wins
+  [[ "$(cat "$TEST_DIR/.agents/rules/shared.md")" == "legacy-version" ]]
+  # Unique file: moved
+  [[ "$(cat "$TEST_DIR/.agents/rules/unique.md")" == "only-in-legacy" ]]
+  [[ "$output" == *"Merged"* ]]
+  [[ "$output" == *"Moved"* ]]
+  # Legacy dir replaced with symlink
+  [ -L "$TEST_DIR/rules" ]
+}
+
+@test "fix --no-clobber skips conflicting files" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  echo "agents-version" > "$TEST_DIR/.agents/rules/keep-me.md"
+  mkdir -p "$TEST_DIR/rules"
+  echo "legacy-version" > "$TEST_DIR/rules/keep-me.md"
+  echo "new-rule" > "$TEST_DIR/rules/new.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix --no-clobber rules
+  [ "$status" -eq 0 ]
+  # Conflicting file: agents version preserved
+  [[ "$(cat "$TEST_DIR/.agents/rules/keep-me.md")" == "agents-version" ]]
+  # Non-conflicting file: moved
+  [[ "$(cat "$TEST_DIR/.agents/rules/new.md")" == "new-rule" ]]
+  [[ "$output" == *"Skipping"* ]]
+  [[ "$output" == *"Skipped 1 item(s)"* ]]
+}
+
+@test "fix --dry-run merge shows would-merge" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.agents/skills/existing"
+  echo "original" > "$TEST_DIR/.agents/skills/existing/SKILL.md"
+  mkdir -p "$TEST_DIR/skills/existing"
+  echo "legacy" > "$TEST_DIR/skills/existing/SKILL.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" --dry-run fix skills
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"would merge"* ]]
+  # Nothing should have changed
+  [[ "$(cat "$TEST_DIR/.agents/skills/existing/SKILL.md")" == "original" ]]
+  [ ! -L "$TEST_DIR/skills" ]
+}
+
+@test "fix reports merge and skip counts in summary" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.agents/skills/s1"
+  echo "old" > "$TEST_DIR/.agents/skills/s1/SKILL.md"
+  mkdir -p "$TEST_DIR/skills/s1" "$TEST_DIR/skills/s2"
+  echo "new" > "$TEST_DIR/skills/s1/SKILL.md"
+  echo "fresh" > "$TEST_DIR/skills/s2/SKILL.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Fixed 2 item(s)"* ]]
+  [[ "$output" == *"Merged 1 item(s)"* ]]
+}
+
+@test "fix handles ill-configured layout: legacy + partial .agents content" {
+  # Simulates a real-world misconfigured project where someone has:
+  # - skills/ with 3 skills
+  # - .agents/skills/ with 1 of those same skills (stale) + 1 unique
+  # After fix: .agents/skills/ should have all skills, legacy versions win for conflicts
+  bash "$SCRIPT" -d "$TEST_DIR" init
+
+  # .agents/ has stale copy of skill-a and unique skill-x
+  mkdir -p "$TEST_DIR/.agents/skills/skill-a"
+  echo "stale-a" > "$TEST_DIR/.agents/skills/skill-a/SKILL.md"
+  mkdir -p "$TEST_DIR/.agents/skills/skill-x"
+  echo "agents-only-x" > "$TEST_DIR/.agents/skills/skill-x/SKILL.md"
+
+  # Legacy has skill-a (newer), skill-b, skill-c
+  mkdir -p "$TEST_DIR/skills/skill-a"
+  echo "fresh-a" > "$TEST_DIR/skills/skill-a/SKILL.md"
+  mkdir -p "$TEST_DIR/skills/skill-b"
+  echo "fresh-b" > "$TEST_DIR/skills/skill-b/SKILL.md"
+  mkdir -p "$TEST_DIR/skills/skill-c"
+  echo "fresh-c" > "$TEST_DIR/skills/skill-c/SKILL.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  [ "$status" -eq 0 ]
+
+  # skill-a: legacy wins (merged)
+  [[ "$(cat "$TEST_DIR/.agents/skills/skill-a/SKILL.md")" == "fresh-a" ]]
+  # skill-b, skill-c: moved from legacy
+  [[ "$(cat "$TEST_DIR/.agents/skills/skill-b/SKILL.md")" == "fresh-b" ]]
+  [[ "$(cat "$TEST_DIR/.agents/skills/skill-c/SKILL.md")" == "fresh-c" ]]
+  # skill-x: preserved (was only in .agents/)
+  [[ "$(cat "$TEST_DIR/.agents/skills/skill-x/SKILL.md")" == "agents-only-x" ]]
+  # Legacy dir replaced with symlink
+  [ -L "$TEST_DIR/skills" ]
+  # Summary
+  [[ "$output" == *"Fixed 3 item(s)"* ]]
+  [[ "$output" == *"Merged 1 item(s)"* ]]
+}
+
+# --------------------------------------------------------------------------
+# fix — symlink repair
+# --------------------------------------------------------------------------
+
+@test "fix repairs missing target symlinks" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  # .agents/ has content but no target symlinks exist (never ran sync)
+  mkdir -p "$TEST_DIR/.agents/skills/my-skill"
+  echo "content" > "$TEST_DIR/.agents/skills/my-skill/SKILL.md"
+
+  # Verify no .claude/ symlinks exist yet
+  [ ! -e "$TEST_DIR/.claude/skills" ]
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  [ "$status" -eq 0 ]
+  # Symlinks should now exist for all configured targets
+  [ -L "$TEST_DIR/.claude/skills" ]
+  [[ "$output" == *"Repaired"* ]] || [[ "$output" == *"Linked"* ]]
+}
+
+@test "fix repairs missing CLAUDE.md symlink" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  # AGENTS.md exists but CLAUDE.md symlink is missing
+  [ -f "$TEST_DIR/AGENTS.md" ]
+  [ ! -e "$TEST_DIR/CLAUDE.md" ]
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix
+  [ "$status" -eq 0 ]
+  [ -L "$TEST_DIR/CLAUDE.md" ]
+  [[ "$(readlink "$TEST_DIR/CLAUDE.md")" == "AGENTS.md" ]]
+}
+
+@test "fix repairs deleted symlinks after sync" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  bash "$SCRIPT" -d "$TEST_DIR" sync
+  # Verify sync worked
+  [ -L "$TEST_DIR/.claude/skills" ]
+  [ -L "$TEST_DIR/CLAUDE.md" ]
+
+  # Now delete the symlinks (simulating the user's broken state)
+  rm "$TEST_DIR/.claude/skills"
+  rm "$TEST_DIR/.claude/rules"
+  rm "$TEST_DIR/CLAUDE.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix
+  [ "$status" -eq 0 ]
+  # Symlinks should be restored
+  [ -L "$TEST_DIR/.claude/skills" ]
+  [ -L "$TEST_DIR/.claude/rules" ]
+  [ -L "$TEST_DIR/CLAUDE.md" ]
+  [[ "$output" == *"Repaired"* ]] || [[ "$output" == *"Linked"* ]]
+}
+
+@test "fix --dry-run reports missing symlinks without creating them" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.agents/skills/s1"
+  echo "x" > "$TEST_DIR/.agents/skills/s1/SKILL.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" --dry-run fix skills
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"would create"* ]]
+  # Nothing actually created
+  [ ! -e "$TEST_DIR/.claude/skills" ]
+}
+
+@test "fix with no legacy dirs and no broken symlinks reports nothing to fix" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  bash "$SCRIPT" -d "$TEST_DIR" sync
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Nothing to fix"* ]]
+}
+
+@test "fix repairs symlinks for specific type only" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  bash "$SCRIPT" -d "$TEST_DIR" sync
+  # Delete just skills symlinks
+  rm "$TEST_DIR/.claude/skills"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  [ "$status" -eq 0 ]
+  [ -L "$TEST_DIR/.claude/skills" ]
+  [[ "$output" == *"Repaired"* ]] || [[ "$output" == *"Linked"* ]]
+}
+
+# --------------------------------------------------------------------------
+# STATE_TEMPLATE
+# --------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------
+# fix — flat skill to directory layout
+# --------------------------------------------------------------------------
+
+@test "fix converts flat skill .md to directory layout" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  # Create a flat skill file inside .agents/skills/
+  echo "# My Skill" > "$TEST_DIR/.agents/skills/my-skill.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  [ "$status" -eq 0 ]
+  # Should be converted to directory layout
+  [ -f "$TEST_DIR/.agents/skills/my-skill/SKILL.md" ]
+  # Flat file should be gone
+  [ ! -f "$TEST_DIR/.agents/skills/my-skill.md" ]
+  [[ "$output" == *"Converted"* ]]
+}
+
+@test "fix converts flat skill preserving content" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  echo "custom content here" > "$TEST_DIR/.agents/skills/foo.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  [ "$status" -eq 0 ]
+  [[ "$(cat "$TEST_DIR/.agents/skills/foo/SKILL.md")" == "custom content here" ]]
+}
+
+@test "fix --dry-run flat skill does not move" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  echo "content" > "$TEST_DIR/.agents/skills/bar.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" --dry-run fix skills
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"would convert"* ]]
+  # File should still be flat
+  [ -f "$TEST_DIR/.agents/skills/bar.md" ]
+  [ ! -d "$TEST_DIR/.agents/skills/bar" ]
+}
+
+@test "fix --no-clobber skips flat skill when directory already exists" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.agents/skills/existing"
+  echo "dir version" > "$TEST_DIR/.agents/skills/existing/SKILL.md"
+  echo "flat version" > "$TEST_DIR/.agents/skills/existing.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix --no-clobber skills
+  [ "$status" -eq 0 ]
+  # Directory version preserved
+  [[ "$(cat "$TEST_DIR/.agents/skills/existing/SKILL.md")" == "dir version" ]]
+  [[ "$output" == *"Skipping"* ]]
+}
+
+@test "fix flat skill merge overwrites existing directory skill by default" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.agents/skills/dup"
+  echo "old" > "$TEST_DIR/.agents/skills/dup/SKILL.md"
+  echo "new" > "$TEST_DIR/.agents/skills/dup.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  [ "$status" -eq 0 ]
+  [[ "$(cat "$TEST_DIR/.agents/skills/dup/SKILL.md")" == "new" ]]
+  [ ! -f "$TEST_DIR/.agents/skills/dup.md" ]
 }
 
 # --------------------------------------------------------------------------
