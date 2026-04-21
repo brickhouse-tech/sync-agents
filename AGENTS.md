@@ -14,6 +14,7 @@ This file indexes all rules, skills, and workflows defined in `.agents/`.
 - [bash](.agents/rules/bash.md)
 - [commitlint](.agents/rules/commitlint.md)
 - [docs-sync](.agents/rules/docs-sync.md)
+- [git](.agents/rules/git.md)
 - [security](.agents/rules/security.md)
 
 ## Skills
