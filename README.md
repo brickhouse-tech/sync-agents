@@ -31,13 +31,16 @@ chmod +x /usr/local/bin/sync-agents
 
 ```
 .agents/
+  ├── config              # sync targets (claude, windsurf, cursor, copilot)
   ├── rules/
   │   ├── rule1.md
   │   ├── rule2.md
   │   └── ...
   ├── skills/
-  │   ├── skill1.md
-  │   ├── skill2.md
+  │   ├── skill1/
+  │   │   └── SKILL.md
+  │   ├── skill2/
+  │   │   └── SKILL.md
   │   └── ...
   ├── workflows/
   │   ├── workflow1.md
@@ -45,6 +48,8 @@ chmod +x /usr/local/bin/sync-agents
   │   └── ...
   └── STATE.md
 ```
+
+> **Note:** Skills use a directory layout (`skills/name/SKILL.md`) rather than flat files. This allows skills to include supporting files alongside their definition. The `fix` command can convert legacy flat skill files to the directory layout automatically.
 
 Running `sync-agents sync` creates symlinks from `.agents/` subdirectories into `.claude/`, `.windsurf/`, `.cursor/`, and `.github/copilot/`. Any changes to `.agents/` are automatically reflected in the target directories because they are symlinks, not copies.
 
@@ -70,6 +75,7 @@ AGENTS.md is also symlinked to CLAUDE.md so that Claude reads the index natively
 | `add <type> <name>` | Add a new rule, skill, or workflow from a template (type is `rule`, `skill`, or `workflow`) |
 | `index` | Regenerate `AGENTS.md` by scanning the contents of `.agents/` |
 | `clean` | Remove all synced symlinks and empty target directories (does not remove `.agents/`) |
+| `fix [type]` | Migrate legacy dirs into `.agents/`, convert flat skill files to directory layout, and repair broken symlinks. Type: `skills`, `rules`, `workflows`, or `all` (default) |
 
 ## Options
 
@@ -81,6 +87,47 @@ AGENTS.md is also symlinked to CLAUDE.md so that Claude reads the index natively
 | `--targets <list>` | Comma-separated list of sync targets (default: `claude,windsurf,cursor,copilot`) |
 | `--dry-run` | Show what would be done without making changes |
 | `--force` | Overwrite existing files and symlinks |
+| `--no-clobber` | (fix only) Skip items that already exist in `.agents/` instead of merging |
+
+## Configuration
+
+`sync-agents init` creates `.agents/config` with default sync targets:
+
+```
+# sync-agents configuration
+# Comma-separated list of sync targets (available: claude, windsurf, cursor, copilot)
+targets = claude,windsurf,cursor,copilot
+```
+
+Edit this file to limit which targets `sync` writes to by default. The `--targets` flag on any command overrides the config.
+
+## Fix
+
+The `fix` command handles three scenarios:
+
+1. **Legacy directory migration** — Moves top-level `skills/`, `rules/`, or `workflows/` directories into `.agents/` and replaces them with symlinks.
+2. **Flat skill conversion** — Converts `.agents/skills/name.md` flat files to the directory layout `.agents/skills/name/SKILL.md`.
+3. **Symlink repair** — Recreates missing or broken symlinks in target directories (`.claude/`, `.windsurf/`, etc.) and the `CLAUDE.md` symlink.
+
+```bash
+# Fix everything (all types)
+sync-agents fix
+
+# Fix only skills
+sync-agents fix skills
+
+# Preview without changing anything
+sync-agents fix --dry-run
+
+# Don't overwrite items already in .agents/
+sync-agents fix --no-clobber skills
+```
+
+A reproducible demo is available in [`examples/fix/`](examples/fix/):
+
+```bash
+bash examples/fix/run-demo.sh
+```
 
 ## Inheritance
 
@@ -261,6 +308,12 @@ sync-agents index
 
 # Remove all synced symlinks
 sync-agents clean
+
+# Fix legacy layouts and broken symlinks
+sync-agents fix
+
+# Fix only skills (migrate + convert flat files + repair symlinks)
+sync-agents fix skills
 
 # Work in a different directory
 sync-agents sync --dir /path/to/project
