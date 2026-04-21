@@ -250,7 +250,14 @@ cmd_add() {
 
   ensure_agents_dir
 
-  local filepath="$PROJECT_ROOT/$AGENTS_DIR/$type/$name.md"
+  # Skills use directory layout: skills/name/SKILL.md
+  # Rules and workflows use flat files: rules/name.md, workflows/name.md
+  local filepath
+  if [[ "$type" == "skills" ]]; then
+    filepath="$PROJECT_ROOT/$AGENTS_DIR/$type/$name/SKILL.md"
+  else
+    filepath="$PROJECT_ROOT/$AGENTS_DIR/$type/$name.md"
+  fi
 
   if [[ -f "$filepath" ]] && [[ "$FORCE" != "true" ]]; then
     error "File already exists: $filepath (use --force to overwrite)"
@@ -265,6 +272,9 @@ cmd_add() {
     workflows) template_name="WORKFLOW_TEMPLATE.md" ;;
     *)         template_name="RULE_TEMPLATE.md" ;;
   esac
+
+  # Create parent directory for skills
+  mkdir -p "$(dirname "$filepath")"
 
   if [[ -f "$TEMPLATES_DIR/$template_name" ]]; then
     sed "s/\${NAME}/$name/g" "$TEMPLATES_DIR/$template_name" > "$filepath"
@@ -1036,16 +1046,30 @@ HEADER
     fi
     echo ""
 
-    # Skills
+    # Skills (directory layout: skills/name/SKILL.md, or legacy flat: skills/name.md)
     echo "## Skills"
     echo ""
+    local has_skills="false"
+    # Directory skills: skills/name/SKILL.md
+    for d in "$agents_dir/skills/"*/; do
+      [[ -d "$d" ]] || continue
+      local name
+      name="$(basename "$d")"
+      if [[ -f "$d/SKILL.md" ]]; then
+        echo "- [$name](.agents/skills/$name/SKILL.md)"
+        has_skills="true"
+      fi
+    done
+    # Legacy flat skills: skills/name.md
     if compgen -G "$agents_dir/skills/*.md" > /dev/null 2>&1; then
       for f in "$agents_dir/skills/"*.md; do
         local name
         name="$(basename "$f" .md)"
         echo "- [$name](.agents/skills/$name.md)"
+        has_skills="true"
       done
-    else
+    fi
+    if [[ "$has_skills" == "false" ]]; then
       echo "_No skills defined yet. Add one with \`sync-agents add skill <name>\`._"
     fi
     echo ""

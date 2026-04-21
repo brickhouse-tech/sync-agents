@@ -114,17 +114,19 @@ teardown() {
 # add skill
 # --------------------------------------------------------------------------
 
-@test "add skill creates a skill file" {
+@test "add skill creates a skill directory with SKILL.md" {
   bash "$SCRIPT" -d "$TEST_DIR" init
   run bash "$SCRIPT" -d "$TEST_DIR" add skill code-review
   [ "$status" -eq 0 ]
-  [ -f "$TEST_DIR/.agents/skills/code-review.md" ]
+  [ -d "$TEST_DIR/.agents/skills/code-review" ]
+  [ -f "$TEST_DIR/.agents/skills/code-review/SKILL.md" ]
 }
 
-@test "add skill updates AGENTS.md" {
+@test "add skill updates AGENTS.md with directory path" {
   bash "$SCRIPT" -d "$TEST_DIR" init
   bash "$SCRIPT" -d "$TEST_DIR" add skill code-review
   [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"code-review"* ]]
+  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"skills/code-review/SKILL.md"* ]]
 }
 
 # --------------------------------------------------------------------------
@@ -385,7 +387,8 @@ teardown() {
   bash "$SCRIPT" -d "$TEST_DIR" init
   run bash "$SCRIPT" -d "$TEST_DIR" add skills plural-test
   [ "$status" -eq 0 ]
-  [ -f "$TEST_DIR/.agents/skills/plural-test.md" ]
+  [ -d "$TEST_DIR/.agents/skills/plural-test" ]
+  [ -f "$TEST_DIR/.agents/skills/plural-test/SKILL.md" ]
 }
 
 @test "add workflows (plural) works same as add workflow" {
@@ -445,9 +448,9 @@ teardown() {
 @test "add skill uses SKILL_TEMPLATE content" {
   bash "$SCRIPT" -d "$TEST_DIR" init
   bash "$SCRIPT" -d "$TEST_DIR" add skill my-skill
-  grep -q "Description" "$TEST_DIR/.agents/skills/my-skill.md"
-  grep -q "Usage" "$TEST_DIR/.agents/skills/my-skill.md"
-  grep -q "Examples" "$TEST_DIR/.agents/skills/my-skill.md"
+  grep -q "Description" "$TEST_DIR/.agents/skills/my-skill/SKILL.md"
+  grep -q "Usage" "$TEST_DIR/.agents/skills/my-skill/SKILL.md"
+  grep -q "Examples" "$TEST_DIR/.agents/skills/my-skill/SKILL.md"
 }
 
 @test "add workflow uses WORKFLOW_TEMPLATE content" {
