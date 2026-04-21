@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.12](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.11...v0.1.12) (2026-04-21)
+
+
+### Features
+
+* add version subcommand as alias for --version ([e1e43f2](https://github.com/brickhouse-tech/sync-agents/commit/e1e43f22d8f220b293559f11f3c9462817e807d2))
+
 ## [0.1.11](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.10...v0.1.11) (2026-04-21)
 
 
