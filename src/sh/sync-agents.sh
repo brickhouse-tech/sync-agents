@@ -3,17 +3,31 @@ set -euo pipefail
 
 AGENTS_DIR=".agents"
 AGENTS_MD="AGENTS.md"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Resolve the real script directory, following symlinks.
+# Needed for `npm i -g` installs where the executable is a symlink in PATH
+# (e.g. /usr/local/bin/sync-agents -> .../node_modules/.../src/sh/sync-agents.sh).
+# BSD readlink (macOS default) lacks -f, so we walk the chain ourselves.
+resolve_script_dir() {
+  local path="${BASH_SOURCE[0]}"
+  while [[ -L "$path" ]]; do
+    local dir
+    dir="$(cd -P "$(dirname "$path")" && pwd)"
+    path="$(readlink "$path")"
+    [[ "$path" != /* ]] && path="$dir/$path"
+  done
+  cd -P "$(dirname "$path")" && pwd
+}
+SCRIPT_DIR="$(resolve_script_dir)"
 PACKAGE_JSON="${SCRIPT_DIR}/../../package.json"
 TEMPLATES_DIR="${SCRIPT_DIR}/../md"
 
-# Pull version from package.json
-# Try relative path first (works in repo / npm local install),
-# then resolve via node for global installs where the symlink target differs.
-if [[ -f "$PACKAGE_JSON" ]]; then
-  VERSION="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$PACKAGE_JSON" | head -1)"
-elif command -v node >/dev/null 2>&1; then
-  VERSION="$(node -p "require('@brickhouse-tech/sync-agents/package.json').version" 2>/dev/null || echo "unknown")"
+# Pull version from package.json via node (we're an npm package, node is present).
+# Force CommonJS so this works regardless of the caller's ESM/CJS context
+# (e.g. NODE_OPTIONS=--input-type=module). Path is passed via argv to avoid
+# shell-quoting issues. Requires Node 20+.
+if [[ -f "$PACKAGE_JSON" ]] && command -v node >/dev/null 2>&1; then
+  VERSION="$(node --input-type=commonjs -e 'process.stdout.write(require(process.argv[1]).version)' "$PACKAGE_JSON" 2>/dev/null || echo unknown)"
 else
   VERSION="unknown"
 fi
