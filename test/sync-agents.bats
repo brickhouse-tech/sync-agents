@@ -836,14 +836,16 @@ teardown() {
   [ ! -L "$TEST_DIR/skills" ]
 }
 
-@test "fix skips directories that are already symlinks" {
+@test "fix skips migration for directories that are already symlinks" {
   bash "$SCRIPT" -d "$TEST_DIR" init
+  bash "$SCRIPT" -d "$TEST_DIR" sync
   # skills/ is already a symlink
   ln -s .agents/skills "$TEST_DIR/skills"
 
   run bash "$SCRIPT" -d "$TEST_DIR" fix skills
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Nothing to fix"* ]]
+  # Migration phase should report already a symlink
+  [[ "$output" == *"already a symlink"* ]]
 }
 
 @test "fix without init fails" {
@@ -1012,6 +1014,92 @@ teardown() {
   # Summary
   [[ "$output" == *"Fixed 3 item(s)"* ]]
   [[ "$output" == *"Merged 1 item(s)"* ]]
+}
+
+# --------------------------------------------------------------------------
+# fix — symlink repair
+# --------------------------------------------------------------------------
+
+@test "fix repairs missing target symlinks" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  # .agents/ has content but no target symlinks exist (never ran sync)
+  mkdir -p "$TEST_DIR/.agents/skills/my-skill"
+  echo "content" > "$TEST_DIR/.agents/skills/my-skill/SKILL.md"
+
+  # Verify no .claude/ symlinks exist yet
+  [ ! -e "$TEST_DIR/.claude/skills" ]
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  [ "$status" -eq 0 ]
+  # Symlinks should now exist for all configured targets
+  [ -L "$TEST_DIR/.claude/skills" ]
+  [[ "$output" == *"Repaired"* ]] || [[ "$output" == *"Linked"* ]]
+}
+
+@test "fix repairs missing CLAUDE.md symlink" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  # AGENTS.md exists but CLAUDE.md symlink is missing
+  [ -f "$TEST_DIR/AGENTS.md" ]
+  [ ! -e "$TEST_DIR/CLAUDE.md" ]
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix
+  [ "$status" -eq 0 ]
+  [ -L "$TEST_DIR/CLAUDE.md" ]
+  [[ "$(readlink "$TEST_DIR/CLAUDE.md")" == "AGENTS.md" ]]
+}
+
+@test "fix repairs deleted symlinks after sync" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  bash "$SCRIPT" -d "$TEST_DIR" sync
+  # Verify sync worked
+  [ -L "$TEST_DIR/.claude/skills" ]
+  [ -L "$TEST_DIR/CLAUDE.md" ]
+
+  # Now delete the symlinks (simulating the user's broken state)
+  rm "$TEST_DIR/.claude/skills"
+  rm "$TEST_DIR/.claude/rules"
+  rm "$TEST_DIR/CLAUDE.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix
+  [ "$status" -eq 0 ]
+  # Symlinks should be restored
+  [ -L "$TEST_DIR/.claude/skills" ]
+  [ -L "$TEST_DIR/.claude/rules" ]
+  [ -L "$TEST_DIR/CLAUDE.md" ]
+  [[ "$output" == *"Repaired"* ]] || [[ "$output" == *"Linked"* ]]
+}
+
+@test "fix --dry-run reports missing symlinks without creating them" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.agents/skills/s1"
+  echo "x" > "$TEST_DIR/.agents/skills/s1/SKILL.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" --dry-run fix skills
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"would create"* ]]
+  # Nothing actually created
+  [ ! -e "$TEST_DIR/.claude/skills" ]
+}
+
+@test "fix with no legacy dirs and no broken symlinks reports nothing to fix" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  bash "$SCRIPT" -d "$TEST_DIR" sync
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Nothing to fix"* ]]
+}
+
+@test "fix repairs symlinks for specific type only" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  bash "$SCRIPT" -d "$TEST_DIR" sync
+  # Delete just skills symlinks
+  rm "$TEST_DIR/.claude/skills"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  [ "$status" -eq 0 ]
+  [ -L "$TEST_DIR/.claude/skills" ]
+  [[ "$output" == *"Repaired"* ]] || [[ "$output" == *"Linked"* ]]
 }
 
 # --------------------------------------------------------------------------
