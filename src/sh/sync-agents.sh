@@ -75,7 +75,9 @@ ${BOLD}COMMANDS${RESET}
   watch                         Watch .agents/ for changes and auto-regenerate index
   import <url>                  Import a rule/skill/workflow from a URL
   hook                          Install a pre-commit git hook for auto-sync
-  fix [type]                    Migrate legacy dirs into .agents/ (type: skills, rules, workflows, or all)
+  fix [type]                    Migrate legacy dirs into .agents/ (merges by default)
+                                  type: skills, rules, workflows, or all
+                                  --no-clobber: skip items that already exist in .agents/
   inherit <label> <path>        Add an inheritance link to AGENTS.md (convention-based)
   inherit --list                List current inheritance links
   inherit --remove <label>      Remove an inheritance link by label
@@ -301,7 +303,17 @@ TMPL_EOF
 cmd_fix() {
   ensure_agents_dir
 
-  local fix_type="${1:-all}"
+  # Parse fix-specific flags
+  local no_clobber="false"
+  local fix_args=()
+  for arg in "$@"; do
+    case "$arg" in
+      --no-clobber) no_clobber="true" ;;
+      *)            fix_args+=("$arg") ;;
+    esac
+  done
+
+  local fix_type="${fix_args[0]:-all}"
   local subdirs=()
 
   case "$fix_type" in
@@ -320,13 +332,50 @@ cmd_fix() {
   local agents_abs
   agents_abs="$(cd "$PROJECT_ROOT/$AGENTS_DIR" && pwd)"
   local fixed=0
+  local skipped=0
+  local merged=0
+
+  # Helper: compare inodes of two directories (portable across macOS/Linux)
+  same_inode() {
+    local inode_a inode_b
+    if stat --version >/dev/null 2>&1; then
+      # GNU stat (Linux)
+      inode_a="$(stat -c '%i' "$1" 2>/dev/null)"
+      inode_b="$(stat -c '%i' "$2" 2>/dev/null)"
+    else
+      # BSD stat (macOS)
+      inode_a="$(stat -f '%i' "$1" 2>/dev/null)"
+      inode_b="$(stat -f '%i' "$2" 2>/dev/null)"
+    fi
+    [[ -n "$inode_a" ]] && [[ "$inode_a" == "$inode_b" ]]
+  }
 
   for subdir in "${subdirs[@]}"; do
     local legacy_dir="$PROJECT_ROOT/$subdir"
     local agents_subdir="$agents_abs/$subdir"
 
     # Skip if legacy dir doesn't exist or is already a symlink
-    if [[ ! -d "$legacy_dir" ]] || [[ -L "$legacy_dir" ]]; then
+    if [[ ! -d "$legacy_dir" ]]; then
+      continue
+    fi
+    if [[ -L "$legacy_dir" ]]; then
+      info "$subdir/ is already a symlink — nothing to do."
+      continue
+    fi
+
+    # Detect same-inode (legacy dir IS .agents/subdir — e.g. hardlink or bind mount)
+    if [[ -d "$agents_subdir" ]] && same_inode "$legacy_dir" "$agents_subdir"; then
+      warn "$subdir/ and $AGENTS_DIR/$subdir/ are the same directory (same inode)."
+      warn "Replacing $subdir/ with a symlink to $AGENTS_DIR/$subdir/."
+      if [[ "$DRY_RUN" == "true" ]]; then
+        echo "  would remove $subdir/ (same inode as $AGENTS_DIR/$subdir/)"
+        echo "  would create symlink $subdir/ -> $AGENTS_DIR/$subdir"
+      else
+        rm -rf "$legacy_dir"
+        ln -s "$AGENTS_DIR/$subdir" "$legacy_dir"
+        info "Replaced $subdir/ with symlink -> $AGENTS_DIR/$subdir"
+      fi
+      fixed=$((fixed + 1))
       continue
     fi
 
@@ -340,7 +389,21 @@ cmd_fix() {
       name="$(basename "$item")"
 
       if [[ -d "$agents_subdir/$name" ]]; then
-        warn "Skipping $subdir/$name — already exists in $AGENTS_DIR/$subdir/"
+        if [[ "$no_clobber" == "true" ]]; then
+          warn "Skipping $subdir/$name — already exists in $AGENTS_DIR/$subdir/ (--no-clobber)"
+          skipped=$((skipped + 1))
+          continue
+        fi
+        # Merge: legacy content wins (overwrite into .agents/)
+        if [[ "$DRY_RUN" == "true" ]]; then
+          echo "  would merge: $subdir/$name -> $AGENTS_DIR/$subdir/$name (overwrite)"
+        else
+          rm -rf "${agents_subdir:?}/${name:?}"
+          mv "$item" "$agents_subdir/$name"
+          info "Merged: $subdir/$name -> $AGENTS_DIR/$subdir/$name (overwrote existing)"
+        fi
+        merged=$((merged + 1))
+        fixed=$((fixed + 1))
         continue
       fi
 
@@ -360,7 +423,20 @@ cmd_fix() {
       name="$(basename "$item")"
 
       if [[ -f "$agents_subdir/$name" ]]; then
-        warn "Skipping $subdir/$name — already exists in $AGENTS_DIR/$subdir/"
+        if [[ "$no_clobber" == "true" ]]; then
+          warn "Skipping $subdir/$name — already exists in $AGENTS_DIR/$subdir/ (--no-clobber)"
+          skipped=$((skipped + 1))
+          continue
+        fi
+        # Merge: legacy content wins
+        if [[ "$DRY_RUN" == "true" ]]; then
+          echo "  would merge: $subdir/$name -> $AGENTS_DIR/$subdir/$name (overwrite)"
+        else
+          mv "$item" "$agents_subdir/$name"
+          info "Merged: $subdir/$name -> $AGENTS_DIR/$subdir/$name (overwrote existing)"
+        fi
+        merged=$((merged + 1))
+        fixed=$((fixed + 1))
         continue
       fi
 
@@ -390,10 +466,14 @@ cmd_fix() {
     fi
   done
 
-  if [[ "$fixed" -eq 0 ]]; then
+  # Summary
+  if [[ "$fixed" -eq 0 ]] && [[ "$skipped" -eq 0 ]]; then
     info "Nothing to fix — all directories are already in $AGENTS_DIR/ or symlinked."
   else
-    info "Fixed $fixed item(s). Run 'sync-agents sync' to update agent target symlinks."
+    if [[ "$fixed" -gt 0 ]]; then info "Fixed $fixed item(s)."; fi
+    if [[ "$merged" -gt 0 ]]; then info "Merged $merged item(s) (legacy overwrote existing)."; fi
+    if [[ "$skipped" -gt 0 ]]; then warn "Skipped $skipped item(s) (use without --no-clobber to merge)."; fi
+    if [[ "$fixed" -gt 0 ]]; then info "Run 'sync-agents sync' to update agent target symlinks."; fi
   fi
 }
 
