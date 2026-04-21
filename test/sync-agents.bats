@@ -114,17 +114,19 @@ teardown() {
 # add skill
 # --------------------------------------------------------------------------
 
-@test "add skill creates a skill file" {
+@test "add skill creates a skill directory with SKILL.md" {
   bash "$SCRIPT" -d "$TEST_DIR" init
   run bash "$SCRIPT" -d "$TEST_DIR" add skill code-review
   [ "$status" -eq 0 ]
-  [ -f "$TEST_DIR/.agents/skills/code-review.md" ]
+  [ -d "$TEST_DIR/.agents/skills/code-review" ]
+  [ -f "$TEST_DIR/.agents/skills/code-review/SKILL.md" ]
 }
 
-@test "add skill updates AGENTS.md" {
+@test "add skill updates AGENTS.md with directory path" {
   bash "$SCRIPT" -d "$TEST_DIR" init
   bash "$SCRIPT" -d "$TEST_DIR" add skill code-review
   [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"code-review"* ]]
+  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"skills/code-review/SKILL.md"* ]]
 }
 
 # --------------------------------------------------------------------------
@@ -385,7 +387,8 @@ teardown() {
   bash "$SCRIPT" -d "$TEST_DIR" init
   run bash "$SCRIPT" -d "$TEST_DIR" add skills plural-test
   [ "$status" -eq 0 ]
-  [ -f "$TEST_DIR/.agents/skills/plural-test.md" ]
+  [ -d "$TEST_DIR/.agents/skills/plural-test" ]
+  [ -f "$TEST_DIR/.agents/skills/plural-test/SKILL.md" ]
 }
 
 @test "add workflows (plural) works same as add workflow" {
@@ -445,9 +448,9 @@ teardown() {
 @test "add skill uses SKILL_TEMPLATE content" {
   bash "$SCRIPT" -d "$TEST_DIR" init
   bash "$SCRIPT" -d "$TEST_DIR" add skill my-skill
-  grep -q "Description" "$TEST_DIR/.agents/skills/my-skill.md"
-  grep -q "Usage" "$TEST_DIR/.agents/skills/my-skill.md"
-  grep -q "Examples" "$TEST_DIR/.agents/skills/my-skill.md"
+  grep -q "Description" "$TEST_DIR/.agents/skills/my-skill/SKILL.md"
+  grep -q "Usage" "$TEST_DIR/.agents/skills/my-skill/SKILL.md"
+  grep -q "Examples" "$TEST_DIR/.agents/skills/my-skill/SKILL.md"
 }
 
 @test "add workflow uses WORKFLOW_TEMPLATE content" {
@@ -730,6 +733,124 @@ teardown() {
   run bash "$SCRIPT" -d "$TEST_DIR" inherit --remove nonexistent
   [ "$status" -eq 0 ]
   [[ "$output" == *"No inherit found"* ]]
+}
+
+# --------------------------------------------------------------------------
+# STATE_TEMPLATE
+# --------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------
+# fix
+# --------------------------------------------------------------------------
+
+@test "fix moves legacy skills/ into .agents/skills/" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  # Create legacy skills dir with a skill
+  mkdir -p "$TEST_DIR/skills/my-skill"
+  echo "# My Skill" > "$TEST_DIR/skills/my-skill/SKILL.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  [ "$status" -eq 0 ]
+  # Skill moved into .agents/
+  [ -f "$TEST_DIR/.agents/skills/my-skill/SKILL.md" ]
+  # Legacy dir replaced with symlink
+  [ -L "$TEST_DIR/skills" ]
+  [[ "$(readlink "$TEST_DIR/skills")" == *".agents/skills"* ]]
+}
+
+@test "fix moves legacy rules/ files into .agents/rules/" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  # Create legacy rules dir with loose files
+  mkdir -p "$TEST_DIR/rules"
+  echo "# No Eval" > "$TEST_DIR/rules/no-eval.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix rules
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_DIR/.agents/rules/no-eval.md" ]
+  [ -L "$TEST_DIR/rules" ]
+}
+
+@test "fix all migrates skills, rules, and workflows" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/skills/s1"
+  echo "skill" > "$TEST_DIR/skills/s1/SKILL.md"
+  mkdir -p "$TEST_DIR/rules"
+  echo "rule" > "$TEST_DIR/rules/r1.md"
+  mkdir -p "$TEST_DIR/workflows"
+  echo "wf" > "$TEST_DIR/workflows/w1.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_DIR/.agents/skills/s1/SKILL.md" ]
+  [ -f "$TEST_DIR/.agents/rules/r1.md" ]
+  [ -f "$TEST_DIR/.agents/workflows/w1.md" ]
+  [ -L "$TEST_DIR/skills" ]
+  [ -L "$TEST_DIR/rules" ]
+  [ -L "$TEST_DIR/workflows" ]
+}
+
+@test "fix skips items already in .agents/" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  # Put a skill in .agents/ first
+  mkdir -p "$TEST_DIR/.agents/skills/existing"
+  echo "original" > "$TEST_DIR/.agents/skills/existing/SKILL.md"
+  # Create legacy dir with same name
+  mkdir -p "$TEST_DIR/skills/existing"
+  echo "duplicate" > "$TEST_DIR/skills/existing/SKILL.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  [ "$status" -eq 0 ]
+  # Original should be preserved
+  [[ "$(cat "$TEST_DIR/.agents/skills/existing/SKILL.md")" == "original" ]]
+  [[ "$output" == *"Skipping"* ]]
+}
+
+@test "fix --dry-run does not move files" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/skills/my-skill"
+  echo "# My Skill" > "$TEST_DIR/skills/my-skill/SKILL.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix --dry-run skills
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"would move"* ]]
+  # Files should still be in legacy location
+  [ -f "$TEST_DIR/skills/my-skill/SKILL.md" ]
+  [ ! -f "$TEST_DIR/.agents/skills/my-skill/SKILL.md" ]
+  [ ! -L "$TEST_DIR/skills" ]
+}
+
+@test "fix skips directories that are already symlinks" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  # skills/ is already a symlink
+  ln -s .agents/skills "$TEST_DIR/skills"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Nothing to fix"* ]]
+}
+
+@test "fix without init fails" {
+  run bash "$SCRIPT" -d "$TEST_DIR" fix
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Run 'sync-agents init' first"* ]]
+}
+
+@test "fix with invalid type fails" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  run bash "$SCRIPT" -d "$TEST_DIR" fix bogus
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Unknown type"* ]]
+}
+
+@test "fix reports correct count of migrated items" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/skills/s1" "$TEST_DIR/skills/s2"
+  echo "a" > "$TEST_DIR/skills/s1/SKILL.md"
+  echo "b" > "$TEST_DIR/skills/s2/SKILL.md"
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Fixed 2 item(s)"* ]]
 }
 
 # --------------------------------------------------------------------------

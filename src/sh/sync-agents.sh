@@ -75,6 +75,7 @@ ${BOLD}COMMANDS${RESET}
   watch                         Watch .agents/ for changes and auto-regenerate index
   import <url>                  Import a rule/skill/workflow from a URL
   hook                          Install a pre-commit git hook for auto-sync
+  fix [type]                    Migrate legacy dirs into .agents/ (type: skills, rules, workflows, or all)
   inherit <label> <path>        Add an inheritance link to AGENTS.md (convention-based)
   inherit --list                List current inheritance links
   inherit --remove <label>      Remove an inheritance link by label
@@ -249,7 +250,14 @@ cmd_add() {
 
   ensure_agents_dir
 
-  local filepath="$PROJECT_ROOT/$AGENTS_DIR/$type/$name.md"
+  # Skills use directory layout: skills/name/SKILL.md
+  # Rules and workflows use flat files: rules/name.md, workflows/name.md
+  local filepath
+  if [[ "$type" == "skills" ]]; then
+    filepath="$PROJECT_ROOT/$AGENTS_DIR/$type/$name/SKILL.md"
+  else
+    filepath="$PROJECT_ROOT/$AGENTS_DIR/$type/$name.md"
+  fi
 
   if [[ -f "$filepath" ]] && [[ "$FORCE" != "true" ]]; then
     error "File already exists: $filepath (use --force to overwrite)"
@@ -264,6 +272,9 @@ cmd_add() {
     workflows) template_name="WORKFLOW_TEMPLATE.md" ;;
     *)         template_name="RULE_TEMPLATE.md" ;;
   esac
+
+  # Create parent directory for skills
+  mkdir -p "$(dirname "$filepath")"
 
   if [[ -f "$TEMPLATES_DIR/$template_name" ]]; then
     sed "s/\${NAME}/$name/g" "$TEMPLATES_DIR/$template_name" > "$filepath"
@@ -285,6 +296,105 @@ TMPL_EOF
   # Regenerate index
   generate_agents_md
   info "Updated $AGENTS_MD index"
+}
+
+cmd_fix() {
+  ensure_agents_dir
+
+  local fix_type="${1:-all}"
+  local subdirs=()
+
+  case "$fix_type" in
+    skills|rules|workflows)
+      subdirs=("$fix_type")
+      ;;
+    all)
+      subdirs=(skills rules workflows)
+      ;;
+    *)
+      error "Unknown type: $fix_type (expected: skills, rules, workflows, or all)"
+      exit 1
+      ;;
+  esac
+
+  local agents_abs
+  agents_abs="$(cd "$PROJECT_ROOT/$AGENTS_DIR" && pwd)"
+  local fixed=0
+
+  for subdir in "${subdirs[@]}"; do
+    local legacy_dir="$PROJECT_ROOT/$subdir"
+    local agents_subdir="$agents_abs/$subdir"
+
+    # Skip if legacy dir doesn't exist or is already a symlink
+    if [[ ! -d "$legacy_dir" ]] || [[ -L "$legacy_dir" ]]; then
+      continue
+    fi
+
+    info "Found legacy directory: $subdir/"
+    mkdir -p "$agents_subdir"
+
+    # Move each item from legacy dir into .agents/subdir
+    for item in "$legacy_dir"/*/; do
+      [[ -d "$item" ]] || continue
+      local name
+      name="$(basename "$item")"
+
+      if [[ -d "$agents_subdir/$name" ]]; then
+        warn "Skipping $subdir/$name — already exists in $AGENTS_DIR/$subdir/"
+        continue
+      fi
+
+      if [[ "$DRY_RUN" == "true" ]]; then
+        echo "  would move: $subdir/$name -> $AGENTS_DIR/$subdir/$name"
+      else
+        mv "$item" "$agents_subdir/$name"
+        info "Moved: $subdir/$name -> $AGENTS_DIR/$subdir/$name"
+      fi
+      fixed=$((fixed + 1))
+    done
+
+    # Also move any top-level files (e.g. loose .md rules)
+    for item in "$legacy_dir"/*; do
+      [[ -f "$item" ]] || continue
+      local name
+      name="$(basename "$item")"
+
+      if [[ -f "$agents_subdir/$name" ]]; then
+        warn "Skipping $subdir/$name — already exists in $AGENTS_DIR/$subdir/"
+        continue
+      fi
+
+      if [[ "$DRY_RUN" == "true" ]]; then
+        echo "  would move: $subdir/$name -> $AGENTS_DIR/$subdir/$name"
+      else
+        mv "$item" "$agents_subdir/$name"
+        info "Moved: $subdir/$name -> $AGENTS_DIR/$subdir/$name"
+      fi
+      fixed=$((fixed + 1))
+    done
+
+    # Remove the now-empty legacy dir and replace with symlink
+    if [[ "$DRY_RUN" == "true" ]]; then
+      echo "  would replace $subdir/ with symlink -> $AGENTS_DIR/$subdir"
+    else
+      # Check if dir is empty (only . and .. remain)
+      if [[ -z "$(ls -A "$legacy_dir" 2>/dev/null)" ]]; then
+        rmdir "$legacy_dir"
+        ln -s "$AGENTS_DIR/$subdir" "$legacy_dir"
+        info "Replaced $subdir/ with symlink -> $AGENTS_DIR/$subdir"
+      else
+        warn "$subdir/ is not empty after migration — skipping symlink replacement"
+        warn "Remaining items:"
+        find "$legacy_dir" -mindepth 1 -maxdepth 1 -exec basename {} \; | sed 's/^/    /'
+      fi
+    fi
+  done
+
+  if [[ "$fixed" -eq 0 ]]; then
+    info "Nothing to fix — all directories are already in $AGENTS_DIR/ or symlinked."
+  else
+    info "Fixed $fixed item(s). Run 'sync-agents sync' to update agent target symlinks."
+  fi
 }
 
 cmd_sync() {
@@ -936,16 +1046,30 @@ HEADER
     fi
     echo ""
 
-    # Skills
+    # Skills (directory layout: skills/name/SKILL.md, or legacy flat: skills/name.md)
     echo "## Skills"
     echo ""
+    local has_skills="false"
+    # Directory skills: skills/name/SKILL.md
+    for d in "$agents_dir/skills/"*/; do
+      [[ -d "$d" ]] || continue
+      local name
+      name="$(basename "$d")"
+      if [[ -f "$d/SKILL.md" ]]; then
+        echo "- [$name](.agents/skills/$name/SKILL.md)"
+        has_skills="true"
+      fi
+    done
+    # Legacy flat skills: skills/name.md
     if compgen -G "$agents_dir/skills/*.md" > /dev/null 2>&1; then
       for f in "$agents_dir/skills/"*.md; do
         local name
         name="$(basename "$f" .md)"
         echo "- [$name](.agents/skills/$name.md)"
+        has_skills="true"
       done
-    else
+    fi
+    if [[ "$has_skills" == "false" ]]; then
       echo "_No skills defined yet. Add one with \`sync-agents add skill <name>\`._"
     fi
     echo ""
@@ -1123,6 +1247,9 @@ main() {
       ;;
     import)
       cmd_import "$@"
+      ;;
+    fix)
+      cmd_fix "$@"
       ;;
     hook)
       cmd_hook
