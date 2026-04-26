@@ -63,14 +63,15 @@ teardown() {
   [ -d "$TEST_DIR/.agents/rules" ]
   [ -d "$TEST_DIR/.agents/skills" ]
   [ -d "$TEST_DIR/.agents/workflows" ]
-  [ -f "$TEST_DIR/.agents/STATE.md" ]
+  [ -f "$TEST_DIR/.agents/rules/state.md" ]
   [ -f "$TEST_DIR/AGENTS.md" ]
 }
 
-@test "init creates STATE.md with expected content" {
+@test "init creates rules/state.md with expected content" {
   run bash "$SCRIPT" -d "$TEST_DIR" init
   [ "$status" -eq 0 ]
-  [[ "$(cat "$TEST_DIR/.agents/STATE.md")" == *"# State"* ]]
+  [[ "$(cat "$TEST_DIR/.agents/rules/state.md")" == *"# State"* ]]
+  [[ "$(cat "$TEST_DIR/.agents/rules/state.md")" == *"STATE_\${CONTEXT_DESCRIPTION}"* ]]
 }
 
 @test "init creates AGENTS.md with expected content" {
@@ -84,12 +85,12 @@ teardown() {
 
 @test "init is idempotent - does not overwrite existing files" {
   bash "$SCRIPT" -d "$TEST_DIR" init
-  echo "custom content" > "$TEST_DIR/.agents/STATE.md"
+  echo "custom content" > "$TEST_DIR/.agents/rules/state.md"
   echo "custom agents" > "$TEST_DIR/AGENTS.md"
 
   run bash "$SCRIPT" -d "$TEST_DIR" init
   [ "$status" -eq 0 ]
-  [[ "$(cat "$TEST_DIR/.agents/STATE.md")" == "custom content" ]]
+  [[ "$(cat "$TEST_DIR/.agents/rules/state.md")" == "custom content" ]]
   [[ "$(cat "$TEST_DIR/AGENTS.md")" == "custom agents" ]]
 }
 
@@ -1180,10 +1181,111 @@ teardown() {
 # STATE_TEMPLATE
 # --------------------------------------------------------------------------
 
-@test "init creates trimmed STATE.md" {
+@test "init creates rules/state.md not legacy STATE.md" {
   bash "$SCRIPT" -d "$TEST_DIR" init
-  local line_count
-  line_count=$(wc -l < "$TEST_DIR/.agents/STATE.md")
-  # Trimmed template should be under 20 lines
-  [ "$line_count" -lt 20 ]
+  # New pattern: state rule lives at rules/state.md
+  [ -f "$TEST_DIR/.agents/rules/state.md" ]
+  # Legacy STATE.md should NOT be created
+  [ ! -f "$TEST_DIR/.agents/STATE.md" ]
+}
+
+# --------------------------------------------------------------------------
+# Legacy STATE.md migration
+# --------------------------------------------------------------------------
+
+@test "fix migrates legacy STATE.md to per-file pattern" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  # Create a legacy STATE.md with some history content
+  cat > "$TEST_DIR/.agents/STATE.md" <<'EOF'
+---
+trigger: always_on
+---
+
+# State
+
+## STATE HISTORY BELOW
+
+### 20260425120000 STATE: Setup project
+
+Did some setup work.
+
+- [x] Init repo
+- [ ] Configure CI
+EOF
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix
+  [ "$status" -eq 0 ]
+  # Legacy STATE.md should be removed
+  [ ! -f "$TEST_DIR/.agents/STATE.md" ]
+  # State rule should exist
+  [ -f "$TEST_DIR/.agents/rules/state.md" ]
+  # A migrated state file should have been created
+  ls "$TEST_DIR/.agents"/STATE_legacy-history_*.md
+  [[ "$output" == *"Migrated"* ]]
+}
+
+@test "fix removes empty legacy STATE.md without creating history file" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  # Create a legacy STATE.md with only template boilerplate
+  cat > "$TEST_DIR/.agents/STATE.md" <<'EOF'
+---
+trigger: always_on
+---
+
+# State
+
+## STATE HISTORY BELOW
+
+EOF
+
+  run bash "$SCRIPT" -d "$TEST_DIR" fix
+  [ "$status" -eq 0 ]
+  # Legacy STATE.md should be removed
+  [ ! -f "$TEST_DIR/.agents/STATE.md" ]
+  # No history file should be created for empty content
+  local state_files
+  state_files=$(ls "$TEST_DIR/.agents"/STATE_legacy-history_*.md 2>/dev/null | wc -l)
+  [ "$state_files" -eq 0 ]
+}
+
+@test "init migrates legacy STATE.md during init" {
+  # Simulate a project initialized with an older version
+  mkdir -p "$TEST_DIR/.agents/rules" "$TEST_DIR/.agents/skills" "$TEST_DIR/.agents/workflows"
+  cat > "$TEST_DIR/.agents/STATE.md" <<'EOF'
+---
+trigger: always_on
+---
+
+# State
+
+## STATE HISTORY BELOW
+
+Some actual work was done here.
+EOF
+  echo "# AGENTS" > "$TEST_DIR/AGENTS.md"
+  cat > "$TEST_DIR/.agents/config" <<'CONF'
+targets = claude
+CONF
+
+  run bash "$SCRIPT" -d "$TEST_DIR" init
+  [ "$status" -eq 0 ]
+  # Legacy STATE.md should be migrated
+  [ ! -f "$TEST_DIR/.agents/STATE.md" ]
+  [ -f "$TEST_DIR/.agents/rules/state.md" ]
+}
+
+@test "AGENTS.md State section lists STATE_ files" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  # Create some state snapshot files
+  echo "state 1" > "$TEST_DIR/.agents/STATE_feature-work_20260425120000.md"
+  echo "state 2" > "$TEST_DIR/.agents/STATE_bugfix_20260426080000.md"
+  bash "$SCRIPT" -d "$TEST_DIR" index
+  # AGENTS.md should reference the state files
+  grep -q "STATE_feature-work_20260425120000" "$TEST_DIR/AGENTS.md"
+  grep -q "STATE_bugfix_20260426080000" "$TEST_DIR/AGENTS.md"
+}
+
+@test "AGENTS.md State section shows placeholder when no state files" {
+  bash "$SCRIPT" -d "$TEST_DIR" init
+  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"No state snapshots yet"* ]]
 }
