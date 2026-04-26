@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.16](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.15...v0.1.16) (2026-04-26)
+
+
+### Features
+
+* per-file state snapshots replacing monolithic STATE.md ([e62f3f0](https://github.com/brickhouse-tech/sync-agents/commit/e62f3f06ce02b18dd2fce39269899e2cd2c1f57e))
+
 ## [0.1.15](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.14...v0.1.15) (2026-04-26)
 
 ## [0.1.14](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.13...v0.1.14) (2026-04-21)
