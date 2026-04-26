@@ -187,6 +187,36 @@ create_symlink() {
 # Commands
 # --------------------------------------------------------------------------
 
+# Migrate legacy .agents/STATE.md to the new per-file state pattern.
+# - Ensures rules/state.md exists (the convention rule).
+# - If legacy STATE.md has inline history entries, extracts them into a
+#   timestamped STATE_legacy-history_YYYYMMDDHHMMSS.md file.
+# - Removes the legacy STATE.md.
+migrate_legacy_state() {
+  local agents_dir="$1"
+  local legacy="$agents_dir/STATE.md"
+
+  [[ -f "$legacy" ]] || return 0
+
+  # Check if legacy file has meaningful content (beyond template boilerplate)
+  local content_lines
+  content_lines="$(grep -cvE '^(---|trigger:|#|$|Track project|Update this|Be sure|Description of|Save both|A new file|STATE HISTORY)' "$legacy" 2>/dev/null | tail -1 || echo 0)"
+  content_lines="${content_lines//[^0-9]/}"
+  : "${content_lines:=0}"
+
+  if [[ "$content_lines" -gt 0 ]]; then
+    # Extract history into a timestamped state file
+    local timestamp
+    timestamp="$(date +%Y%m%d%H%M%S)"
+    local migrated="$agents_dir/STATE_legacy-history_${timestamp}.md"
+    cp "$legacy" "$migrated"
+    info "Migrated legacy STATE.md history → $(basename "$migrated")"
+  fi
+
+  rm "$legacy"
+  info "Removed legacy $AGENTS_DIR/STATE.md (replaced by rules/state.md pattern)"
+}
+
 cmd_init() {
   info "Initializing $AGENTS_DIR/ directory structure..."
 
@@ -194,28 +224,47 @@ cmd_init() {
   mkdir -p "$PROJECT_ROOT/$AGENTS_DIR/skills"
   mkdir -p "$PROJECT_ROOT/$AGENTS_DIR/workflows"
 
-  # Copy STATE.md template if STATE.md doesn't exist
-  if [[ ! -f "$PROJECT_ROOT/$AGENTS_DIR/STATE.md" ]]; then
+  # Create rules/state.md (the state convention rule) if it doesn't exist
+  local state_rule="$PROJECT_ROOT/$AGENTS_DIR/rules/state.md"
+  if [[ ! -f "$state_rule" ]]; then
     if [[ -f "$TEMPLATES_DIR/STATE_TEMPLATE.md" ]]; then
-      cp "$TEMPLATES_DIR/STATE_TEMPLATE.md" "$PROJECT_ROOT/$AGENTS_DIR/STATE.md"
-      info "Created $AGENTS_DIR/STATE.md from template"
+      cp "$TEMPLATES_DIR/STATE_TEMPLATE.md" "$state_rule"
+      info "Created $AGENTS_DIR/rules/state.md from template"
     else
       # Inline fallback if template not found
-      cat > "$PROJECT_ROOT/$AGENTS_DIR/STATE.md" <<'STATE_EOF'
+      cat > "$state_rule" <<'STATE_EOF'
 ---
 trigger: always_on
 ---
 
 # State
 
-## STATE HISTORY BELOW
+Track project progress, current objectives, and resumption context.
+Update this file regularly so agents can pick up where they left off.
 
+## Save location
 
+../STATE_${CONTEXT_DESCRIPTION}_YYYYMMDDHHMMSS.md
+
+A new file will be created each time during agent executions as a short summary of the current state, progress, blockers, and next steps.
+
+## Format
+
+### YYYYMMDDHHMMSS STATE: <objective>
+
+Description of current state, progress, blockers, and next steps.
+
+Be sure to indicate whats left and what done via - [ ] checkboxes in state file
 STATE_EOF
-      info "Created $AGENTS_DIR/STATE.md"
+      info "Created $AGENTS_DIR/rules/state.md"
     fi
   else
-    warn "$AGENTS_DIR/STATE.md already exists, skipping"
+    warn "$AGENTS_DIR/rules/state.md already exists, skipping"
+  fi
+
+  # Migrate legacy STATE.md if it exists (from older sync-agents versions)
+  if [[ -f "$PROJECT_ROOT/$AGENTS_DIR/STATE.md" ]]; then
+    migrate_legacy_state "$PROJECT_ROOT/$AGENTS_DIR"
   fi
 
   # Create default config if it doesn't exist
@@ -605,14 +654,39 @@ cmd_fix() {
     fi
   fi
 
+  # --- Phase 3: Migrate legacy STATE.md to per-file state pattern ---
+  local state_migrated=0
+  if [[ -f "$agents_abs/STATE.md" ]]; then
+    # Ensure the state rule exists first
+    if [[ ! -f "$agents_abs/rules/state.md" ]]; then
+      if [[ -f "$TEMPLATES_DIR/STATE_TEMPLATE.md" ]]; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+          echo "  would create: $AGENTS_DIR/rules/state.md from template"
+        else
+          mkdir -p "$agents_abs/rules"
+          cp "$TEMPLATES_DIR/STATE_TEMPLATE.md" "$agents_abs/rules/state.md"
+          info "Created $AGENTS_DIR/rules/state.md (state convention rule)"
+        fi
+      fi
+    fi
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+      echo "  would migrate: $AGENTS_DIR/STATE.md → per-file state pattern"
+    else
+      migrate_legacy_state "$agents_abs"
+    fi
+    state_migrated=1
+  fi
+
   # Summary
-  if [[ "$fixed" -eq 0 ]] && [[ "$skipped" -eq 0 ]] && [[ "$repaired" -eq 0 ]]; then
+  if [[ "$fixed" -eq 0 ]] && [[ "$skipped" -eq 0 ]] && [[ "$repaired" -eq 0 ]] && [[ "$state_migrated" -eq 0 ]]; then
     info "Nothing to fix — all directories and symlinks are correct."
   else
     if [[ "$fixed" -gt 0 ]]; then info "Fixed $fixed item(s)."; fi
     if [[ "$merged" -gt 0 ]]; then info "Merged $merged item(s) (legacy overwrote existing)."; fi
     if [[ "$skipped" -gt 0 ]]; then warn "Skipped $skipped item(s) (use without --no-clobber to merge)."; fi
     if [[ "$repaired" -gt 0 ]]; then info "Repaired $repaired symlink(s)."; fi
+    if [[ "$state_migrated" -gt 0 ]]; then info "Migrated legacy STATE.md to per-file state pattern."; fi
     if [[ "$fixed" -gt 0 ]]; then info "Run 'sync-agents sync' to update agent target symlinks."; fi
   fi
 }
@@ -1308,10 +1382,26 @@ HEADER
     fi
     echo ""
 
-    # State reference
+    # State (list individual state snapshot files)
     echo "## State"
     echo ""
-    echo "- [STATE.md](.agents/STATE.md)"
+    local has_state="false"
+    if compgen -G "$agents_dir/STATE_*.md" > /dev/null 2>&1; then
+      for f in "$agents_dir"/STATE_*.md; do
+        local name
+        name="$(basename "$f" .md)"
+        echo "- [$name](.agents/$(basename "$f"))"
+        has_state="true"
+      done
+    fi
+    # Legacy fallback: still list STATE.md if it exists (pre-migration)
+    if [[ -f "$agents_dir/STATE.md" ]]; then
+      echo "- [STATE.md](.agents/STATE.md)"
+      has_state="true"
+    fi
+    if [[ "$has_state" == "false" ]]; then
+      echo "_No state snapshots yet. Agents will create STATE_*context*_*timestamp*.md files as they work._"
+    fi
     echo ""
   } >> "$outfile"
 }

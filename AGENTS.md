@@ -9,6 +9,10 @@ trigger: always_on
 
 This file indexes all rules, skills, and workflows defined in `.agents/`.
 
+## Inherits
+
+- [org](../.agents/AGENTS.md)
+
 ## Rules
 
 - [bash](.agents/rules/bash.md)
