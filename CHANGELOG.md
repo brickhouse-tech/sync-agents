@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.17](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.16...v0.1.17) (2026-04-30)
+
+
+### Features
+
+* rewrite sync-agents CLI in Go ([3b2f2f9](https://github.com/brickhouse-tech/sync-agents/commit/3b2f2f9659bea6ff4234251c74bc49fb5800b0f9))
+
+
+### Bug Fixes
+
+* **go:** inject version from package.json + untrack built binary ([66e6b83](https://github.com/brickhouse-tech/sync-agents/commit/66e6b83a98699232eee815460a10b2279e710002))
+
 ## [0.1.16](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.15...v0.1.16) (2026-04-26)
 
 
