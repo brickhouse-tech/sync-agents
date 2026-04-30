@@ -1,7 +1,8 @@
 #!/usr/bin/env bats
 
 # Resolve the script under test relative to this test file
-SCRIPT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../src/sh" && pwd)/sync-agents.sh"
+_DEFAULT_SCRIPT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../src/sh" && pwd)/sync-agents.sh"
+SCRIPT="${SYNC_AGENTS_BIN:-$_DEFAULT_SCRIPT}"
 # Read version from package.json so the test stays in sync after bumps
 PACKAGE_VERSION="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/package.json" | head -1)"
 
@@ -23,7 +24,7 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "--help shows usage information" {
-  run bash "$SCRIPT" --help
+  run "$SCRIPT" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"sync-agents"* ]]
   [[ "$output" == *"USAGE"* ]]
@@ -31,7 +32,7 @@ teardown() {
 }
 
 @test "no arguments shows usage" {
-  run bash "$SCRIPT" -d "$TEST_DIR"
+  run "$SCRIPT" -d "$TEST_DIR"
   [ "$status" -eq 0 ]
   [[ "$output" == *"USAGE"* ]]
 }
@@ -41,13 +42,13 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "--version shows version from package.json" {
-  run bash "$SCRIPT" --version
+  run "$SCRIPT" --version
   [ "$status" -eq 0 ]
   [[ "$output" == *"sync-agents v${PACKAGE_VERSION}"* ]]
 }
 
 @test "version subcommand shows same output as --version" {
-  run bash "$SCRIPT" version
+  run "$SCRIPT" version
   [ "$status" -eq 0 ]
   [[ "$output" == "sync-agents v${PACKAGE_VERSION}" ]]
 }
@@ -57,7 +58,7 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "init creates .agents/ directory structure" {
-  run bash "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" init
   [ "$status" -eq 0 ]
   [ -d "$TEST_DIR/.agents" ]
   [ -d "$TEST_DIR/.agents/rules" ]
@@ -68,14 +69,14 @@ teardown() {
 }
 
 @test "init creates rules/state.md with expected content" {
-  run bash "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" init
   [ "$status" -eq 0 ]
   [[ "$(cat "$TEST_DIR/.agents/rules/state.md")" == *"# State"* ]]
   [[ "$(cat "$TEST_DIR/.agents/rules/state.md")" == *"STATE_\${CONTEXT_DESCRIPTION}"* ]]
 }
 
 @test "init creates AGENTS.md with expected content" {
-  run bash "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" init
   [ "$status" -eq 0 ]
   [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"# AGENTS"* ]]
   [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"## Rules"* ]]
@@ -84,11 +85,11 @@ teardown() {
 }
 
 @test "init is idempotent - does not overwrite existing files" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   echo "custom content" > "$TEST_DIR/.agents/rules/state.md"
   echo "custom agents" > "$TEST_DIR/AGENTS.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" init
   [ "$status" -eq 0 ]
   [[ "$(cat "$TEST_DIR/.agents/rules/state.md")" == "custom content" ]]
   [[ "$(cat "$TEST_DIR/AGENTS.md")" == "custom agents" ]]
@@ -99,21 +100,21 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "add rule creates a rule file" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" add rule no-eval
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" add rule no-eval
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/.agents/rules/no-eval.md" ]
 }
 
 @test "add rule updates AGENTS.md" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" add rule no-eval
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule no-eval
   [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"no-eval"* ]]
 }
 
 @test "add rule file contains rule name" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" add rule no-eval
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule no-eval
   [[ "$(cat "$TEST_DIR/.agents/rules/no-eval.md")" == *"no-eval"* ]]
 }
 
@@ -122,16 +123,16 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "add skill creates a skill directory with SKILL.md" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" add skill code-review
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" add skill code-review
   [ "$status" -eq 0 ]
   [ -d "$TEST_DIR/.agents/skills/code-review" ]
   [ -f "$TEST_DIR/.agents/skills/code-review/SKILL.md" ]
 }
 
 @test "add skill updates AGENTS.md with directory path" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" add skill code-review
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add skill code-review
   [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"code-review"* ]]
   [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"skills/code-review/SKILL.md"* ]]
 }
@@ -141,15 +142,15 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "add workflow creates a workflow file" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" add workflow deploy
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" add workflow deploy
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/.agents/workflows/deploy.md" ]
 }
 
 @test "add workflow updates AGENTS.md" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" add workflow deploy
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add workflow deploy
   [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"deploy"* ]]
 }
 
@@ -158,15 +159,15 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "add with invalid type fails" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" add bogus my-thing
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" add bogus my-thing
   [ "$status" -ne 0 ]
   [[ "$output" == *"Unknown type"* ]]
 }
 
 @test "add with missing arguments fails" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" add
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" add
   [ "$status" -ne 0 ]
   [[ "$output" == *"Usage"* ]]
 }
@@ -176,11 +177,11 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "index regenerates AGENTS.md" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" add rule my-rule
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule my-rule
   # Overwrite AGENTS.md with junk
   echo "junk" > "$TEST_DIR/AGENTS.md"
-  run bash "$SCRIPT" -d "$TEST_DIR" index
+  run "$SCRIPT" -d "$TEST_DIR" index
   [ "$status" -eq 0 ]
   [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"my-rule"* ]]
   [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"## Rules"* ]]
@@ -191,8 +192,8 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "sync creates symlinks in .claude/ and .windsurf/" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" sync
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.claude/rules" ]
   [ -L "$TEST_DIR/.claude/skills" ]
@@ -203,8 +204,8 @@ teardown() {
 }
 
 @test "sync creates CLAUDE.md symlink to AGENTS.md" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" sync
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/CLAUDE.md" ]
   local link_target
@@ -217,8 +218,8 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "sync --dry-run does not create actual symlinks" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" sync --dry-run
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" sync --dry-run
   [ "$status" -eq 0 ]
   [[ "$output" == *"would link"* ]]
   [ ! -L "$TEST_DIR/.claude/rules" ]
@@ -231,23 +232,23 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "status shows correct state after init" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" status
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" status
   [ "$status" -eq 0 ]
   [[ "$output" == *".agents/ exists"* ]]
   [[ "$output" == *"AGENTS.md exists"* ]]
 }
 
 @test "status shows synced state after sync" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" sync
-  run bash "$SCRIPT" -d "$TEST_DIR" status
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" sync
+  run "$SCRIPT" -d "$TEST_DIR" status
   [ "$status" -eq 0 ]
   [[ "$output" == *"synced"* ]]
 }
 
 @test "status shows missing state without init" {
-  run bash "$SCRIPT" -d "$TEST_DIR" status
+  run "$SCRIPT" -d "$TEST_DIR" status
   [ "$status" -eq 0 ]
   [[ "$output" == *"missing"* ]]
 }
@@ -257,13 +258,13 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "clean removes symlinks and empty directories" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" sync
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" sync
   # Verify symlinks exist first
   [ -L "$TEST_DIR/.claude/rules" ]
   [ -L "$TEST_DIR/CLAUDE.md" ]
 
-  run bash "$SCRIPT" -d "$TEST_DIR" clean
+  run "$SCRIPT" -d "$TEST_DIR" clean
   [ "$status" -eq 0 ]
   [ ! -L "$TEST_DIR/.claude/rules" ]
   [ ! -L "$TEST_DIR/.windsurf/rules" ]
@@ -274,9 +275,9 @@ teardown() {
 }
 
 @test "clean preserves .agents/ directory" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" sync
-  bash "$SCRIPT" -d "$TEST_DIR" clean
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" sync
+  "$SCRIPT" -d "$TEST_DIR" clean
   [ -d "$TEST_DIR/.agents" ]
   [ -f "$TEST_DIR/AGENTS.md" ]
 }
@@ -286,16 +287,16 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "sync --targets claude only syncs to .claude/" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" --targets claude sync
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" --targets claude sync
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.claude/rules" ]
   [ ! -d "$TEST_DIR/.windsurf" ]
 }
 
 @test "sync --targets windsurf only syncs to .windsurf/" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" --targets windsurf sync
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" --targets windsurf sync
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.windsurf/rules" ]
   [ ! -d "$TEST_DIR/.claude" ]
@@ -306,19 +307,19 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "sync without init fails" {
-  run bash "$SCRIPT" -d "$TEST_DIR" sync
+  run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -ne 0 ]
   [[ "$output" == *"Run 'sync-agents init' first"* ]]
 }
 
 @test "add without init fails" {
-  run bash "$SCRIPT" -d "$TEST_DIR" add rule test-rule
+  run "$SCRIPT" -d "$TEST_DIR" add rule test-rule
   [ "$status" -ne 0 ]
   [[ "$output" == *"Run 'sync-agents init' first"* ]]
 }
 
 @test "index without init fails" {
-  run bash "$SCRIPT" -d "$TEST_DIR" index
+  run "$SCRIPT" -d "$TEST_DIR" index
   [ "$status" -ne 0 ]
   [[ "$output" == *"Run 'sync-agents init' first"* ]]
 }
@@ -328,33 +329,33 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "--force overwrites existing rule file" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" add rule overwrite-me
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule overwrite-me
   echo "original" > "$TEST_DIR/.agents/rules/overwrite-me.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" --force add rule overwrite-me
+  run "$SCRIPT" -d "$TEST_DIR" --force add rule overwrite-me
   [ "$status" -eq 0 ]
   # Content should be the template, not "original"
   [[ "$(cat "$TEST_DIR/.agents/rules/overwrite-me.md")" != "original" ]]
 }
 
 @test "add without --force refuses to overwrite existing file" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" add rule existing-rule
-  run bash "$SCRIPT" -d "$TEST_DIR" add rule existing-rule
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule existing-rule
+  run "$SCRIPT" -d "$TEST_DIR" add rule existing-rule
   [ "$status" -ne 0 ]
   [[ "$output" == *"already exists"* ]]
 }
 
 @test "--force overwrites existing symlinks during sync" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" sync
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" sync
   # Create a conflicting regular directory where a symlink would go
-  bash "$SCRIPT" -d "$TEST_DIR" clean
+  "$SCRIPT" -d "$TEST_DIR" clean
   mkdir -p "$TEST_DIR/.claude/rules"
   echo "conflict" > "$TEST_DIR/.claude/rules/something.txt"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" --force sync
+  run "$SCRIPT" -d "$TEST_DIR" --force sync
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.claude/rules" ]
 }
@@ -364,7 +365,7 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "unknown command fails" {
-  run bash "$SCRIPT" -d "$TEST_DIR" foobar
+  run "$SCRIPT" -d "$TEST_DIR" foobar
   [ "$status" -ne 0 ]
   [[ "$output" == *"Unknown command"* ]]
 }
@@ -374,7 +375,7 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "unknown option fails" {
-  run bash "$SCRIPT" --bogus
+  run "$SCRIPT" --bogus
   [ "$status" -ne 0 ]
   [[ "$output" == *"Unknown option"* ]]
 }
@@ -384,23 +385,23 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "add rules (plural) works same as add rule" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" add rules plural-test
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" add rules plural-test
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/.agents/rules/plural-test.md" ]
 }
 
 @test "add skills (plural) works same as add skill" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" add skills plural-test
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" add skills plural-test
   [ "$status" -eq 0 ]
   [ -d "$TEST_DIR/.agents/skills/plural-test" ]
   [ -f "$TEST_DIR/.agents/skills/plural-test/SKILL.md" ]
 }
 
 @test "add workflows (plural) works same as add workflow" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" add workflows plural-test
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" add workflows plural-test
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/.agents/workflows/plural-test.md" ]
 }
@@ -410,9 +411,9 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "sync creates symlinks for all 4 targets" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" add rule test-rule
-  run bash "$SCRIPT" -d "$TEST_DIR" sync
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule test-rule
+  run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.claude/rules" ]
   [ -L "$TEST_DIR/.windsurf/rules" ]
@@ -421,9 +422,9 @@ teardown() {
 }
 
 @test "sync --targets cursor only syncs to .cursor/" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" add rule test-rule
-  run bash "$SCRIPT" -d "$TEST_DIR" sync --targets cursor
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule test-rule
+  run "$SCRIPT" -d "$TEST_DIR" sync --targets cursor
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.cursor/rules" ]
   [ ! -d "$TEST_DIR/.claude" ]
@@ -431,19 +432,19 @@ teardown() {
 }
 
 @test "sync --targets copilot creates .github/copilot/ structure" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" add rule test-rule
-  run bash "$SCRIPT" -d "$TEST_DIR" sync --targets copilot
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule test-rule
+  run "$SCRIPT" -d "$TEST_DIR" sync --targets copilot
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.github/copilot/rules" ]
   [ ! -d "$TEST_DIR/.copilot" ]
 }
 
 @test "clean removes copilot symlinks from .github/copilot/" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" add rule test-rule
-  bash "$SCRIPT" -d "$TEST_DIR" sync --targets copilot
-  run bash "$SCRIPT" -d "$TEST_DIR" clean --targets copilot
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule test-rule
+  "$SCRIPT" -d "$TEST_DIR" sync --targets copilot
+  run "$SCRIPT" -d "$TEST_DIR" clean --targets copilot
   [ "$status" -eq 0 ]
   [ ! -L "$TEST_DIR/.github/copilot/rules" ]
 }
@@ -453,23 +454,23 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "add skill uses SKILL_TEMPLATE content" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" add skill my-skill
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add skill my-skill
   grep -q "Description" "$TEST_DIR/.agents/skills/my-skill/SKILL.md"
   grep -q "Usage" "$TEST_DIR/.agents/skills/my-skill/SKILL.md"
   grep -q "Examples" "$TEST_DIR/.agents/skills/my-skill/SKILL.md"
 }
 
 @test "add workflow uses WORKFLOW_TEMPLATE content" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" add workflow my-workflow
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add workflow my-workflow
   grep -q "Trigger" "$TEST_DIR/.agents/workflows/my-workflow.md"
   grep -q "Steps" "$TEST_DIR/.agents/workflows/my-workflow.md"
 }
 
 @test "add rule still uses RULE_TEMPLATE content" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" add rule my-rule
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule my-rule
   # Rule template just has the name as header
   grep -q "my-rule" "$TEST_DIR/.agents/rules/my-rule.md"
 }
@@ -479,8 +480,8 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "hook creates pre-commit hook" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" hook
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" hook
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/.git/hooks/pre-commit" ]
   [ -x "$TEST_DIR/.git/hooks/pre-commit" ]
@@ -488,9 +489,9 @@ teardown() {
 }
 
 @test "hook is idempotent" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" hook
-  run bash "$SCRIPT" -d "$TEST_DIR" hook
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" hook
+  run "$SCRIPT" -d "$TEST_DIR" hook
   [ "$status" -eq 0 ]
   # Should only appear once
   count=$(grep -c "sync-agents start" "$TEST_DIR/.git/hooks/pre-commit")
@@ -498,12 +499,12 @@ teardown() {
 }
 
 @test "hook appends to existing pre-commit" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   mkdir -p "$TEST_DIR/.git/hooks"
   echo '#!/bin/sh' > "$TEST_DIR/.git/hooks/pre-commit"
   echo 'echo "existing hook"' >> "$TEST_DIR/.git/hooks/pre-commit"
   chmod +x "$TEST_DIR/.git/hooks/pre-commit"
-  run bash "$SCRIPT" -d "$TEST_DIR" hook
+  run "$SCRIPT" -d "$TEST_DIR" hook
   [ "$status" -eq 0 ]
   grep -q "existing hook" "$TEST_DIR/.git/hooks/pre-commit"
   grep -q "sync-agents" "$TEST_DIR/.git/hooks/pre-commit"
@@ -514,17 +515,17 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "import fails without URL" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" import
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" import
   [ "$status" -eq 1 ]
 }
 
 @test "import with rules URL auto-detects type" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   # Create a local file to serve
   local src_file="$TEST_DIR/source-rule.md"
   echo "# Imported Rule" > "$src_file"
-  run bash "$SCRIPT" -d "$TEST_DIR" import "file://$src_file" <<< ""
+  run "$SCRIPT" -d "$TEST_DIR" import "file://$src_file" <<< ""
   # curl with file:// puts it in rules/ since URL doesn't contain rules/
   # This will prompt — skip for now, test the error case
   [ "$status" -ne 0 ] || [ -f "$TEST_DIR/.agents/rules/source-rule.md" ] || [ -f "$TEST_DIR/.agents/skills/source-rule.md" ] || [ -f "$TEST_DIR/.agents/workflows/source-rule.md" ]
@@ -535,17 +536,17 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "help shows watch command" {
-  run bash "$SCRIPT" --help
+  run "$SCRIPT" --help
   [[ "$output" == *"watch"* ]]
 }
 
 @test "help shows import command" {
-  run bash "$SCRIPT" --help
+  run "$SCRIPT" --help
   [[ "$output" == *"import"* ]]
 }
 
 @test "help shows hook command" {
-  run bash "$SCRIPT" --help
+  run "$SCRIPT" --help
   [[ "$output" == *"hook"* ]]
 }
 
@@ -558,17 +559,17 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "init creates default config file" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   [ -f "$TEST_DIR/.agents/config" ]
   grep -q "targets" "$TEST_DIR/.agents/config"
 }
 
 @test "config file limits sync targets" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" add rule test-rule
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule test-rule
   # Override config to only sync claude
   echo "targets = claude" > "$TEST_DIR/.agents/config"
-  run bash "$SCRIPT" -d "$TEST_DIR" sync
+  run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.claude/rules" ]
   [ ! -d "$TEST_DIR/.windsurf" ]
@@ -576,22 +577,22 @@ teardown() {
 }
 
 @test "--targets flag overrides config file" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" add rule test-rule
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule test-rule
   # Config says claude only
   echo "targets = claude" > "$TEST_DIR/.agents/config"
   # But --targets says windsurf
-  run bash "$SCRIPT" -d "$TEST_DIR" sync --targets windsurf
+  run "$SCRIPT" -d "$TEST_DIR" sync --targets windsurf
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.windsurf/rules" ]
   [ ! -d "$TEST_DIR/.claude" ]
 }
 
 @test "config file with multiple targets works" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" add rule test-rule
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule test-rule
   echo "targets = claude,cursor" > "$TEST_DIR/.agents/config"
-  run bash "$SCRIPT" -d "$TEST_DIR" sync
+  run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.claude/rules" ]
   [ -L "$TEST_DIR/.cursor/rules" ]
@@ -603,8 +604,8 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "sync adds symlink entries to .gitignore" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" sync
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" sync
   [ -f "$TEST_DIR/.gitignore" ]
   grep -qxF ".claude/" "$TEST_DIR/.gitignore"
   grep -qxF ".windsurf/" "$TEST_DIR/.gitignore"
@@ -614,39 +615,39 @@ teardown() {
 }
 
 @test "sync adds header comment to .gitignore" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" sync
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" sync
   grep -qF "# sync-agents" "$TEST_DIR/.gitignore"
 }
 
 @test "sync does not duplicate .gitignore entries" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" sync
-  bash "$SCRIPT" -d "$TEST_DIR" sync
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" sync
+  "$SCRIPT" -d "$TEST_DIR" sync
   local count
   count=$(grep -cxF "CLAUDE.md" "$TEST_DIR/.gitignore")
   [ "$count" -eq 1 ]
 }
 
 @test "sync preserves existing .gitignore content" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   echo "node_modules/" > "$TEST_DIR/.gitignore"
-  bash "$SCRIPT" -d "$TEST_DIR" sync
+  "$SCRIPT" -d "$TEST_DIR" sync
   grep -qxF "node_modules/" "$TEST_DIR/.gitignore"
   grep -qxF "CLAUDE.md" "$TEST_DIR/.gitignore"
 }
 
 @test "sync --targets only adds relevant entries to .gitignore" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" sync --targets claude
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" sync --targets claude
   grep -qxF ".claude/" "$TEST_DIR/.gitignore"
   grep -qxF "CLAUDE.md" "$TEST_DIR/.gitignore"
   ! grep -qxF ".windsurf/" "$TEST_DIR/.gitignore"
 }
 
 @test "sync --dry-run does not modify .gitignore" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" sync --dry-run
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" sync --dry-run
   if [ -f "$TEST_DIR/.gitignore" ]; then
     ! grep -qxF "CLAUDE.md" "$TEST_DIR/.gitignore"
   fi
@@ -657,71 +658,71 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "inherit adds Inherits section to AGENTS.md" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
   [ "$status" -eq 0 ]
   grep -q "## Inherits" "$TEST_DIR/AGENTS.md"
   grep -q "\[global\](../../AGENTS.md)" "$TEST_DIR/AGENTS.md"
 }
 
 @test "inherit adds multiple entries" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
-  run bash "$SCRIPT" -d "$TEST_DIR" inherit team ../AGENTS.md
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
+  run "$SCRIPT" -d "$TEST_DIR" inherit team ../AGENTS.md
   [ "$status" -eq 0 ]
   grep -q "\[global\]" "$TEST_DIR/AGENTS.md"
   grep -q "\[team\]" "$TEST_DIR/AGENTS.md"
 }
 
 @test "inherit --list shows entries" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
-  bash "$SCRIPT" -d "$TEST_DIR" inherit team ../AGENTS.md
-  run bash "$SCRIPT" -d "$TEST_DIR" inherit --list
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
+  "$SCRIPT" -d "$TEST_DIR" inherit team ../AGENTS.md
+  run "$SCRIPT" -d "$TEST_DIR" inherit --list
   [ "$status" -eq 0 ]
   [[ "$output" == *"global"* ]]
   [[ "$output" == *"team"* ]]
 }
 
 @test "inherit --remove removes an entry" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
-  bash "$SCRIPT" -d "$TEST_DIR" inherit team ../AGENTS.md
-  run bash "$SCRIPT" -d "$TEST_DIR" inherit --remove global
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
+  "$SCRIPT" -d "$TEST_DIR" inherit team ../AGENTS.md
+  run "$SCRIPT" -d "$TEST_DIR" inherit --remove global
   [ "$status" -eq 0 ]
   ! grep -q "\[global\]" "$TEST_DIR/AGENTS.md"
   grep -q "\[team\]" "$TEST_DIR/AGENTS.md"
 }
 
 @test "inherit rejects duplicate labels" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
-  run bash "$SCRIPT" -d "$TEST_DIR" inherit global ../other/AGENTS.md
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
+  run "$SCRIPT" -d "$TEST_DIR" inherit global ../other/AGENTS.md
   [ "$status" -ne 0 ]
   [[ "$output" == *"already exists"* ]]
 }
 
 @test "inherit without arguments fails" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" inherit
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" inherit
   [ "$status" -ne 0 ]
   [[ "$output" == *"Usage"* ]]
 }
 
 @test "inherit section preserved across index regeneration" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
-  bash "$SCRIPT" -d "$TEST_DIR" add rule my-rule
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
+  "$SCRIPT" -d "$TEST_DIR" add rule my-rule
   # index regenerates AGENTS.md
-  bash "$SCRIPT" -d "$TEST_DIR" index
+  "$SCRIPT" -d "$TEST_DIR" index
   grep -q "## Inherits" "$TEST_DIR/AGENTS.md"
   grep -q "\[global\](../../AGENTS.md)" "$TEST_DIR/AGENTS.md"
   grep -q "my-rule" "$TEST_DIR/AGENTS.md"
 }
 
 @test "inherit Inherits section appears before Rules in AGENTS.md" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
   local inherits_line rules_line
   inherits_line=$(grep -n "## Inherits" "$TEST_DIR/AGENTS.md" | head -1 | cut -d: -f1)
   rules_line=$(grep -n "## Rules" "$TEST_DIR/AGENTS.md" | head -1 | cut -d: -f1)
@@ -729,15 +730,15 @@ teardown() {
 }
 
 @test "inherit --list with no inherits shows nothing" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" inherit --list
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" inherit --list
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
 @test "inherit --remove nonexistent label warns" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" inherit --remove nonexistent
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" inherit --remove nonexistent
   [ "$status" -eq 0 ]
   [[ "$output" == *"No inherit found"* ]]
 }
@@ -751,12 +752,12 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "fix moves legacy skills/ into .agents/skills/" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   # Create legacy skills dir with a skill
   mkdir -p "$TEST_DIR/skills/my-skill"
   echo "# My Skill" > "$TEST_DIR/skills/my-skill/SKILL.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  run "$SCRIPT" -d "$TEST_DIR" fix skills
   [ "$status" -eq 0 ]
   # Skill moved into .agents/
   [ -f "$TEST_DIR/.agents/skills/my-skill/SKILL.md" ]
@@ -766,19 +767,19 @@ teardown() {
 }
 
 @test "fix moves legacy rules/ files into .agents/rules/" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   # Create legacy rules dir with loose files
   mkdir -p "$TEST_DIR/rules"
   echo "# No Eval" > "$TEST_DIR/rules/no-eval.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix rules
+  run "$SCRIPT" -d "$TEST_DIR" fix rules
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/.agents/rules/no-eval.md" ]
   [ -L "$TEST_DIR/rules" ]
 }
 
 @test "fix all migrates skills, rules, and workflows" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   mkdir -p "$TEST_DIR/skills/s1"
   echo "skill" > "$TEST_DIR/skills/s1/SKILL.md"
   mkdir -p "$TEST_DIR/rules"
@@ -786,7 +787,7 @@ teardown() {
   mkdir -p "$TEST_DIR/workflows"
   echo "wf" > "$TEST_DIR/workflows/w1.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix
+  run "$SCRIPT" -d "$TEST_DIR" fix
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/.agents/skills/s1/SKILL.md" ]
   [ -f "$TEST_DIR/.agents/rules/r1.md" ]
@@ -797,7 +798,7 @@ teardown() {
 }
 
 @test "fix merges items by default (legacy wins)" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   # Put a skill in .agents/ first
   mkdir -p "$TEST_DIR/.agents/skills/existing"
   echo "original" > "$TEST_DIR/.agents/skills/existing/SKILL.md"
@@ -805,7 +806,7 @@ teardown() {
   mkdir -p "$TEST_DIR/skills/existing"
   echo "legacy-version" > "$TEST_DIR/skills/existing/SKILL.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  run "$SCRIPT" -d "$TEST_DIR" fix skills
   [ "$status" -eq 0 ]
   # Legacy should overwrite (merge default)
   [[ "$(cat "$TEST_DIR/.agents/skills/existing/SKILL.md")" == "legacy-version" ]]
@@ -813,7 +814,7 @@ teardown() {
 }
 
 @test "fix --no-clobber skips items already in .agents/" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   # Put a skill in .agents/ first
   mkdir -p "$TEST_DIR/.agents/skills/existing"
   echo "original" > "$TEST_DIR/.agents/skills/existing/SKILL.md"
@@ -821,7 +822,7 @@ teardown() {
   mkdir -p "$TEST_DIR/skills/existing"
   echo "duplicate" > "$TEST_DIR/skills/existing/SKILL.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix --no-clobber skills
+  run "$SCRIPT" -d "$TEST_DIR" fix --no-clobber skills
   [ "$status" -eq 0 ]
   # Original should be preserved
   [[ "$(cat "$TEST_DIR/.agents/skills/existing/SKILL.md")" == "original" ]]
@@ -830,11 +831,11 @@ teardown() {
 }
 
 @test "fix --dry-run does not move files" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   mkdir -p "$TEST_DIR/skills/my-skill"
   echo "# My Skill" > "$TEST_DIR/skills/my-skill/SKILL.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix --dry-run skills
+  run "$SCRIPT" -d "$TEST_DIR" fix --dry-run skills
   [ "$status" -eq 0 ]
   [[ "$output" == *"would move"* ]]
   # Files should still be in legacy location
@@ -844,43 +845,43 @@ teardown() {
 }
 
 @test "fix skips migration for directories that are already symlinks" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" sync
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" sync
   # skills/ is already a symlink
   ln -s .agents/skills "$TEST_DIR/skills"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  run "$SCRIPT" -d "$TEST_DIR" fix skills
   [ "$status" -eq 0 ]
   # Migration phase should report already a symlink
   [[ "$output" == *"already a symlink"* ]]
 }
 
 @test "fix without init fails" {
-  run bash "$SCRIPT" -d "$TEST_DIR" fix
+  run "$SCRIPT" -d "$TEST_DIR" fix
   [ "$status" -ne 0 ]
   [[ "$output" == *"Run 'sync-agents init' first"* ]]
 }
 
 @test "fix with invalid type fails" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  run bash "$SCRIPT" -d "$TEST_DIR" fix bogus
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" fix bogus
   [ "$status" -ne 0 ]
   [[ "$output" == *"Unknown type"* ]]
 }
 
 @test "fix reports correct count of migrated items" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   mkdir -p "$TEST_DIR/skills/s1" "$TEST_DIR/skills/s2"
   echo "a" > "$TEST_DIR/skills/s1/SKILL.md"
   echo "b" > "$TEST_DIR/skills/s2/SKILL.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  run "$SCRIPT" -d "$TEST_DIR" fix skills
   [ "$status" -eq 0 ]
   [[ "$output" == *"Fixed 2 item(s)"* ]]
 }
 
 @test "fix detects same-inode directory and replaces with symlink" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   # Remove the legacy-style dir so we can recreate the same-inode scenario
   # Simulate same-inode: make skills/ a hardlink to .agents/skills/ by
   # removing skills/ and creating it as a copy of the same directory.
@@ -908,7 +909,7 @@ teardown() {
   mkdir -p "$TEST_DIR/skills/my-skill"
   echo "legacy" > "$TEST_DIR/skills/my-skill/SKILL.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  run "$SCRIPT" -d "$TEST_DIR" fix skills
   [ "$status" -eq 0 ]
   # Default merge: legacy wins
   [[ "$(cat "$TEST_DIR/.agents/skills/my-skill/SKILL.md")" == "legacy" ]]
@@ -918,7 +919,7 @@ teardown() {
 }
 
 @test "fix merges files (rules) by default — legacy wins" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   # Create a rule in .agents/ first
   echo "agents-version" > "$TEST_DIR/.agents/rules/shared.md"
   # Create legacy rules dir with same file
@@ -927,7 +928,7 @@ teardown() {
   # Also add a rule only in legacy
   echo "only-in-legacy" > "$TEST_DIR/rules/unique.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix rules
+  run "$SCRIPT" -d "$TEST_DIR" fix rules
   [ "$status" -eq 0 ]
   # Shared file: legacy wins
   [[ "$(cat "$TEST_DIR/.agents/rules/shared.md")" == "legacy-version" ]]
@@ -940,13 +941,13 @@ teardown() {
 }
 
 @test "fix --no-clobber skips conflicting files" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   echo "agents-version" > "$TEST_DIR/.agents/rules/keep-me.md"
   mkdir -p "$TEST_DIR/rules"
   echo "legacy-version" > "$TEST_DIR/rules/keep-me.md"
   echo "new-rule" > "$TEST_DIR/rules/new.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix --no-clobber rules
+  run "$SCRIPT" -d "$TEST_DIR" fix --no-clobber rules
   [ "$status" -eq 0 ]
   # Conflicting file: agents version preserved
   [[ "$(cat "$TEST_DIR/.agents/rules/keep-me.md")" == "agents-version" ]]
@@ -957,13 +958,13 @@ teardown() {
 }
 
 @test "fix --dry-run merge shows would-merge" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   mkdir -p "$TEST_DIR/.agents/skills/existing"
   echo "original" > "$TEST_DIR/.agents/skills/existing/SKILL.md"
   mkdir -p "$TEST_DIR/skills/existing"
   echo "legacy" > "$TEST_DIR/skills/existing/SKILL.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" --dry-run fix skills
+  run "$SCRIPT" -d "$TEST_DIR" --dry-run fix skills
   [ "$status" -eq 0 ]
   [[ "$output" == *"would merge"* ]]
   # Nothing should have changed
@@ -972,14 +973,14 @@ teardown() {
 }
 
 @test "fix reports merge and skip counts in summary" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   mkdir -p "$TEST_DIR/.agents/skills/s1"
   echo "old" > "$TEST_DIR/.agents/skills/s1/SKILL.md"
   mkdir -p "$TEST_DIR/skills/s1" "$TEST_DIR/skills/s2"
   echo "new" > "$TEST_DIR/skills/s1/SKILL.md"
   echo "fresh" > "$TEST_DIR/skills/s2/SKILL.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  run "$SCRIPT" -d "$TEST_DIR" fix skills
   [ "$status" -eq 0 ]
   [[ "$output" == *"Fixed 2 item(s)"* ]]
   [[ "$output" == *"Merged 1 item(s)"* ]]
@@ -990,7 +991,7 @@ teardown() {
   # - skills/ with 3 skills
   # - .agents/skills/ with 1 of those same skills (stale) + 1 unique
   # After fix: .agents/skills/ should have all skills, legacy versions win for conflicts
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
 
   # .agents/ has stale copy of skill-a and unique skill-x
   mkdir -p "$TEST_DIR/.agents/skills/skill-a"
@@ -1006,7 +1007,7 @@ teardown() {
   mkdir -p "$TEST_DIR/skills/skill-c"
   echo "fresh-c" > "$TEST_DIR/skills/skill-c/SKILL.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  run "$SCRIPT" -d "$TEST_DIR" fix skills
   [ "$status" -eq 0 ]
 
   # skill-a: legacy wins (merged)
@@ -1028,7 +1029,7 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "fix repairs missing target symlinks" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   # .agents/ has content but no target symlinks exist (never ran sync)
   mkdir -p "$TEST_DIR/.agents/skills/my-skill"
   echo "content" > "$TEST_DIR/.agents/skills/my-skill/SKILL.md"
@@ -1036,7 +1037,7 @@ teardown() {
   # Verify no .claude/ symlinks exist yet
   [ ! -e "$TEST_DIR/.claude/skills" ]
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  run "$SCRIPT" -d "$TEST_DIR" fix skills
   [ "$status" -eq 0 ]
   # Symlinks should now exist for all configured targets
   [ -L "$TEST_DIR/.claude/skills" ]
@@ -1044,20 +1045,20 @@ teardown() {
 }
 
 @test "fix repairs missing CLAUDE.md symlink" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   # AGENTS.md exists but CLAUDE.md symlink is missing
   [ -f "$TEST_DIR/AGENTS.md" ]
   [ ! -e "$TEST_DIR/CLAUDE.md" ]
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix
+  run "$SCRIPT" -d "$TEST_DIR" fix
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/CLAUDE.md" ]
   [[ "$(readlink "$TEST_DIR/CLAUDE.md")" == "AGENTS.md" ]]
 }
 
 @test "fix repairs deleted symlinks after sync" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" sync
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" sync
   # Verify sync worked
   [ -L "$TEST_DIR/.claude/skills" ]
   [ -L "$TEST_DIR/CLAUDE.md" ]
@@ -1067,7 +1068,7 @@ teardown() {
   rm "$TEST_DIR/.claude/rules"
   rm "$TEST_DIR/CLAUDE.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix
+  run "$SCRIPT" -d "$TEST_DIR" fix
   [ "$status" -eq 0 ]
   # Symlinks should be restored
   [ -L "$TEST_DIR/.claude/skills" ]
@@ -1077,11 +1078,11 @@ teardown() {
 }
 
 @test "fix --dry-run reports missing symlinks without creating them" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   mkdir -p "$TEST_DIR/.agents/skills/s1"
   echo "x" > "$TEST_DIR/.agents/skills/s1/SKILL.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" --dry-run fix skills
+  run "$SCRIPT" -d "$TEST_DIR" --dry-run fix skills
   [ "$status" -eq 0 ]
   [[ "$output" == *"would create"* ]]
   # Nothing actually created
@@ -1089,21 +1090,21 @@ teardown() {
 }
 
 @test "fix with no legacy dirs and no broken symlinks reports nothing to fix" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" sync
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" sync
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix
+  run "$SCRIPT" -d "$TEST_DIR" fix
   [ "$status" -eq 0 ]
   [[ "$output" == *"Nothing to fix"* ]]
 }
 
 @test "fix repairs symlinks for specific type only" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
-  bash "$SCRIPT" -d "$TEST_DIR" sync
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" sync
   # Delete just skills symlinks
   rm "$TEST_DIR/.claude/skills"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  run "$SCRIPT" -d "$TEST_DIR" fix skills
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.claude/skills" ]
   [[ "$output" == *"Repaired"* ]] || [[ "$output" == *"Linked"* ]]
@@ -1118,11 +1119,11 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "fix converts flat skill .md to directory layout" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   # Create a flat skill file inside .agents/skills/
   echo "# My Skill" > "$TEST_DIR/.agents/skills/my-skill.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  run "$SCRIPT" -d "$TEST_DIR" fix skills
   [ "$status" -eq 0 ]
   # Should be converted to directory layout
   [ -f "$TEST_DIR/.agents/skills/my-skill/SKILL.md" ]
@@ -1132,19 +1133,19 @@ teardown() {
 }
 
 @test "fix converts flat skill preserving content" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   echo "custom content here" > "$TEST_DIR/.agents/skills/foo.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  run "$SCRIPT" -d "$TEST_DIR" fix skills
   [ "$status" -eq 0 ]
   [[ "$(cat "$TEST_DIR/.agents/skills/foo/SKILL.md")" == "custom content here" ]]
 }
 
 @test "fix --dry-run flat skill does not move" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   echo "content" > "$TEST_DIR/.agents/skills/bar.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" --dry-run fix skills
+  run "$SCRIPT" -d "$TEST_DIR" --dry-run fix skills
   [ "$status" -eq 0 ]
   [[ "$output" == *"would convert"* ]]
   # File should still be flat
@@ -1153,12 +1154,12 @@ teardown() {
 }
 
 @test "fix --no-clobber skips flat skill when directory already exists" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   mkdir -p "$TEST_DIR/.agents/skills/existing"
   echo "dir version" > "$TEST_DIR/.agents/skills/existing/SKILL.md"
   echo "flat version" > "$TEST_DIR/.agents/skills/existing.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix --no-clobber skills
+  run "$SCRIPT" -d "$TEST_DIR" fix --no-clobber skills
   [ "$status" -eq 0 ]
   # Directory version preserved
   [[ "$(cat "$TEST_DIR/.agents/skills/existing/SKILL.md")" == "dir version" ]]
@@ -1166,12 +1167,12 @@ teardown() {
 }
 
 @test "fix flat skill merge overwrites existing directory skill by default" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   mkdir -p "$TEST_DIR/.agents/skills/dup"
   echo "old" > "$TEST_DIR/.agents/skills/dup/SKILL.md"
   echo "new" > "$TEST_DIR/.agents/skills/dup.md"
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix skills
+  run "$SCRIPT" -d "$TEST_DIR" fix skills
   [ "$status" -eq 0 ]
   [[ "$(cat "$TEST_DIR/.agents/skills/dup/SKILL.md")" == "new" ]]
   [ ! -f "$TEST_DIR/.agents/skills/dup.md" ]
@@ -1182,7 +1183,7 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "init creates rules/state.md not legacy STATE.md" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   # New pattern: state rule lives at rules/state.md
   [ -f "$TEST_DIR/.agents/rules/state.md" ]
   # Legacy STATE.md should NOT be created
@@ -1194,7 +1195,7 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "fix migrates legacy STATE.md to per-file pattern" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   # Create a legacy STATE.md with some history content
   cat > "$TEST_DIR/.agents/STATE.md" <<'EOF'
 ---
@@ -1213,7 +1214,7 @@ Did some setup work.
 - [ ] Configure CI
 EOF
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix
+  run "$SCRIPT" -d "$TEST_DIR" fix
   [ "$status" -eq 0 ]
   # Legacy STATE.md should be removed
   [ ! -f "$TEST_DIR/.agents/STATE.md" ]
@@ -1225,7 +1226,7 @@ EOF
 }
 
 @test "fix removes empty legacy STATE.md without creating history file" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   # Create a legacy STATE.md with only template boilerplate
   cat > "$TEST_DIR/.agents/STATE.md" <<'EOF'
 ---
@@ -1238,7 +1239,7 @@ trigger: always_on
 
 EOF
 
-  run bash "$SCRIPT" -d "$TEST_DIR" fix
+  run "$SCRIPT" -d "$TEST_DIR" fix
   [ "$status" -eq 0 ]
   # Legacy STATE.md should be removed
   [ ! -f "$TEST_DIR/.agents/STATE.md" ]
@@ -1267,7 +1268,7 @@ EOF
 targets = claude
 CONF
 
-  run bash "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" init
   [ "$status" -eq 0 ]
   # Legacy STATE.md should be migrated
   [ ! -f "$TEST_DIR/.agents/STATE.md" ]
@@ -1275,17 +1276,17 @@ CONF
 }
 
 @test "AGENTS.md State section lists STATE_ files" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   # Create some state snapshot files
   echo "state 1" > "$TEST_DIR/.agents/STATE_feature-work_20260425120000.md"
   echo "state 2" > "$TEST_DIR/.agents/STATE_bugfix_20260426080000.md"
-  bash "$SCRIPT" -d "$TEST_DIR" index
+  "$SCRIPT" -d "$TEST_DIR" index
   # AGENTS.md should reference the state files
   grep -q "STATE_feature-work_20260425120000" "$TEST_DIR/AGENTS.md"
   grep -q "STATE_bugfix_20260426080000" "$TEST_DIR/AGENTS.md"
 }
 
 @test "AGENTS.md State section shows placeholder when no state files" {
-  bash "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" init
   [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"No state snapshots yet"* ]]
 }

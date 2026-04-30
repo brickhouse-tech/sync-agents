@@ -1,6 +1,6 @@
 {
   "name": "@brickhouse-tech/sync-agents",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "Simple scripts to DRY up common agent interactions across multiple LLM providers.",
   "keywords": [
     "agents",
