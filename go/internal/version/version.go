@@ -1,3 +1,5 @@
 package version
 
-const Version = "0.1.16"
+// Version is overridden at build time via -ldflags from package.json.
+// The fallback is only used when running `go run` without ldflags.
+var Version = "dev"

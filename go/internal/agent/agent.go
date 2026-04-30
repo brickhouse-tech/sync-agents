@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/brickhouse-tech/sync-agents/internal/version"
 )
 
 var AllTargets = []string{"claude", "windsurf", "cursor", "copilot"}
@@ -343,7 +345,7 @@ func (a *App) CmdSync() error {
 }
 
 func (a *App) CmdStatus() error {
-	fmt.Fprintf(a.Stdout, "sync-agents v%s\n", "0.1.16")
+	fmt.Fprintf(a.Stdout, "sync-agents v%s\n", version.Version)
 	fmt.Fprintln(a.Stdout)
 
 	agentsDir := filepath.Join(a.ProjectRoot, ".agents")
