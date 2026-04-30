@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/brickhouse-tech/sync-agents/internal/agent/templates"
 	"github.com/brickhouse-tech/sync-agents/internal/version"
 )
 
@@ -211,7 +212,7 @@ func (a *App) CmdInit() error {
 
 	stateRule := filepath.Join(agentsDir, "rules", "state.md")
 	if _, err := os.Stat(stateRule); os.IsNotExist(err) {
-		os.WriteFile(stateRule, []byte(StateTemplate), 0644)
+		os.WriteFile(stateRule, []byte(templates.State()), 0644)
 		a.Info("Created .agents/rules/state.md from template")
 	} else {
 		a.Warn(".agents/rules/state.md already exists, skipping")
@@ -286,11 +287,11 @@ func (a *App) CmdAdd(typ, name string) error {
 	var tmpl string
 	switch typ {
 	case "rules":
-		tmpl = RuleTemplate
+		tmpl = templates.Rule()
 	case "skills":
-		tmpl = SkillTemplate
+		tmpl = templates.Skill()
 	case "workflows":
-		tmpl = WorkflowTemplate
+		tmpl = templates.Workflow()
 	}
 	content := strings.ReplaceAll(tmpl, "${NAME}", name)
 
@@ -903,7 +904,7 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 				fmt.Fprintf(a.Stdout, "  would create: .agents/rules/state.md from template\n")
 			} else {
 				os.MkdirAll(filepath.Join(agentsAbs, "rules"), 0755)
-				os.WriteFile(stateRulePath, []byte(StateTemplate), 0644)
+				os.WriteFile(stateRulePath, []byte(templates.State()), 0644)
 				a.Info("Created .agents/rules/state.md (state convention rule)")
 			}
 		}

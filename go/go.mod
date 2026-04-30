@@ -1,6 +1,6 @@
 module github.com/brickhouse-tech/sync-agents
 
-go 1.22
+go 1.25
 
 require github.com/spf13/cobra v1.9.1
 
