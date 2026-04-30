@@ -45,3 +45,9 @@ dist/
 .cursor/
 .github/copilot/
 CLAUDE.md
+
+# Go build artifacts (built locally via `make build`)
+bin/sync-agents
+
+vendor
+go.sum
