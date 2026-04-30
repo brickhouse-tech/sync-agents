@@ -31,12 +31,16 @@
   },
   "scripts": {
     "lint": "shellcheck src/sh/*.sh",
-    "test": "npx bats test/"
+    "test": "npx concurrently --names \"sh,go\" -c \"cyan,magenta\" \"npm run test:sh\" \"npm run test:go\"",
+    "test:sh": "npx bats test/",
+    "test:go": "make test",
+    "prepare": "make install"
   },
   "devDependencies": {
     "@commitlint/cli": "^20",
     "@commitlint/config-conventional": "^20",
     "commitlint": "20",
+    "concurrently": "^9.2.1",
     "shellcheck": "^4.1.0",
     "sort-package-json": ">=3"
   }

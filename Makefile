@@ -3,13 +3,13 @@ LDFLAGS := -ldflags "-X github.com/brickhouse-tech/sync-agents/internal/version.
 
 .PHONY: build test test-go clean
 
+install:
+	cd go && go mod tidy -e && go mod vendor
+
 build:
 	cd go && go build $(LDFLAGS) -o ../bin/sync-agents ./cmd/sync-agents/
 
-test:
-	npx bats test/sync-agents.bats
-
-test-go: build
+test: build
 	SYNC_AGENTS_BIN=bin/sync-agents npx bats test/sync-agents.bats
 
 clean:
