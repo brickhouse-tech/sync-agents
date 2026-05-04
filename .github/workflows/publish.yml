@@ -8,10 +8,82 @@ on:
 jobs:
   tests:
     uses: ./.github/workflows/tests.yml
-  publish-npm:
+
+  publish-platforms:
     needs: [tests]
-    uses: brickhouse-tech/.github/.github/workflows/publish.yml@main
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC trusted publishing
+    strategy:
+      fail-fast: false
+      matrix:
+        triple:
+          - darwin-arm64
+          - darwin-x64
+          - linux-arm64
+          - linux-x64
+          - win32-x64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20.x
+          registry-url: "https://registry.npmjs.org"
+      - name: Build platform binary
+        run: |
+          set -e
+          triple="${{ matrix.triple }}"
+          node_os="${triple%%-*}"
+          node_arch="${triple##*-}"
+          case "$node_os" in
+            win32) goos=windows; ext=.exe ;;
+            *)     goos="$node_os"; ext= ;;
+          esac
+          case "$node_arch" in
+            x64) goarch=amd64 ;;
+            *)   goarch="$node_arch" ;;
+          esac
+          mkdir -p "npm/$triple/bin"
+          version=$(node -p "require('./package.json').version")
+          (cd go && CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch \
+            go build -ldflags "-X github.com/brickhouse-tech/sync-agents/internal/version.Version=$version" \
+            -o "../npm/$triple/bin/sync-agents$ext" ./cmd/sync-agents/)
+          node -e "const f='npm/${triple}/package.json'; const j=JSON.parse(require('fs').readFileSync(f,'utf8')); j.version='${version}'; require('fs').writeFileSync(f, JSON.stringify(j,null,2)+'\n');"
+      - name: Publish platform package
+        run: |
+          npm install -g npm@11
+          cd "npm/${{ matrix.triple }}"
+          npm publish --access public --provenance
+
+  publish-npm:
+    needs: [publish-platforms]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
-    secrets: inherit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20.x
+          registry-url: "https://registry.npmjs.org"
+      - name: Sync optionalDependencies to root version
+        run: |
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            const v = pkg.version;
+            for (const name of Object.keys(pkg.optionalDependencies || {})) {
+              pkg.optionalDependencies[name] = v;
+            }
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+      - name: Publish root package
+        run: |
+          npm install -g npm@11
+          npm publish --access public --provenance --ignore-scripts

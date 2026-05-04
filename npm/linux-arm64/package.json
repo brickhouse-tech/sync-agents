@@ -1,0 +1,14 @@
+{
+  "name": "@brickhouse-tech/sync-agents-linux-arm64",
+  "version": "0.1.18",
+  "description": "Linux arm64 binary for @brickhouse-tech/sync-agents",
+  "license": "MIT",
+  "homepage": "https://github.com/brickhouse-tech/sync-agents#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/brickhouse-tech/sync-agents.git"
+  },
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "files": ["bin/sync-agents"]
+}

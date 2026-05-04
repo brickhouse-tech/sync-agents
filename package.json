@@ -20,11 +20,19 @@
   },
   "author": "Nicholas McCready",
   "bin": {
-    "sync-agents": "src/sh/sync-agents.sh"
+    "sync-agents": "bin/sync-agents.js"
   },
   "files": [
+    "bin/sync-agents.js",
     "src/**/*"
   ],
+  "optionalDependencies": {
+    "@brickhouse-tech/sync-agents-darwin-arm64": "0.1.18",
+    "@brickhouse-tech/sync-agents-darwin-x64": "0.1.18",
+    "@brickhouse-tech/sync-agents-linux-arm64": "0.1.18",
+    "@brickhouse-tech/sync-agents-linux-x64": "0.1.18",
+    "@brickhouse-tech/sync-agents-win32-x64": "0.1.18"
+  },
   "overrides": {
     "file-type": ">=22",
     "picomatch": ">=4.0.4"
