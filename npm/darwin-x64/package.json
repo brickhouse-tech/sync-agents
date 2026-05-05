@@ -10,5 +10,8 @@
   },
   "os": ["darwin"],
   "cpu": ["x64"],
-  "files": ["bin/sync-agents"]
+  "files": ["bin/sync-agents"],
+  "scripts": {
+    "prepack": "node ../../scripts/build-platform.js"
+  }
 }

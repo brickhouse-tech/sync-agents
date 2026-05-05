@@ -10,5 +10,8 @@
   },
   "os": ["win32"],
   "cpu": ["x64"],
-  "files": ["bin/sync-agents.exe"]
+  "files": ["bin/sync-agents.exe"],
+  "scripts": {
+    "prepack": "node ../../scripts/build-platform.js"
+  }
 }

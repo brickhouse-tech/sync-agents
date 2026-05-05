@@ -42,7 +42,8 @@
     "test": "npx concurrently --names \"sh,go\" -c \"cyan,magenta\" \"npm run test:sh\" \"npm run test:go\"",
     "test:sh": "npx bats test/",
     "test:go": "make test",
-    "prepare": "make install"
+    "prepare": "make install",
+    "prepack": "node scripts/sync-optional-deps.js"
   },
   "devDependencies": {
     "@commitlint/cli": "^20",
