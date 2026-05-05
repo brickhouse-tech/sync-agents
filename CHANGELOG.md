@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.20](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.19...v0.1.20) (2026-05-05)
+
+
+### Bug Fixes
+
+* **ci:** use corepack to pin npm 11.13.0 on Node 22 for OIDC publish ([3e18d4b](https://github.com/brickhouse-tech/sync-agents/commit/3e18d4b038ea5a00be0dbafcdd4faf98e8f474f5))
+
 ## [0.1.19](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.18...v0.1.19) (2026-05-05)
 
 
