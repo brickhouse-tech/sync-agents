@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.19](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.18...v0.1.19) (2026-05-05)
+
+
+### Features
+
+* **npm:** ship Go binaries via per-platform optional packages ([bcc0ace](https://github.com/brickhouse-tech/sync-agents/commit/bcc0ace5594e7a0c752be702a062f26bb8ae810b))
+
+
+### Bug Fixes
+
+* **npm:** drive platform builds via npm prepack lifecycle + node 20/22/24 matrix ([97b52f0](https://github.com/brickhouse-tech/sync-agents/commit/97b52f09d161c94278580577cde183fde5a89989)), closes [#18](https://github.com/brickhouse-tech/sync-agents/issues/18)
+
 ## [0.1.18](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.17...v0.1.18) (2026-05-04)
 
 ## [0.1.17](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.16...v0.1.17) (2026-04-30)
