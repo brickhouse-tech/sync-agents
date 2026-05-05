@@ -18,7 +18,11 @@ or globally:
 npm install -g @brickhouse-tech/sync-agents
 ```
 
-### Standalone (no npm required)
+### Standalone (no npm required) — deprecated
+
+> **Deprecated.** The bash script is kept as a fallback for unsupported
+> triples but will be removed in a future major. Prefer the npm install
+> above; it ships native Go binaries via per-platform optional packages.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/brickhouse-tech/sync-agents/main/src/sh/sync-agents.sh -o /usr/local/bin/sync-agents

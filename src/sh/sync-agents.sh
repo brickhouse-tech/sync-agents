@@ -1,4 +1,14 @@
 #!/usr/bin/env bash
+# ----------------------------------------------------------------------------
+# DEPRECATED — bash implementation of sync-agents.
+#
+# The Go binary shipped via per-platform npm packages is the supported
+# implementation. This shell script remains only as:
+#   - the fallback path in bin/sync-agents.js for unsupported triples
+#   - the standalone curl install in README (also deprecated)
+# Scheduled for removal in a future major after platform-package install
+# data shows the fallback is unused. Bug fixes go into go/, not here.
+# ----------------------------------------------------------------------------
 set -euo pipefail
 
 AGENTS_DIR=".agents"
