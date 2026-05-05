@@ -46,8 +46,10 @@ dist/
 .github/copilot/
 CLAUDE.md
 
-# Go build artifacts (built locally via `make build`)
+# Go build artifacts (built locally via `make build` / `make build-all`)
 bin/sync-agents
+npm/*/bin/sync-agents
+npm/*/bin/sync-agents.exe
 
 vendor
 go.sum

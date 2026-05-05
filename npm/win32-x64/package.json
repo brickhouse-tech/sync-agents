@@ -1,0 +1,17 @@
+{
+  "name": "@brickhouse-tech/sync-agents-win32-x64",
+  "version": "0.1.18",
+  "description": "Windows x64 binary for @brickhouse-tech/sync-agents",
+  "license": "MIT",
+  "homepage": "https://github.com/brickhouse-tech/sync-agents#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/brickhouse-tech/sync-agents.git"
+  },
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "files": ["bin/sync-agents.exe"],
+  "scripts": {
+    "prepack": "node ../../scripts/build-platform.js"
+  }
+}

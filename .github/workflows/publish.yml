@@ -8,10 +8,60 @@ on:
 jobs:
   tests:
     uses: ./.github/workflows/tests.yml
-  publish-npm:
+
+  publish-platforms:
     needs: [tests]
-    uses: brickhouse-tech/.github/.github/workflows/publish.yml@main
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC trusted publishing
+    strategy:
+      fail-fast: false
+      matrix:
+        triple:
+          - darwin-arm64
+          - darwin-x64
+          - linux-arm64
+          - linux-x64
+          - win32-x64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go/go.mod
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.x
+          registry-url: "https://registry.npmjs.org"
+      # The platform package's `prepack` (scripts/build-platform.js) syncs
+      # its version to root and cross-compiles its binary, so `npm publish`
+      # alone is enough here.
+      - name: Publish platform package
+        run: |
+          npm install -g npm@11
+          cd "npm/${{ matrix.triple }}"
+          npm publish --access public --provenance
+
+  publish-npm:
+    needs: [publish-platforms]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
-    secrets: inherit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go/go.mod
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.x
+          registry-url: "https://registry.npmjs.org"
+      # Root `prepack` (scripts/sync-optional-deps.js) rewrites
+      # optionalDependencies to the current root version so the published
+      # tarball pins the platform packages we just published above. Root
+      # `prepare` (`make install`) needs Go for go mod tidy/vendor.
+      - name: Publish root package
+        run: |
+          npm install -g npm@11
+          npm publish --access public --provenance

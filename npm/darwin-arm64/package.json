@@ -1,0 +1,17 @@
+{
+  "name": "@brickhouse-tech/sync-agents-darwin-arm64",
+  "version": "0.1.18",
+  "description": "macOS arm64 binary for @brickhouse-tech/sync-agents",
+  "license": "MIT",
+  "homepage": "https://github.com/brickhouse-tech/sync-agents#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/brickhouse-tech/sync-agents.git"
+  },
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "files": ["bin/sync-agents"],
+  "scripts": {
+    "prepack": "node ../../scripts/build-platform.js"
+  }
+}
