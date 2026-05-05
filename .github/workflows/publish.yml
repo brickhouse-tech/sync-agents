@@ -29,20 +29,14 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go/go.mod
+      # Node 24 (LTS since Oct 2025) bundles npm 11.x out of the box —
+      # 24.15.0 ships with npm 11.12.1, well above the 11.5.1 minimum
+      # for OIDC trusted publishing + --provenance. No corepack pin or
+      # `npm install -g` needed.
       - uses: actions/setup-node@v6
         with:
-          node-version: 22.x
+          node-version: 24.x
           registry-url: "https://registry.npmjs.org"
-      # `npm install -g npm@11` is broken on Node 22.22.x — the
-      # self-upgrade leaves npm half-installed (MODULE_NOT_FOUND
-      # 'promise-retry'). Use corepack to pin npm 11 instead; corepack
-      # ships with Node 22 and downloads the package manager directly
-      # rather than relying on npm to upgrade itself.
-      - name: Pin npm 11 via corepack
-        run: |
-          corepack enable
-          corepack prepare npm@11.13.0 --activate
-          npm --version
       # The platform package's `prepack` (scripts/build-platform.js)
       # syncs its version to root and cross-compiles its binary, so
       # `npm publish` alone is enough here.
@@ -64,13 +58,8 @@ jobs:
           go-version-file: go/go.mod
       - uses: actions/setup-node@v6
         with:
-          node-version: 22.x
+          node-version: 24.x
           registry-url: "https://registry.npmjs.org"
-      - name: Pin npm 11 via corepack
-        run: |
-          corepack enable
-          corepack prepare npm@11.13.0 --activate
-          npm --version
       # Root `prepack` (scripts/sync-optional-deps.js) rewrites
       # optionalDependencies to the current root version so the
       # published tarball pins the platform packages we just published
