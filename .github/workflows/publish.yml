@@ -33,12 +33,21 @@ jobs:
         with:
           node-version: 22.x
           registry-url: "https://registry.npmjs.org"
-      # The platform package's `prepack` (scripts/build-platform.js) syncs
-      # its version to root and cross-compiles its binary, so `npm publish`
-      # alone is enough here.
+      # `npm install -g npm@11` is broken on Node 22.22.x — the
+      # self-upgrade leaves npm half-installed (MODULE_NOT_FOUND
+      # 'promise-retry'). Use corepack to pin npm 11 instead; corepack
+      # ships with Node 22 and downloads the package manager directly
+      # rather than relying on npm to upgrade itself.
+      - name: Pin npm 11 via corepack
+        run: |
+          corepack enable
+          corepack prepare npm@11.13.0 --activate
+          npm --version
+      # The platform package's `prepack` (scripts/build-platform.js)
+      # syncs its version to root and cross-compiles its binary, so
+      # `npm publish` alone is enough here.
       - name: Publish platform package
         run: |
-          npm install -g npm@11
           cd "npm/${{ matrix.triple }}"
           npm publish --access public --provenance
 
@@ -57,11 +66,15 @@ jobs:
         with:
           node-version: 22.x
           registry-url: "https://registry.npmjs.org"
-      # Root `prepack` (scripts/sync-optional-deps.js) rewrites
-      # optionalDependencies to the current root version so the published
-      # tarball pins the platform packages we just published above. Root
-      # `prepare` (`make install`) needs Go for go mod tidy/vendor.
-      - name: Publish root package
+      - name: Pin npm 11 via corepack
         run: |
-          npm install -g npm@11
-          npm publish --access public --provenance
+          corepack enable
+          corepack prepare npm@11.13.0 --activate
+          npm --version
+      # Root `prepack` (scripts/sync-optional-deps.js) rewrites
+      # optionalDependencies to the current root version so the
+      # published tarball pins the platform packages we just published
+      # above. Root `prepare` (`make install`) needs Go for go mod
+      # tidy/vendor.
+      - name: Publish root package
+        run: npm publish --access public --provenance
