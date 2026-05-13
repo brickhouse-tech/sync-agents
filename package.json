@@ -1,6 +1,6 @@
 {
   "name": "@brickhouse-tech/sync-agents",
-  "version": "0.1.21",
+  "version": "0.2.0",
   "description": "Simple scripts to DRY up common agent interactions across multiple LLM providers.",
   "keywords": [
     "agents",
@@ -43,7 +43,8 @@
     "test:sh": "npx bats test/",
     "test:go": "make test",
     "prepare": "make install",
-    "prepack": "node scripts/sync-optional-deps.js"
+    "prepack": "node scripts/sync-optional-deps.js",
+    "bootstrap:publish": "bash scripts/bootstrap-platform-publish.sh"
   },
   "devDependencies": {
     "@commitlint/cli": "^20",
