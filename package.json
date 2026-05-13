@@ -51,7 +51,6 @@
     "@commitlint/config-conventional": "^20",
     "commitlint": "20",
     "concurrently": "^9.2.1",
-    "shellcheck": "^4.1.0",
     "sort-package-json": ">=3"
   }
 }
