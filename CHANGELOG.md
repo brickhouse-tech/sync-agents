@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.2.2](https://github.com/brickhouse-tech/sync-agents/compare/v0.2.1...v0.2.2) (2026-05-13)
+
+
+### Bug Fixes
+
+* **ci:** disable SC2120/SC2119 style warnings ([a3176c2](https://github.com/brickhouse-tech/sync-agents/commit/a3176c2b9f14015c5459c8683d0f4d4e7e768680))
+* **ci:** drop flaky shellcheck npm wrapper, use system shellcheck ([0212eb4](https://github.com/brickhouse-tech/sync-agents/commit/0212eb4f434c049fc7001db1157d13d0ce9831b2)), closes [#23](https://github.com/brickhouse-tech/sync-agents/issues/23)
+
 ## [0.2.1](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.21...v0.2.1) (2026-05-13)
 
 ## [0.1.21](https://github.com/brickhouse-tech/sync-agents/compare/v0.1.20...v0.1.21) (2026-05-05)
