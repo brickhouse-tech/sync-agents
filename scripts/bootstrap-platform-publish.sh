@@ -15,7 +15,10 @@
 #   export NPM_TOKEN=npm_xxxxxxxxxxxx   # classic automation token
 #   ./scripts/bootstrap-platform-publish.sh
 
-set -euo pipefail
+set -eo pipefail
+# Intentionally not `set -u` — macOS ships bash 3.2 where empty-array
+# expansions like `"${ARR[@]}"` trip the unbound check even when the
+# array was declared. Iteration on the result arrays would error.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -46,9 +49,9 @@ echo "Root version: $ROOT_VERSION"
 echo
 
 PLATFORMS=(darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64)
-PUBLISHED=()
-SKIPPED=()
-FAILED=()
+# `set -u` treats an empty array reference as unbound in bash < 4.4; declare
+# the arrays without an initial value list to avoid that quirk.
+declare -a PUBLISHED SKIPPED FAILED
 
 for triple in "${PLATFORMS[@]}"; do
   pkg="@brickhouse-tech/sync-agents-$triple"
