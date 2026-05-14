@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.2.5](https://github.com/brickhouse-tech/sync-agents/compare/v0.2.4...v0.2.5) (2026-05-14)
+
+
+### Features
+
+* hoist Go module to repo root for first-class `go install` + goreleaser ([ba335bc](https://github.com/brickhouse-tech/sync-agents/commit/ba335bc02dcb9726bdd6dc0ab199d105ea750b88))
+
+
+### Bug Fixes
+
+* **release:** sync optionalDependencies into release commit via postbump ([2eae388](https://github.com/brickhouse-tech/sync-agents/commit/2eae3889e9d85ae83614f6d5439a6bd052dfeef9))
+
 ## [0.2.4](https://github.com/brickhouse-tech/sync-agents/compare/v0.2.3...v0.2.4) (2026-05-13)
 
 
