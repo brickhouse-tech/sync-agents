@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v6
         with:
-          go-version-file: go/go.mod
+          go-version-file: go.mod
       # Node 24 (LTS since Oct 2025) bundles npm 11.x out of the box —
       # 24.15.0 ships with npm 11.12.1, well above the 11.5.1 minimum
       # for OIDC trusted publishing + --provenance. No corepack pin or
@@ -55,7 +55,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v6
         with:
-          go-version-file: go/go.mod
+          go-version-file: go.mod
       - uses: actions/setup-node@v6
         with:
           node-version: 24.x
