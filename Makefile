@@ -8,10 +8,10 @@ PLATFORMS := darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64
 .PHONY: install build build-platform build-all test test-go clean
 
 install:
-	cd go && go mod tidy -e && go mod vendor
+	go mod tidy -e && go mod vendor
 
 build:
-	cd go && go build $(LDFLAGS) -o ../bin/sync-agents ./cmd/sync-agents/
+	go build $(LDFLAGS) -o bin/sync-agents ./
 
 # Cross-compile a single platform binary into npm/$(PLATFORM)/bin/. Invoked
 # by each platform package's `prepack` script via scripts/build-platform.js
@@ -33,8 +33,8 @@ build-platform: install
 	 out=npm/$$triple/bin/sync-agents$$ext; \
 	 echo "==> $$triple ($$goos/$$goarch) -> $$out"; \
 	 mkdir -p npm/$$triple/bin; \
-	 (cd go && CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch \
-	   go build $(LDFLAGS) -o ../$$out ./cmd/sync-agents/)
+	 CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch \
+	   go build $(LDFLAGS) -o $$out ./
 
 # Convenience: build every platform's binary in one shot (e.g. for local
 # verification). CI relies on each platform package's prepack instead.

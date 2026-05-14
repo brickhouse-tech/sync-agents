@@ -1,0 +1,56 @@
+version: 2
+project_name: sync-agents
+
+before:
+  hooks:
+    - sh -c 'v=$(jq -r .version package.json); if [ "v$v" != "{{ .Tag }}" ]; then echo "version drift: package.json=$v tag={{ .Tag }}" >&2; exit 1; fi'
+    - go mod tidy
+
+builds:
+  - id: sync-agents
+    main: ./
+    binary: sync-agents
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/brickhouse-tech/sync-agents/internal/version.Version={{ .Env.SYNC_AGENTS_VERSION }}
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+
+checksum:
+  name_template: checksums.txt
+
+# auto-release.yml (org reusable) creates the GitHub Release with
+# --generate-notes; goreleaser must only append assets, never duplicate it.
+release:
+  github:
+    owner: brickhouse-tech
+    name: sync-agents
+  draft: false
+  prerelease: auto
+  mode: append
+  use_existing_draft: false
+  skip_upload: false
+
+# Disable goreleaser's own changelog — the Release notes come from
+# auto-release.yml's `gh release create --generate-notes`.
+changelog:
+  disable: true

@@ -1,0 +1,41 @@
+name: goreleaser
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # upload assets to releases
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      # Single source of truth: package.json. The org reusable
+      # release.yml runs `npx commit-and-tag-version` on push to main,
+      # so the tag and package.json should always agree. Fail fast if
+      # they don't.
+      - name: Export version from package.json
+        run: |
+          v=$(jq -r .version package.json)
+          tag="${GITHUB_REF_NAME}"
+          if [ "v$v" != "$tag" ]; then
+            echo "::error::version drift: package.json=$v tag=$tag"
+            exit 1
+          fi
+          echo "SYNC_AGENTS_VERSION=$v" >> "$GITHUB_ENV"
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SYNC_AGENTS_VERSION: ${{ env.SYNC_AGENTS_VERSION }}
