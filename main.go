@@ -247,6 +247,74 @@ func main() {
 	inheritCmd.Flags().StringVar(&inheritRemove, "remove", "", "Remove inheritance link by label")
 	rootCmd.AddCommand(inheritCmd)
 
+	// promote — copy a local .agents/ artifact into ~/.agents/.
+	//
+	// Two invocation forms (SPEC-002 §Requirement: Promote command):
+	//   sync-agents promote <type> <name>     // canonical
+	//   sync-agents promote <path>            // path-form sugar
+	//
+	// The canonical form takes type ∈ {rule, skill, workflow} and a
+	// bare name; the path form auto-detects both from a path under
+	// .agents/. --force and --dry-run are honored via the persistent
+	// flags wired at the rootCmd level.
+	promoteCmd := &cobra.Command{
+		Use:   "promote <type> <name> | <path>",
+		Short: "Promote a local .agents/ artifact to the global ~/.agents/ tree",
+		Args:  cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var typ agent.ArtifactType
+			var name string
+			if len(args) == 2 {
+				// Canonical form: validate the type string against
+				// the documented set; we accept singular and plural
+				// here to match the existing `add` command.
+				t, ok := agent.NormalizeArtifactType(args[0])
+				if !ok {
+					app.Error(fmt.Sprintf("unknown type %q; must be one of: rule, skill, workflow", args[0]))
+					return fmt.Errorf("unknown type")
+				}
+				typ = t
+				name = args[1]
+			} else {
+				// Path form: detect type+name from the path.
+				t, n, err := agent.DetectArtifact(args[0])
+				if err != nil {
+					app.Error(err.Error())
+					return err
+				}
+				typ = t
+				name = n
+			}
+			return app.CmdPromote(typ, name, agent.PromoteOpts{
+				Force:  app.Force,
+				DryRun: app.DryRun,
+			})
+		},
+	}
+	rootCmd.AddCommand(promoteCmd)
+
+	// global — command group for user-scope (~/.agents) operations.
+	// Subcommands today: init. SPEC-002's promote/global sync/status/
+	// clean land in subsequent PRs.
+	globalCmd := &cobra.Command{
+		Use:   "global",
+		Short: "Manage the user-scope ~/.agents/ tree",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Default RunE on the parent prints help; cobra handles
+			// this automatically when there are subcommands, but
+			// being explicit matches the surrounding command style.
+			return cmd.Help()
+		},
+	}
+	globalCmd.AddCommand(&cobra.Command{
+		Use:   "init",
+		Short: "Initialize ~/.agents/ with the standard skeleton",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return app.CmdGlobalInit()
+		},
+	})
+	rootCmd.AddCommand(globalCmd)
+
 	if err := rootCmd.Execute(); err != nil {
 		// Check for unknown command/option patterns
 		errStr := err.Error()
