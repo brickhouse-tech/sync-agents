@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "postbump": "node scripts/sync-optional-deps.js"
+  }
+}
