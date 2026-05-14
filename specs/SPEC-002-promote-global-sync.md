@@ -23,19 +23,19 @@ first-class requirement alongside the existing bats integration tests.
 
 Today `sync-agents sync` links `.agents/` into per-project provider dirs
 (`.claude/`, `.windsurf/`, `.cursor/`, `.github/copilot/`). There is no path
-to make a rule, skill, or workflow available *globally* — across every project
+to make a rule, skill, or workflow available _globally_ — across every project
 on the machine — without manually copying files.
 
 Provider conventions for global config differ from local:
 
-| Provider      | Local dir             | Global dir (user-level)        |
-|---------------|-----------------------|-------------------------------|
-| Claude        | `.claude/`            | `~/.claude/`                  |
-| Windsurf      | `.windsurf/`          | (local only; Codeium is global)|
-| Codeium       | `.windsurf/`          | `~/.codeium/`                 |
-| Cursor        | `.cursor/`            | `~/.cursor/`                  |
-| Copilot       | `.github/copilot/`    | `~/.github/copilot/`          |
-| Codex         | `.codex/`             | `~/.codex/`                   |
+| Provider | Local dir          | Global dir (user-level)         |
+| -------- | ------------------ | ------------------------------- |
+| Claude   | `.claude/`         | `~/.claude/`                    |
+| Windsurf | `.windsurf/`       | (local only; Codeium is global) |
+| Codeium  | `.windsurf/`       | `~/.codeium/`                   |
+| Cursor   | `.cursor/`         | `~/.cursor/`                    |
+| Copilot  | `.github/copilot/` | `~/.github/copilot/`            |
+| Codex    | `.codex/`          | `~/.codex/`                     |
 
 The `.windsurf/` directory is **local-only**; Codeium's global directory
 (`~/.codeium/`) is the correct global target for Windsurf/Codeium users.
@@ -157,13 +157,15 @@ subdirectories into each supported global provider directory.
 
 Global provider directory map:
 
-| Target token | Global directory                          | Subdirs linked             |
-|--------------|-------------------------------------------|----------------------------|
-| `claude`     | `~/.claude/`                              | `rules/`, `skills/`, `workflows/` |
-| `codeium`    | `~/.codeium/`                             | `rules/`, `skills/`, `workflows/` |
-| `cursor`     | `~/.cursor/`                              | `rules/`, `skills/`, `workflows/` |
-| `copilot`    | `~/.github/copilot/`                      | `rules/`, `skills/`, `workflows/` |
-| `codex`      | `~/.codex/`                               | `rules/`, `skills/`, `workflows/` |
+| scope     | Target token | Global directory                                  | local dir mapping (for sync) / symlink | INVOCABLE ? (/)    | Context to Sync to                                          |
+| --------- | ------------ | ------------------------------------------------- | -------------------------------------- | ------------------ | ----------------------------------------------------------- |
+| skills    | `claude`     | `~/.claude/skills/${name}/SKILL.md`               | `~/.claude/skills/${name}/SKILL.md`    | YES                | 1 to 1                                                      |
+| skills    | `windsurf`   | `~/.codeium/windsurf/skills/${name}/SKILL.md`     | `~/.windsurf/skills/${name}/SKILL.md`  | NO auto run        | 1 to 2 (workflows/skills) claudee skills picked by windsurf |
+| skills    | `github`     | `~/.github/skills/${name}/SKILL.md`               | `~/.github/skills/${name}/SKILL.md`    | YES                | 1 to 1                                                      |
+| rules     | `claude`     | `~/.claude/rules/${name}.md`                      | `~/.claude/rules/${name}.md`           | NO                 | 1 to 1                                                      |
+| rules     | `windsurf`   | `~/.codeium/windsurf/memories/global_rules.md`    | IGNORED                                | NO                 | 1 to 0 or global concat                                     |
+| rules     | `claude`     | `~/.claude/rules/${name}.md`                      | `~/.claude/rules/${name}.md`           | NO                 | 1 to 1                                                      |
+| workflows | `windsurf`   | `~/.codeium/windsurf/global_workflows/${name}.md` | `~/.windsurf/workflows/${name}.md`     | Yes ~ Claude Skill | 1 to 1                                                      |
 
 Note: `.windsurf/` is **local-only**. The global Windsurf target is `codeium`
 (`~/.codeium/`).
@@ -353,11 +355,13 @@ only. The global Windsurf target is `codeium`.
 ### Promote — copy semantics
 
 `promote` uses `os.CopyFS` / recursive copy, **not** symlinks, because:
+
 1. The global store should not have project-relative symlinks.
 2. The promoted copy is the global canonical version; the project copy is the
    source of the promotion, not an ongoing reference.
 
 Skill promotion copies the entire directory tree:
+
 ```
 .agents/skills/foo/ → ~/.agents/skills/foo/   (deep copy)
 ```
@@ -450,11 +454,11 @@ add `test:unit` as `go test ./...` and update `test` script:
 - [ ] `TestGlobalStatus` — correct `[synced]` / `[missing]` output.
 - [ ] `TestGlobalClean` — removes only sync-agents symlinks.
 - [ ] `TestResolveGlobalTargetDir` — correct path for each token; `windsurf`
-  returns `""` (not a global target).
+      returns `""` (not a global target).
 - [ ] `TestGlobalRootOverride` — `App.GlobalRoot` field is used instead of
-  `~/.agents/` when set.
+      `~/.agents/` when set.
 - [ ] `TestVersionSmoke` — `version.Version` is not empty string (regression
-  guard from SPEC-001).
+      guard from SPEC-001).
 
 ### bats integration tests (`test/sync-agents.bats`)
 
