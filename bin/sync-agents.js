@@ -1,8 +1,7 @@
 #!/usr/bin/env node
-// Launcher: prefer the Go binary shipped via the matching platform package
-// (@brickhouse-tech/sync-agents-<os>-<arch>); fall back to the bash script
-// at src/sh/sync-agents.sh so the package never bricks on an unsupported
-// triple.
+// Launcher: resolve the Go binary shipped via the matching platform package
+// (@brickhouse-tech/sync-agents-<os>-<arch>). Exits with a clear error on
+// unsupported triples rather than silently falling back to a bash script.
 
 const { spawnSync } = require("node:child_process");
 const path = require("node:path");
@@ -17,22 +16,25 @@ function resolveGoBinary() {
     const candidate = path.join(path.dirname(pkgJson), "bin", exe);
     if (fs.existsSync(candidate)) return candidate;
   } catch {
-    // platform package not installed (npm skipped it via os/cpu mismatch
-    // or it failed as an optionalDependency); fall through to bash.
+    // platform package not installed or not available for this triple.
   }
   return null;
 }
 
-function fallbackShellScript() {
-  return path.join(__dirname, "..", "src", "sh", "sync-agents.sh");
+const target = resolveGoBinary();
+
+if (!target) {
+  console.error(
+    `sync-agents: no pre-built binary for ${process.platform}/${process.arch}.\n` +
+    `Install via one of the supported channels:\n` +
+    `  go install github.com/brickhouse-tech/sync-agents@latest\n` +
+    `  brew install brickhouse-tech/tap/sync-agents\n` +
+    `  https://github.com/brickhouse-tech/sync-agents/releases`
+  );
+  process.exit(1);
 }
 
-const target = resolveGoBinary() ?? fallbackShellScript();
-const isShell = target.endsWith(".sh");
-
-const result = spawnSync(isShell ? "bash" : target, isShell ? [target, ...process.argv.slice(2)] : process.argv.slice(2), {
-  stdio: "inherit",
-});
+const result = spawnSync(target, process.argv.slice(2), { stdio: "inherit" });
 
 if (result.error) {
   console.error(`sync-agents: failed to exec ${target}: ${result.error.message}`);

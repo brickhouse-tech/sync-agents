@@ -42,7 +42,7 @@ build-all:
 	@for p in $(PLATFORMS); do $(MAKE) build-platform PLATFORM=$$p; done
 
 test: build
-	SYNC_AGENTS_BIN=bin/sync-agents npx bats test/sync-agents.bats
+	npx bats test/sync-agents.bats
 
 test-go: test
 

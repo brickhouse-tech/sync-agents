@@ -1,10 +1,11 @@
 #!/usr/bin/env bats
 
-# Resolve the script under test relative to this test file
-_DEFAULT_SCRIPT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../src/sh" && pwd)/sync-agents.sh"
-SCRIPT="${SYNC_AGENTS_BIN:-$_DEFAULT_SCRIPT}"
+# Resolve the Go binary under test. SYNC_AGENTS_BIN overrides the default for
+# CI environments where the binary lives at a non-standard path.
+_REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+SCRIPT="${SYNC_AGENTS_BIN:-$_REPO_ROOT/bin/sync-agents}"
 # Read version from package.json so the test stays in sync after bumps
-PACKAGE_VERSION="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/package.json" | head -1)"
+PACKAGE_VERSION="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$_REPO_ROOT/package.json" | head -1)"
 
 setup() {
   # Create a temporary directory for each test
