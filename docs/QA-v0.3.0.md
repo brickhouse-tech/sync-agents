@@ -14,7 +14,7 @@ git checkout feat/v0.3.0
 git pull --ff-only
 
 # Build and install to a local bin dir (stays off your $PATH by default)
-make build          # produces bin/sync-agents
+npm run build       # produces bin/sync-agents
 
 # Quick smoke-test — must print version, not "dev"
 ./bin/sync-agents --version

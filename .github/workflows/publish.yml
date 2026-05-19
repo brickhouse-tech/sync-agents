@@ -63,7 +63,7 @@ jobs:
       # Root `prepack` (scripts/sync-optional-deps.js) rewrites
       # optionalDependencies to the current root version so the
       # published tarball pins the platform packages we just published
-      # above. Root `prepare` (`make install`) needs Go for go mod
+      # above. Root `prepare` (scripts/install.js) needs Go for go mod
       # tidy/vendor.
       - name: Publish root package
         run: npm publish --access public --provenance
