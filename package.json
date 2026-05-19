@@ -23,8 +23,7 @@
     "sync-agents": "bin/sync-agents.js"
   },
   "files": [
-    "bin/sync-agents.js",
-    "src/**/*"
+    "bin/sync-agents.js"
   ],
   "optionalDependencies": {
     "@brickhouse-tech/sync-agents-darwin-arm64": "0.2.5",
@@ -38,9 +37,7 @@
     "picomatch": ">=4.0.4"
   },
   "scripts": {
-    "lint": "shellcheck src/sh/*.sh",
-    "test": "npx concurrently --names \"sh,go\" -c \"cyan,magenta\" \"npm run test:sh\" \"npm run test:go\"",
-    "test:sh": "npx bats test/",
+    "test": "make test",
     "test:go": "make test",
     "prepare": "make install",
     "prepack": "node scripts/sync-optional-deps.js",
@@ -50,7 +47,6 @@
     "@commitlint/cli": "^21",
     "@commitlint/config-conventional": "^21",
     "commitlint": "21",
-    "concurrently": "^9.2.1",
     "sort-package-json": ">=3"
   }
 }
