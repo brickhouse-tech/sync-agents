@@ -22,6 +22,17 @@ form that's easier to read end-to-end than scattered code comments.
   describes how per-tool global directories (like `~/.claude/`) are
   derived from the resolver.
 
+### Commands
+
+- [`sync-agents promote`](./commands/promote.md) — Copy a project
+  artifact (rule, skill, or workflow) into the user-scope
+  `~/.agents/` tree. Supports both canonical
+  (`promote <type> <name>`) and path-form (`promote <path>`)
+  invocation.
+- [`sync-agents global init`](./commands/global-init.md) — Create
+  the user's global `.agents/` skeleton (`rules/`, `skills/`,
+  `workflows/`, `config`). Idempotent.
+
 ### Specs
 
 The authoritative source for *what we're building and why* lives in
