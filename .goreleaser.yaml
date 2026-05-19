@@ -38,6 +38,18 @@ archives:
 checksum:
   name_template: checksums.txt
 
+brews:
+  - repository:
+      owner: brickhouse-tech
+      name: homebrew-tap
+    homepage: https://github.com/brickhouse-tech/sync-agents
+    description: One set of agent rules to rule them all — sync AI coding agent configs across providers
+    license: MIT
+    install: |
+      bin.install "sync-agents"
+    test: |
+      system "#{bin}/sync-agents", "--version"
+
 # auto-release.yml (org reusable) creates the GitHub Release with
 # --generate-notes; goreleaser must only append assets, never duplicate it.
 release:
