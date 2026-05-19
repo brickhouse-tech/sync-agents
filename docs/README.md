@@ -21,6 +21,12 @@ form that's easier to read end-to-end than scattered code comments.
   tree lives: programmatic field → env var → `$HOME/.agents`. Also
   describes how per-tool global directories (like `~/.claude/`) are
   derived from the resolver.
+- [Semantic routing](./architecture/semantic-routing.md) — Why an
+  artifact's bucket (`rules/`, `skills/`, `workflows/`) is not the
+  same thing as its behavioral category (`invocable` / `passive`),
+  and how `sync-agents` resolves the latter via YAML frontmatter or
+  per-bucket defaults to route correctly into each tool's matching
+  destination.
 
 ### Commands
 

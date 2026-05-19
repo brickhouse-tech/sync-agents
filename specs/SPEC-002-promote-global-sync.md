@@ -4,10 +4,18 @@ title: "Promote to Global: sync skills, rules, and workflows to provider global 
 status: Draft
 owner: nmccready
 created: 2026-05-13
-updated: 2026-05-14 (rev 3: added semantic-aware routing — buckets are not behavioral categories; invocable vs passive frontmatter contract; Claude skill ⇄ Windsurf workflow re-routing; passive concat for Windsurf rules)
+updated: 2026-05-14 (rev 4: Technical Design snippets re-synced to PR A + PR B implementation — Tool registry replaces string-switch ResolveGlobalTargetDir; method renamed GlobalRoot → ResolveGlobalRoot; CmdPromote takes ArtifactType not bare string; `--sync` flag explicitly tagged as PR-C deferred)
 prior_revisions:
+  - rev 3 (2026-05-14): added semantic-aware routing — buckets are not behavioral categories; invocable vs passive frontmatter contract; Claude skill ⇄ Windsurf workflow re-routing; passive concat for Windsurf rules
   - rev 2 (2026-05-14): merged SPEC-002-global-scope-promotion into this doc; copy semantics confirmed; env-var root override + path-form promote + idempotency requirements folded in; demote/relocate deferred to Future Work
   - rev 1 (2026-05-13): initial draft
+
+implementation_status:
+  - PR A landed (a84c13f): Scope + Tool types + ResolveGlobalRoot resolver. Foundation only — no behavior change to existing commands.
+  - PR B landed (f63d143): CmdPromote (both invocation forms) + CmdGlobalInit + their CLI wiring + 21 unit tests + user-facing docs.
+  - PR C pending: CmdGlobalSync with semantic-aware routing, concat regeneration, `--sync` flag on `promote`.
+  - PR D pending: CmdGlobalStatus + CmdGlobalClean.
+  - PR E pending: Makefile/npm test wiring for `go test ./...`, README updates, bats integration.
 ---
 
 # [SPEC-002] Feature: Promote / Global Sync for Skills, Rules, and Workflows
@@ -614,54 +622,84 @@ The Makefile `test-go` target SHALL run `go test ./...` (not bats).
 // internal/agent/agent.go (additions)
 
 // CmdPromote promotes a single item from .agents/ to ~/.agents/.
-// `name` may be either a bare name (e.g. "my-rule") OR a path under .agents/.
-// In the path form, typ may be empty and is inferred.
-func (a *App) CmdPromote(typ, name string, opts PromoteOpts) error
+// The path-form invocation is exposed as a thin shim in main.go that
+// calls DetectArtifact() to derive (typ, name) before invoking this
+// method. The library-level signature stays typed.
+func (a *App) CmdPromote(typ ArtifactType, name string, opts PromoteOpts) error
 
 // CmdGlobalInit initializes ~/.agents/ with the standard skeleton.
 func (a *App) CmdGlobalInit() error
 
 // CmdGlobalSync links ~/.agents/ subdirs into global provider dirs.
+// (To be added in PR C.)
 func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error
 
 // CmdGlobalStatus reports the state of global provider symlinks.
+// (To be added in PR D.)
 func (a *App) CmdGlobalStatus() error
 
 // CmdGlobalClean removes global symlinks created by sync-agents.
+// (To be added in PR D.)
 func (a *App) CmdGlobalClean(opts GlobalCleanOpts) error
 
-// GlobalRoot returns the resolved global agents directory.
+// ResolveGlobalRoot returns the resolved global agents directory.
 // Resolution order: App.GlobalRoot field > $SYNC_AGENTS_GLOBAL_ROOT > $HOME/.agents.
-func (a *App) GlobalRoot() string
+// Also exposed: ResolveGlobalRootParent (returns filepath.Dir of the above)
+// and ResolveToolDir(tool, scope) for callers that want the per-tool
+// dir at either scope.
+func (a *App) ResolveGlobalRoot() string
+func (a *App) ResolveGlobalRootParent() string
+func (a *App) ResolveToolDir(tool Tool, scope Scope) string
 ```
 
-### Global target map
+### Tool registry (replaces the string-switch ResolveGlobalTargetDir
+sketch from rev 1–3)
+
+A typed `Tool` struct with a per-`Scope` directory map replaces the
+original string-keyed switch statement. The same five tools are
+supported; the registry encodes the windsurf/codeium asymmetry once,
+and any future tool gets added with one slice entry instead of patches
+to every call site.
 
 ```go
-// internal/agent/global.go (new file)
+// internal/agent/tool.go (new file)
 
-var GlobalTargets = []string{"claude", "codeium", "cursor", "copilot", "codex"}
-
-func (a *App) ResolveGlobalTargetDir(target string) string {
-    root := a.globalParentRoot()  // either App.GlobalRoot's parent, $SYNC_AGENTS_GLOBAL_ROOT's parent, or $HOME
-    switch target {
-    case "claude":
-        return filepath.Join(root, ".claude")
-    case "codeium":
-        return filepath.Join(root, ".codeium")
-    case "cursor":
-        return filepath.Join(root, ".cursor")
-    case "copilot":
-        return filepath.Join(root, ".github", "copilot")
-    case "codex":
-        return filepath.Join(root, ".codex")
-    }
-    return ""
+type Tool struct {
+    ID         string                  // canonical, lowercase
+    Aliases    []string                // e.g. "windsurf" → codeium
+    DirByScope map[Scope]string        // {ScopeLocal: ".windsurf",
+                                       //  ScopeGlobal: ".codeium"}
+    LocalOnly  bool                    // future opt-out for tools w/o global
 }
+
+var Tools = []Tool{
+    {ID: "claude",  DirByScope: map[Scope]string{ScopeLocal: ".claude", ScopeGlobal: ".claude"}},
+    {ID: "codeium", Aliases: []string{"windsurf"},
+                    DirByScope: map[Scope]string{ScopeLocal: ".windsurf", ScopeGlobal: ".codeium"}},
+    {ID: "cursor",  DirByScope: map[Scope]string{ScopeLocal: ".cursor", ScopeGlobal: ".cursor"}},
+    {ID: "copilot", DirByScope: map[Scope]string{ScopeLocal: ".github/copilot", ScopeGlobal: ".github/copilot"}},
+    {ID: "codex",   DirByScope: map[Scope]string{ScopeLocal: ".codex", ScopeGlobal: ".codex"}},
+}
+
+func (t Tool) DirForScope(scope Scope, parentRoot string) string
+func (t Tool) HasScope(scope Scope) bool
+func (t Tool) Matches(name string) bool
+
+func ResolveTool(name string) (Tool, bool)
+func ToolIDs() []string
+func ToolIDsForScope(scope Scope) []string  // replaces the GlobalTargets constant
 ```
 
-Note: `windsurf` is **not** in `GlobalTargets`. It maps to local `.windsurf/`
-only. The global Windsurf target is `codeium`.
+`ToolIDsForScope(ScopeGlobal)` returns the same five names the rev-3
+draft called `GlobalTargets`. There is no separate `GlobalTargets`
+constant — the registry is the single source of truth, and
+LocalOnly-tool opt-out works automatically.
+
+Note: `windsurf` is **not** a separate `Tool` in the registry. It is
+an alias on the `codeium` Tool. `ResolveTool("windsurf")` and
+`ResolveTool("codeium")` return the same value. This matches SPEC
+intent (`.windsurf/` is local-only; `~/.codeium/` is the global) and
+keeps the registry declarative.
 
 ### App.GlobalRoot field
 
@@ -754,19 +792,27 @@ per-artifact pass.
 
 ```go
 // detectArtifact maps a path under .agents/ to (type, name).
-// Returns "" type if not under a known subdirectory.
-func detectArtifact(rel string) (typ, name string) {
-    // rel is project-root-relative
+// Returns an error when not under a known subdirectory so the CLI
+// can suggest the explicit type+name form. Shipped form is exported
+// (DetectArtifact) and returns the typed ArtifactType, not a bare
+// string.
+func DetectArtifact(rel string) (ArtifactType, string, error) {
+    rel = filepath.Clean(rel)
+    rel = strings.TrimPrefix(rel, "./")
+    slashed := filepath.ToSlash(rel)  // normalize for forward-slash prefix checks
     switch {
-    case strings.HasPrefix(rel, ".agents/skills/"):
-        // strip prefix; first path component is the name
-        return "skill", firstSegmentAfter(rel, ".agents/skills/")
-    case strings.HasPrefix(rel, ".agents/rules/") && strings.HasSuffix(rel, ".md"):
-        return "rule", strings.TrimSuffix(filepath.Base(rel), ".md")
-    case strings.HasPrefix(rel, ".agents/workflows/") && strings.HasSuffix(rel, ".md"):
-        return "workflow", strings.TrimSuffix(filepath.Base(rel), ".md")
+    case strings.HasPrefix(slashed, ".agents/skills/"):
+        after := strings.TrimPrefix(slashed, ".agents/skills/")
+        // first path component is the skill name; SKILL.md inside a
+        // skill dir also resolves correctly because the name comes
+        // from the segment before /SKILL.md.
+        return ArtifactSkill, strings.SplitN(after, "/", 2)[0], nil
+    case strings.HasPrefix(slashed, ".agents/rules/") && strings.HasSuffix(slashed, ".md"):
+        return ArtifactRule, strings.TrimSuffix(filepath.Base(slashed), ".md"), nil
+    case strings.HasPrefix(slashed, ".agents/workflows/") && strings.HasSuffix(slashed, ".md"):
+        return ArtifactWorkflow, strings.TrimSuffix(filepath.Base(slashed), ".md"), nil
     }
-    return "", ""
+    return "", "", fmt.Errorf("path %q is not under .agents/{rules,skills,workflows}/", rel)
 }
 ```
 
@@ -775,8 +821,8 @@ func detectArtifact(rel string) (typ, name string) {
 New top-level commands added to `main.go` / cobra command tree:
 
 ```
-sync-agents promote <type> <name>     [--force] [--dry-run] [--sync] [--global-root P]
-sync-agents promote <path>            [--force] [--dry-run] [--sync] [--global-root P]
+sync-agents promote <type> <name>     [--force] [--dry-run] [--sync*] [--global-root P]
+sync-agents promote <path>            [--force] [--dry-run] [--sync*] [--global-root P]
 sync-agents global init               [--global-root P]
 sync-agents global sync               [--targets t1,t2] [--force] [--dry-run] [--global-root P]
 sync-agents global status             [--targets t1,t2] [--global-root P]
@@ -819,17 +865,22 @@ test: build
 
 ### Go unit tests (`go test ./...`)
 
-- [ ] `TestPromoteRule` — copies rule from fake project root to fake global root.
-- [ ] `TestPromoteSkill` — deep-copies skill dir to fake global root.
-- [ ] `TestPromoteWorkflow` — copies workflow file.
-- [ ] `TestPromoteByPath_Skill` — `.agents/skills/foo` detected as `skill foo`.
-- [ ] `TestPromoteByPath_Rule` — `.agents/rules/foo.md` detected as `rule foo`.
-- [ ] `TestPromoteByPath_Unrecognised` — `notes/x.md` returns error.
-- [ ] `TestPromoteConflictNoForce` — returns error when destination exists.
-- [ ] `TestPromoteConflictForce` — overwrites when `--force`.
-- [ ] `TestPromoteDryRun` — no files written, expected output printed.
-- [ ] `TestPromoteMissingSource` — non-zero exit + error message.
-- [ ] `TestGlobalInit` — creates skeleton dirs; idempotent on second call.
+- [x] `TestCmdPromote_Rule` — copies rule from fake project root to fake global root. (PR B)
+- [x] `TestCmdPromote_Skill` — deep-copies skill dir; supporting files included. (PR B)
+- [x] `TestCmdPromote_Workflow` — copies workflow file. (PR B)
+- [x] `TestDetectArtifact_Skill` — `.agents/skills/foo` and `.../SKILL.md` both detected as `skill foo`. (PR B)
+- [x] `TestDetectArtifact_RuleAndWorkflow` — file-form paths detected. (PR B)
+- [x] `TestDetectArtifact_Unrecognised` — paths outside the buckets return error. (PR B)
+- [x] `TestCmdPromote_ConflictNoForce` — returns error when destination exists. (PR B)
+- [x] `TestCmdPromote_ConflictForce` — overwrites when `--force`. (PR B)
+- [x] `TestCmdPromote_DryRun` — no files written, `[dry-run]` printed. (PR B)
+- [x] `TestCmdPromote_MissingSource` — non-zero exit + error message names the artifact. (PR B)
+- [x] `TestCmdPromote_AutoCreatesParents` — works without prior `global init`. (PR B)
+- [x] `TestCmdGlobalInit_CreatesSkeleton` — creates skeleton dirs + canonical config. (PR B)
+- [x] `TestCmdGlobalInit_Idempotent` — second run preserves existing files. (PR B)
+- [x] `TestCmdGlobalInit_MissingSubdirRecreated` — partial-state recovery. (PR B)
+- [x] `TestCmdGlobalInit_DryRun` — no fs changes, `[dry-run]` printed. (PR B)
+- [x] `TestNormalizeArtifactType` — singular/plural/case normalization. (PR B)
 - [ ] `TestGlobalSync` — symlinks created for all configured targets; `~/.agents/AGENTS.md` is regenerated.
 - [ ] `TestGlobalSyncTargetFilter` — only specified targets touched.
 - [ ] `TestGlobalSyncConflictNoForce` — existing real dir skipped with warning.
@@ -858,11 +909,15 @@ test: build
       original file intact.
 - [ ] `TestGlobalStatus` — correct `[synced]` / `[missing]` output.
 - [ ] `TestGlobalClean` — removes only sync-agents symlinks.
-- [ ] `TestResolveGlobalTargetDir` — correct path for each token; `windsurf`
-      returns `""` (not a global target).
-- [ ] `TestGlobalRootEnvVar` — `$SYNC_AGENTS_GLOBAL_ROOT` reroutes operations.
-- [ ] `TestGlobalRootFlagOverridesEnv` — `--global-root` wins over env var.
-- [ ] `TestGlobalRootField` — `App.GlobalRoot` is used instead of env/HOME when set.
+- [x] `TestTool_DirForScope_Codeium` / `TestResolveToolDir_*` — correct
+      path for each tool at each scope; `windsurf` resolves to the same
+      Tool as `codeium` via the alias mechanism. (PR A)
+- [x] `TestResolveGlobalRoot_EnvBeatsHome` — `$SYNC_AGENTS_GLOBAL_ROOT` wins over `$HOME`. (PR A)
+- [x] `TestResolveGlobalRoot_FieldPrecedence` — `App.GlobalRoot` wins over env. (PR A)
+- [x] `TestResolveGlobalRoot_HomeDefault` — falls back to `$HOME/.agents`. (PR A)
+- [x] `TestResolveGlobalRoot_AbsolutePathNormalization` — relative paths get expanded. (PR A)
+- [x] `TestScope_String`, `TestParseScope_Valid`, `TestParseScope_Invalid` — Scope round-trip. (PR A)
+- [x] `TestResolveTool_AliasResolution` — windsurf alias resolves to codeium. (PR A)
 - [ ] `TestVersionSmoke` — `version.Version` is not empty string (regression
       guard from SPEC-001).
 
@@ -913,21 +968,51 @@ so they never touch the real `$HOME`.
 3. CHANGELOG: `feat: promote command and global sync for skills/rules/workflows`.
 4. Merge → reusable workflow cuts `vX.Y.Z` tag → goreleaser + npm publish.
 
-### Suggested implementation order (sub-steps within the PR)
+### Suggested implementation order (sub-steps split across PRs A–E)
 
-1. Add `GlobalRoot()` resolver + `App.GlobalRoot` field + env-var support; no
-   behavior change yet. Land first because every other step depends on it.
-2. Add `ResolveGlobalTargetDir` + `GlobalTargets` constant.
-3. Add `detectArtifact()` + unit tests.
-4. Implement `CmdPromote` (type+name form), then path form, then `--sync`.
-5. Implement `CmdGlobalInit`.
-6. Implement `CmdGlobalSync` (idempotency + repair built in from the start;
-   don't bolt on later).
-7. Implement `CmdGlobalStatus` + `CmdGlobalClean`.
-8. CLI wiring in `main.go`.
-9. Bats tests; switch them to `$SYNC_AGENTS_GLOBAL_ROOT=$BATS_TMPDIR/...`.
-10. Makefile/package.json scripts; verify `npm test` runs both suites.
-11. README + CHANGELOG.
+The order below reflects the actual PR sequence on `feat/specs`. PR A
+and PR B are landed; PR C–E are pending.
+
+**PR A — Foundation** ✅ landed at `a84c13f`
+1. Add `ResolveGlobalRoot()` resolver + `App.GlobalRoot` field +
+   `$SYNC_AGENTS_GLOBAL_ROOT` env-var support. No behavior change to
+   existing commands.
+2. Add `Tool` struct + `Tools` registry (replaces what rev-1 sketched
+   as `GlobalTargets` + string-switch `ResolveGlobalTargetDir`).
+3. Add `Scope` type, `ParseScope`, `ResolveToolDir(tool, scope)`.
+
+**PR B — CmdPromote + CmdGlobalInit** ✅ landed at `f63d143`
+4. Add `DetectArtifact()` + unit tests.
+5. Implement `CmdPromote` (type+name form and path-form sugar). The
+   `--sync` flag is intentionally deferred to PR C because it depends
+   on `CmdGlobalSync`.
+6. Implement `CmdGlobalInit`.
+7. CLI wiring for both commands.
+
+**PR C — CmdGlobalSync with semantic-aware routing**
+8. Add `Semantic` type + `ResolveSemantic` (frontmatter + bucket
+   default).
+9. Add `TargetDestination` + `ConcatTarget` + `RegenerateConcat` with
+   tmp+rename atomicity.
+10. Implement `CmdGlobalSync` (idempotency + repair built in from the
+    start; don't bolt on later).
+11. Wire `--sync` flag on `promote` to call CmdGlobalSync after
+    CmdPromote.
+12. CLI wiring for `global sync`.
+
+**PR D — CmdGlobalStatus + CmdGlobalClean**
+13. Implement `CmdGlobalStatus` (`[synced]` / `[missing]` / `[modified]`).
+14. Implement `CmdGlobalClean`.
+15. CLI wiring for both.
+
+**PR E — Test infrastructure + release wiring**
+16. Bats tests; switch them to `$SYNC_AGENTS_GLOBAL_ROOT=$BATS_TMPDIR/...`.
+17. Makefile/package.json scripts; verify `npm test` runs both suites
+    (AC-7, AC-8).
+18. README + CHANGELOG.
+
+*Asterisk on `--sync` in the CLI surface section above means "flag is
+declared in the spec but lands in PR C, not PR B."
 
 ---
 
