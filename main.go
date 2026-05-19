@@ -256,7 +256,10 @@ func main() {
 	// The canonical form takes type ∈ {rule, skill, workflow} and a
 	// bare name; the path form auto-detects both from a path under
 	// .agents/. --force and --dry-run are honored via the persistent
-	// flags wired at the rootCmd level.
+	// flags wired at the rootCmd level. --sync (added in PR C.2)
+	// runs `global sync` automatically after a successful promote.
+	var promoteSync bool
+	var promoteTargets string
 	promoteCmd := &cobra.Command{
 		Use:   "promote <type> <name> | <path>",
 		Short: "Promote a local .agents/ artifact to the global ~/.agents/ tree",
@@ -285,12 +288,25 @@ func main() {
 				typ = t
 				name = n
 			}
-			return app.CmdPromote(typ, name, agent.PromoteOpts{
+			if err := app.CmdPromote(typ, name, agent.PromoteOpts{
 				Force:  app.Force,
 				DryRun: app.DryRun,
-			})
+			}); err != nil {
+				return err
+			}
+			if promoteSync {
+				// Compose: run global sync immediately after promote.
+				// The --targets flag on promote is honored only when
+				// --sync is set; without --sync there's nothing for
+				// the targets list to constrain.
+				targets := parseTargetList(promoteTargets)
+				return app.CmdGlobalSync(agent.GlobalSyncOpts{Targets: targets})
+			}
+			return nil
 		},
 	}
+	promoteCmd.Flags().BoolVar(&promoteSync, "sync", false, "Run `global sync` after a successful promote")
+	promoteCmd.Flags().StringVar(&promoteTargets, "sync-targets", "", "Comma-separated tools to sync (only honored with --sync)")
 	rootCmd.AddCommand(promoteCmd)
 
 	// global — command group for user-scope (~/.agents) operations.
@@ -313,6 +329,28 @@ func main() {
 			return app.CmdGlobalInit()
 		},
 	})
+
+	// global sync — fan ~/.agents/ out to per-tool global directories.
+	//
+	// Routing happens via semantic (frontmatter → bucket default)
+	// rather than bucket name; see SPEC-002 §Semantic-aware routing
+	// and docs/architecture/semantic-routing.md. Per-tool destinations
+	// are computed by TargetDestination; concat targets (Windsurf
+	// memories, Copilot/Codex instructions.md) are regenerated atomically
+	// at the end of the sync.
+	var globalSyncTargets string
+	globalSyncCmd := &cobra.Command{
+		Use:   "sync",
+		Short: "Fan ~/.agents/ out to per-tool global directories via semantic-aware routing",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return app.CmdGlobalSync(agent.GlobalSyncOpts{
+				Targets: parseTargetList(globalSyncTargets),
+			})
+		},
+	}
+	globalSyncCmd.Flags().StringVar(&globalSyncTargets, "targets", "", "Comma-separated tools to sync (default: all registered)")
+	globalCmd.AddCommand(globalSyncCmd)
+
 	rootCmd.AddCommand(globalCmd)
 
 	if err := rootCmd.Execute(); err != nil {
@@ -388,4 +426,22 @@ func extractUnknownFlag(errStr string) string {
 		return strings.TrimSpace(errStr[i+2:])
 	}
 	return errStr
+}
+
+// parseTargetList splits a comma-separated tool-name list into a
+// trimmed string slice. Empty input returns nil so callers can pass
+// the result straight to GlobalSyncOpts.Targets, where nil means
+// "all tools."
+func parseTargetList(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	for _, t := range strings.Split(raw, ",") {
+		t = strings.TrimSpace(t)
+		if t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }

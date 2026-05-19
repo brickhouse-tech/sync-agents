@@ -38,6 +38,10 @@ form that's easier to read end-to-end than scattered code comments.
 - [`sync-agents global init`](./commands/global-init.md) — Create
   the user's global `.agents/` skeleton (`rules/`, `skills/`,
   `workflows/`, `config`). Idempotent.
+- [`sync-agents global sync`](./commands/global-sync.md) — Fan the
+  global `~/.agents/` tree out to per-tool global directories
+  (`~/.claude/`, `~/.codeium/`, …) using semantic-aware routing.
+  Composable with `promote --sync`.
 
 ### Specs
 
