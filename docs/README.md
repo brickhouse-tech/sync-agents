@@ -42,6 +42,14 @@ form that's easier to read end-to-end than scattered code comments.
   global `~/.agents/` tree out to per-tool global directories
   (`~/.claude/`, `~/.codeium/`, …) using semantic-aware routing.
   Composable with `promote --sync`.
+- [`sync-agents global status`](./commands/global-status.md) —
+  Read-only report of every per-tool destination's state: synced,
+  drifted, missing, not-a-symlink, or per-concat ok/stale/missing/
+  foreign. Output is grep-friendly.
+- [`sync-agents global clean`](./commands/global-clean.md) — Remove
+  sync-agents-owned symlinks and concat files from per-tool global
+  dirs. Two-check safety contract: symlinks must point into
+  `~/.agents/`, files must carry the banner.
 
 ### Specs
 

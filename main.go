@@ -351,6 +351,39 @@ func main() {
 	globalSyncCmd.Flags().StringVar(&globalSyncTargets, "targets", "", "Comma-separated tools to sync (default: all registered)")
 	globalCmd.AddCommand(globalSyncCmd)
 
+	// global status — read-only report of every per-tool destination's
+	// state. Useful for sanity-checking what a sync would do or
+	// confirming that a clean wiped everything.
+	var globalStatusTargets string
+	globalStatusCmd := &cobra.Command{
+		Use:   "status",
+		Short: "Report the state of per-tool global directories vs ~/.agents/",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return app.CmdGlobalStatus(agent.GlobalStatusOpts{
+				Targets: parseTargetList(globalStatusTargets),
+			})
+		},
+	}
+	globalStatusCmd.Flags().StringVar(&globalStatusTargets, "targets", "", "Comma-separated tools to report on (default: all registered)")
+	globalCmd.AddCommand(globalStatusCmd)
+
+	// global clean — remove sync-agents-owned symlinks and concat
+	// files from per-tool global dirs. Safety-gated: user-owned
+	// files (without the banner) and user-owned symlinks (pointing
+	// outside ~/.agents/) are left alone with warnings.
+	var globalCleanTargets string
+	globalCleanCmd := &cobra.Command{
+		Use:   "clean",
+		Short: "Remove sync-agents-owned global symlinks and concat files",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return app.CmdGlobalClean(agent.GlobalCleanOpts{
+				Targets: parseTargetList(globalCleanTargets),
+			})
+		},
+	}
+	globalCleanCmd.Flags().StringVar(&globalCleanTargets, "targets", "", "Comma-separated tools to clean (default: all registered)")
+	globalCmd.AddCommand(globalCleanCmd)
+
 	rootCmd.AddCommand(globalCmd)
 
 	if err := rootCmd.Execute(); err != nil {
