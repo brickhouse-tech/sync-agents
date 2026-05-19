@@ -5,7 +5,7 @@ LDFLAGS := -ldflags "-X github.com/brickhouse-tech/sync-agents/internal/version.
 # and the directories under npm/.
 PLATFORMS := darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64
 
-.PHONY: install build build-platform build-all test test-go clean
+.PHONY: install build build-platform build-all test test-integration test-go clean
 
 install:
 	go mod tidy -e && go mod vendor
@@ -42,7 +42,10 @@ build-all:
 	@for p in $(PLATFORMS); do $(MAKE) build-platform PLATFORM=$$p; done
 
 test: build
-	npx bats test/sync-agents.bats
+	npx bats test/sync-agents.bats test/integration-global.bats
+
+test-integration: build
+	npx bats test/integration-global.bats
 
 test-go: test
 
