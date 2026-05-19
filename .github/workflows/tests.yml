@@ -3,10 +3,8 @@ name: tests
 on:
   workflow_call:
   pull_request:
-    branches: ["main"]
     paths-ignore:
       - '.devcontainer/**'
-      - '.github/workflows/**'
 
 jobs:
   test:
@@ -22,8 +20,10 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
 
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
       - run: npm install
-      - run: npm run lint
       - run: npm test
 
   tests:

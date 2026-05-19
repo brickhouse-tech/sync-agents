@@ -2,15 +2,9 @@ name: commitlint
 
 on:
   workflow_call:
-  push:
-    paths-ignore:
-      - '.devcontainer/**'
-      - '.github/workflows/**'
   pull_request:
-    branches: ["main"]
     paths-ignore:
       - '.devcontainer/**'
-      - '.github/workflows/**'
 jobs:
   commitlint:
     runs-on: ubuntu-22.04
@@ -36,10 +30,5 @@ jobs:
           npm --version
           npx commitlint --version
 
-      - name: Validate current commit (last commit) with commitlint
-        if: github.event_name == 'push'
-        run: npx commitlint --last --verbose
-
       - name: Validate PR commits with commitlint
-        if: github.event_name == 'pull_request'
         run: npx commitlint --from ${{ github.event.pull_request.head.sha }}~${{ github.event.pull_request.commits }} --to ${{ github.event.pull_request.head.sha }} --verbose
