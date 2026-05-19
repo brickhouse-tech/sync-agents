@@ -11,10 +11,31 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// app is the singleton sync-agents state container used by every
+// command. PersistentPreRunE populates it from CLI flags before any
+// command's RunE fires.
+//
+// The package-level globals here are intentionally minimal — only
+// flag-target variables and the App instance. Anything more elaborate
+// (sub-app structs, dependency wiring) lives in internal/agent so
+// tests can construct an App without going through cobra.
 var (
-	app           = agent.NewApp()
-	customDir     string
+	app = agent.NewApp()
+
+	// customDir backs the persistent --dir/-d flag. Empty means "auto-
+	// detect via agent.FindProjectRoot".
+	customDir string
+
+	// customTargets backs the persistent --targets flag. Empty means
+	// "read from .agents/config" (agent.ReadConfigTargets).
 	customTargets string
+
+	// customGlobalRoot backs the persistent --global-root flag. Empty
+	// means "consult $SYNC_AGENTS_GLOBAL_ROOT then fall back to
+	// $HOME/.agents". See agent.ResolveGlobalRoot for the precedence
+	// chain and SPEC-002 §Configurable global root for the
+	// requirement.
+	customGlobalRoot string
 )
 
 func main() {
@@ -30,6 +51,15 @@ func main() {
 				app.ProjectRoot = abs
 			} else {
 				app.ProjectRoot = agent.FindProjectRoot("")
+			}
+
+			// --global-root takes precedence over the env var and the
+			// $HOME default, per SPEC-002 §Configurable global root.
+			// We assign the raw flag value to app.GlobalRoot; absolute-
+			// path normalization happens inside ResolveGlobalRoot so a
+			// non-CLI caller (test, library) sees the same behavior.
+			if customGlobalRoot != "" {
+				app.GlobalRoot = customGlobalRoot
 			}
 
 			if customTargets != "" {
@@ -62,6 +92,12 @@ func main() {
 	rootCmd.PersistentFlags().StringVar(&customTargets, "targets", "", "Comma-separated targets")
 	rootCmd.PersistentFlags().BoolVar(&app.DryRun, "dry-run", false, "Show what would be done")
 	rootCmd.PersistentFlags().BoolVar(&app.Force, "force", false, "Overwrite existing files")
+	// --global-root overrides the user's global .agents/ tree
+	// location. Wins over $SYNC_AGENTS_GLOBAL_ROOT and the default
+	// $HOME/.agents per SPEC-002 §Configurable global root.
+	// Currently a no-op until SPEC-002's promote and global-sync
+	// commands land in subsequent PRs.
+	rootCmd.PersistentFlags().StringVar(&customGlobalRoot, "global-root", "", "Override the global .agents/ root (default: $SYNC_AGENTS_GLOBAL_ROOT or $HOME/.agents)")
 
 	// version flag
 	rootCmd.Flags().BoolP("version", "v", false, "Show version")
