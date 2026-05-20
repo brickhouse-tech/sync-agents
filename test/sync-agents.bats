@@ -38,6 +38,36 @@ teardown() {
   [[ "$output" == *"USAGE"* ]]
 }
 
+@test "global --help shows global subcommands, not root usage" {
+  run "$SCRIPT" global --help
+  [ "$status" -eq 0 ]
+  # Cobra's per-command help, not our root printUsage block
+  [[ "$output" == *"sync-agents global"* ]]
+  [[ "$output" == *"Available Commands:"* ]]
+  [[ "$output" == *"init"* ]]
+  [[ "$output" == *"sync"* ]]
+  [[ "$output" == *"status"* ]]
+  [[ "$output" == *"clean"* ]]
+  # The root-level COMMANDS block should NOT leak in
+  [[ "$output" != *"sync-agents <command> [options]"* ]]
+}
+
+@test "global with no subcommand shows global help" {
+  run "$SCRIPT" global
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sync-agents global"* ]]
+  [[ "$output" == *"Available Commands:"* ]]
+}
+
+@test "global init --help shows init-specific help" {
+  run "$SCRIPT" global init --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sync-agents global init"* ]]
+  [[ "$output" == *"Initialize ~/.agents/"* ]]
+  # Should not show the global subcommand list
+  [[ "$output" != *"Available Commands:"* ]]
+}
+
 # --------------------------------------------------------------------------
 # --version
 # --------------------------------------------------------------------------

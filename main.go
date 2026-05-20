@@ -84,8 +84,20 @@ func main() {
 		SilenceErrors: true,
 	}
 
+	// Cobra's SetHelpFunc is inherited by every child command, so a naive
+	// override would make `sync-agents global --help` (and every other
+	// subcommand help) print the root usage. Capture cobra's default help
+	// function first, then short-circuit only when the help target is the
+	// root command — subcommands fall through to the default renderer,
+	// which prints each subcommand's own usage from its registered flags
+	// and children.
+	defaultHelp := rootCmd.HelpFunc()
 	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		printUsage()
+		if cmd == rootCmd {
+			printUsage()
+			return
+		}
+		defaultHelp(cmd, args)
 	})
 
 	rootCmd.PersistentFlags().StringVarP(&customDir, "dir", "d", "", "Set project root directory")

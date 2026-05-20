@@ -20,5 +20,5 @@ fully bricks.
 | `linux-x64`     | linux    | amd64     | `sync-agents`      |
 | `win32-x64`     | windows  | amd64     | `sync-agents.exe`  |
 
-The binaries are populated by CI (`make build-all`) before publish;
+The binaries are populated by CI (`npm run build:all`) before publish;
 they are not checked in.
