@@ -77,7 +77,7 @@ func main() {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			printUsage()
+			printUsage(cmd)
 			return nil
 		},
 		SilenceUsage:  true,
@@ -94,7 +94,7 @@ func main() {
 	defaultHelp := rootCmd.HelpFunc()
 	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		if cmd == rootCmd {
-			printUsage()
+			printUsage(rootCmd)
 			return
 		}
 		defaultHelp(cmd, args)
@@ -403,55 +403,54 @@ func main() {
 		errStr := err.Error()
 		if strings.Contains(errStr, "unknown command") {
 			fmt.Fprintf(os.Stderr, "[error] Unknown command: %s\n", extractUnknownCmd(errStr))
-			printUsage()
+			printUsage(rootCmd)
 		} else if strings.Contains(errStr, "unknown flag") || strings.Contains(errStr, "unknown shorthand") {
 			flag := extractUnknownFlag(errStr)
 			fmt.Fprintf(os.Stderr, "[error] Unknown option: %s\n", flag)
-			printUsage()
+			printUsage(rootCmd)
 		}
 		os.Exit(1)
 	}
 }
 
-func printUsage() {
-	fmt.Printf(`sync-agents v%s - One set of agent rules to rule them all.
+// printUsage renders the top-level `sync-agents` help block. The COMMANDS
+// and OPTIONS sections are loop-rendered from cmd's own Commands() and
+// flag sets so they cannot drift when a new subcommand or persistent
+// flag is added (see issue #38). The uppercase USAGE/COMMANDS/OPTIONS
+// headers are preserved on purpose — the bats integration suite asserts
+// on those literal strings, and they match the project's prior visual
+// style. Subcommand help still goes through cobra's default renderer.
+func printUsage(cmd *cobra.Command) {
+	fmt.Printf("sync-agents v%s - One set of agent rules to rule them all.\n\n", version.Version)
+	fmt.Println("USAGE")
+	fmt.Printf("  %s <command> [options]\n\n", cmd.Name())
 
-USAGE
-  sync-agents <command> [options]
+	fmt.Println("COMMANDS")
+	// Compute column width across visible subcommand Use strings so the
+	// Short descriptions line up regardless of how many commands exist.
+	const minPad = 28
+	pad := minPad
+	for _, sub := range cmd.Commands() {
+		if !sub.IsAvailableCommand() {
+			continue
+		}
+		if w := len(sub.Use); w > pad {
+			pad = w
+		}
+	}
+	for _, sub := range cmd.Commands() {
+		if !sub.IsAvailableCommand() {
+			continue
+		}
+		fmt.Printf("  %-*s  %s\n", pad, sub.Use, sub.Short)
+	}
+	fmt.Println()
 
-COMMANDS
-  init                          Initialize .agents/ directory structure and AGENTS.md
-  sync                          Sync .agents/ to agent directories via symlinks
-  status                        Show current sync status
-  add <type> <name>             Add a new rule, skill, or workflow from template
-  index                         Regenerate AGENTS.md index from .agents/ contents
-  clean                         Remove all synced symlinks (does not remove .agents/)
-  watch                         Watch .agents/ for changes and auto-regenerate index
-  import <url>                  Import a rule/skill/workflow from a URL
-  hook                          Install a pre-commit git hook for auto-sync
-  fix [type]                    Migrate legacy dirs + repair broken symlinks
-  inherit <label> <path>        Add an inheritance link to AGENTS.md
-  inherit --list                List current inheritance links
-  inherit --remove <label>      Remove an inheritance link by label
-  version                       Show version (same as --version)
-
-OPTIONS
-  -h, --help                    Show this help message
-  -v, --version                 Show version
-  -d, --dir <path>              Set project root directory (default: current directory)
-  --targets <list>              Comma-separated targets (overrides .agents/config)
-  --dry-run                     Show what would be done without making changes
-  --force                       Overwrite existing files/symlinks
-
-EXAMPLES
-  sync-agents init              # Initialize .agents/ structure
-  sync-agents add rule no-eval  # Add a new rule called "no-eval"
-  sync-agents sync              # Sync to .claude/ and .windsurf/
-  sync-agents sync --targets claude
-  sync-agents status            # Show current state
-  sync-agents clean             # Remove synced symlinks
-
-`, version.Version)
+	fmt.Println("OPTIONS")
+	// LocalFlags includes both rootCmd.Flags() and PersistentFlags() for
+	// the root command, which is exactly the surface a user sees at the
+	// top level. FlagUsages already pads aligned columns.
+	fmt.Print(cmd.LocalFlags().FlagUsages())
 }
 
 func extractUnknownCmd(errStr string) string {
