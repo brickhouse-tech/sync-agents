@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.2.6](https://github.com/brickhouse-tech/sync-agents/compare/v0.2.5...v0.2.6) (2026-06-12)
+
+
+### Bug Fixes
+
+* **version:** strip leading v from BuildInfo-resolved version ([db51c8d](https://github.com/brickhouse-tech/sync-agents/commit/db51c8df47a809f7571740581a2871adcb81c906)), closes [#37](https://github.com/brickhouse-tech/sync-agents/issues/37)
+
 ## [0.2.5](https://github.com/brickhouse-tech/sync-agents/compare/v0.2.4...v0.2.5) (2026-05-14)
 
 
