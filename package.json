@@ -1,6 +1,6 @@
 {
   "name": "@brickhouse-tech/sync-agents",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Simple scripts to DRY up common agent interactions across multiple LLM providers.",
   "keywords": [
     "agents",
@@ -26,11 +26,11 @@
     "bin/sync-agents.js"
   ],
   "optionalDependencies": {
-    "@brickhouse-tech/sync-agents-darwin-arm64": "0.2.5",
-    "@brickhouse-tech/sync-agents-darwin-x64": "0.2.5",
-    "@brickhouse-tech/sync-agents-linux-arm64": "0.2.5",
-    "@brickhouse-tech/sync-agents-linux-x64": "0.2.5",
-    "@brickhouse-tech/sync-agents-win32-x64": "0.2.5"
+    "@brickhouse-tech/sync-agents-darwin-arm64": "0.2.6",
+    "@brickhouse-tech/sync-agents-darwin-x64": "0.2.6",
+    "@brickhouse-tech/sync-agents-linux-arm64": "0.2.6",
+    "@brickhouse-tech/sync-agents-linux-x64": "0.2.6",
+    "@brickhouse-tech/sync-agents-win32-x64": "0.2.6"
   },
   "overrides": {
     "file-type": ">=22",
@@ -51,6 +51,7 @@
     "@commitlint/cli": "^21",
     "@commitlint/config-conventional": "^21",
     "commitlint": "21",
+    "concurrently": "^10.0.3",
     "sort-package-json": ">=3"
   }
 }
