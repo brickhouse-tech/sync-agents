@@ -3,7 +3,7 @@ project_name: sync-agents
 
 before:
   hooks:
-    - sh -c 'v=$(jq -r .version package.json); if [ "v$v" != "{{ .Tag }}" ]; then echo "version drift: package.json=$v tag={{ .Tag }}" >&2; exit 1; fi'
+    - ./scripts/goreleaser-check-version.sh {{ .Tag }}
     - go mod tidy
 
 builds:
@@ -38,17 +38,15 @@ archives:
 checksum:
   name_template: checksums.txt
 
-brews:
+homebrew_casks:
   - repository:
       owner: brickhouse-tech
       name: homebrew-tap
     homepage: https://github.com/brickhouse-tech/sync-agents
     description: One set of agent rules to rule them all — sync AI coding agent configs across providers
     license: MIT
-    install: |
-      bin.install "sync-agents"
-    test: |
-      system "#{bin}/sync-agents", "--version"
+    binaries:
+      - sync-agents
 
 # auto-release.yml (org reusable) creates the GitHub Release with
 # --generate-notes; goreleaser must only append assets, never duplicate it.
