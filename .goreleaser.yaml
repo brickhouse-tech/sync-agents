@@ -48,19 +48,24 @@ homebrew_casks:
     binaries:
       - sync-agents
 
-# auto-release.yml (org reusable) creates the GitHub Release with
-# --generate-notes; goreleaser must only append assets, never duplicate it.
+# goreleaser owns the GitHub Release end-to-end: it creates the release,
+# generates notes from the changelog, and uploads assets. The org-reusable
+# auto-release.yml step was removed so two workflows no longer race to
+# create the same release. `replace` makes re-runs on a tag idempotent.
 release:
   github:
     owner: brickhouse-tech
     name: sync-agents
   draft: false
   prerelease: auto
-  mode: append
-  use_existing_draft: false
-  skip_upload: false
+  mode: replace
 
-# Disable goreleaser's own changelog — the Release notes come from
-# auto-release.yml's `gh release create --generate-notes`.
 changelog:
-  disable: true
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - '^chore\(release\):'
+      - '^Merge pull request'
+      - '^Merge branch'
+      - '^Merge remote-tracking'

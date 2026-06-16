@@ -37,5 +37,8 @@ jobs:
           version: latest
           args: release --clean
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GH_TOKEN (org PAT) — not the default GITHUB_TOKEN — because the
+          # brews block pushes the cask to brickhouse-tech/homebrew-tap, a
+          # separate (private) repo the auto-provisioned GITHUB_TOKEN can't write.
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           SYNC_AGENTS_VERSION: ${{ env.SYNC_AGENTS_VERSION }}
