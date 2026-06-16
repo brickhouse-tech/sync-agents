@@ -1,10 +1,11 @@
 #!/usr/bin/env bats
 
-# Resolve the script under test relative to this test file
-_DEFAULT_SCRIPT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../src/sh" && pwd)/sync-agents.sh"
-SCRIPT="${SYNC_AGENTS_BIN:-$_DEFAULT_SCRIPT}"
+# Resolve the Go binary under test. SYNC_AGENTS_BIN overrides the default for
+# CI environments where the binary lives at a non-standard path.
+_REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+SCRIPT="${SYNC_AGENTS_BIN:-$_REPO_ROOT/bin/sync-agents}"
 # Read version from package.json so the test stays in sync after bumps
-PACKAGE_VERSION="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/package.json" | head -1)"
+PACKAGE_VERSION="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$_REPO_ROOT/package.json" | head -1)"
 
 setup() {
   # Create a temporary directory for each test
@@ -35,6 +36,36 @@ teardown() {
   run "$SCRIPT" -d "$TEST_DIR"
   [ "$status" -eq 0 ]
   [[ "$output" == *"USAGE"* ]]
+}
+
+@test "global --help shows global subcommands, not root usage" {
+  run "$SCRIPT" global --help
+  [ "$status" -eq 0 ]
+  # Cobra's per-command help, not our root printUsage block
+  [[ "$output" == *"sync-agents global"* ]]
+  [[ "$output" == *"Available Commands:"* ]]
+  [[ "$output" == *"init"* ]]
+  [[ "$output" == *"sync"* ]]
+  [[ "$output" == *"status"* ]]
+  [[ "$output" == *"clean"* ]]
+  # The root-level COMMANDS block should NOT leak in
+  [[ "$output" != *"sync-agents <command> [options]"* ]]
+}
+
+@test "global with no subcommand shows global help" {
+  run "$SCRIPT" global
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sync-agents global"* ]]
+  [[ "$output" == *"Available Commands:"* ]]
+}
+
+@test "global init --help shows init-specific help" {
+  run "$SCRIPT" global init --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sync-agents global init"* ]]
+  [[ "$output" == *"Initialize ~/.agents/"* ]]
+  # Should not show the global subcommand list
+  [[ "$output" != *"Available Commands:"* ]]
 }
 
 # --------------------------------------------------------------------------

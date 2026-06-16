@@ -13,12 +13,15 @@ This file indexes all rules, skills, and workflows defined in `.agents/`.
 
 - [org](../.agents/AGENTS.md)
 
+
 ## Rules
 
 - [bash](.agents/rules/bash.md)
+- [comments](.agents/rules/comments.md)
 - [commitlint](.agents/rules/commitlint.md)
 - [docs-sync](.agents/rules/docs-sync.md)
 - [git](.agents/rules/git.md)
+- [no-secrets](.agents/rules/no-secrets.md)
 - [security](.agents/rules/security.md)
 
 ## Skills

@@ -18,13 +18,49 @@ import (
 
 var AllTargets = []string{"claude", "windsurf", "cursor", "copilot"}
 
+// App is the per-invocation state container for sync-agents commands.
+// One App is constructed by main(), populated from CLI flags in
+// PersistentPreRunE, then handed to each command's library function.
+//
+// Fields are intentionally a flat set of values — no embedded
+// configuration objects — so that test setup is a one-shot literal
+// (e.g., &App{ProjectRoot: t.TempDir(), GlobalRoot: t.TempDir() + "/.agents"})
+// without builders or option-functions.
 type App struct {
-	ProjectRoot   string
-	DryRun        bool
-	Force         bool
+	// ProjectRoot is the absolute path of the project's working tree
+	// — the directory containing `.agents/`. Resolved by
+	// FindProjectRoot at startup, or overridden by the --dir flag.
+	ProjectRoot string
+
+	// GlobalRoot is the absolute path of the user's `.agents/` tree at
+	// user scope, when overridden programmatically. Empty means
+	// "consult $SYNC_AGENTS_GLOBAL_ROOT or fall back to $HOME/.agents"
+	// — see ResolveGlobalRoot in globalroot.go for the full precedence
+	// chain, and SPEC-002 §Configurable global root for the
+	// requirement.
+	//
+	// Tests set this directly to a t.TempDir-backed path so they never
+	// touch the real $HOME. The CLI populates it from --global-root.
+	GlobalRoot string
+
+	// DryRun, when true, prints the operations that would be performed
+	// but does not modify the filesystem.
+	DryRun bool
+
+	// Force, when true, allows commands to overwrite existing files or
+	// symlinks that would otherwise be left alone.
+	Force bool
+
+	// ActiveTargets is the list of tool IDs the current command should
+	// touch. Populated from .agents/config and overridden by the
+	// --targets flag.
 	ActiveTargets []string
-	Stdout        io.Writer
-	Stderr        io.Writer
+
+	// Stdout and Stderr are the writers used by Info/Warn/Error. Tests
+	// inject bytes.Buffer here to assert on output without capturing
+	// the real stdio.
+	Stdout io.Writer
+	Stderr io.Writer
 }
 
 func NewApp() *App {
