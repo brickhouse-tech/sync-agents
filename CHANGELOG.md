@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.2.8](https://github.com/brickhouse-tech/sync-agents/compare/v0.2.6...v0.2.8) (2026-06-16)
+
+
+### Features
+
+* **agent:** CmdGlobalStatus + CmdGlobalClean (SPEC-002 PR D) ([c7c07d7](https://github.com/brickhouse-tech/sync-agents/commit/c7c07d7b9897ca97e4f3e695c2e519eb44cc335c))
+* **agent:** CmdGlobalSync with semantic-aware routing (SPEC-002 PR C.2) ([93981de](https://github.com/brickhouse-tech/sync-agents/commit/93981de39015333ae3ae913fe8c919cbbbb01ae6))
+* **agent:** CmdPromote and CmdGlobalInit (SPEC-002 PR B) ([f63d143](https://github.com/brickhouse-tech/sync-agents/commit/f63d1432da17bac8c92b870a984f8f0533519d4e))
+* **agent:** Scope + Tool types and GlobalRoot resolver (SPEC-002 PR A) ([a84c13f](https://github.com/brickhouse-tech/sync-agents/commit/a84c13f40f290f49bda35db30af7f28d3954cc27))
+* **agent:** semantic resolver + frontmatter parser (SPEC-002 PR C.1) ([cf55ae9](https://github.com/brickhouse-tech/sync-agents/commit/cf55ae915f0be30f3e12e65d05d84f3d9fbbe4b8))
+* **install:** add go install, Homebrew, and GitHub Releases channels ([#20](https://github.com/brickhouse-tech/sync-agents/issues/20)) ([ff1a7cc](https://github.com/brickhouse-tech/sync-agents/commit/ff1a7ccfd47b372d447f5ad6ccffc0d8ea084074))
+* **remove-bash:** drop bash fallback, fail loudly on unsupported triples ([#19](https://github.com/brickhouse-tech/sync-agents/issues/19)) ([089ae83](https://github.com/brickhouse-tech/sync-agents/commit/089ae83942f280bd2247339dae558285ff3434e7))
+
+
+### Bug Fixes
+
+* basic int testing fixes in help menu ([54e2158](https://github.com/brickhouse-tech/sync-agents/commit/54e215805580b126c263054b37c14b147f0fb2fa))
+* **help:** loop-render top-level command and options list ([#38](https://github.com/brickhouse-tech/sync-agents/issues/38)) ([df89794](https://github.com/brickhouse-tech/sync-agents/commit/df897946811bf28cfb751c1f06fd86ce493d26e8))
+* migrate goreleaser config for v2.16 compatibility ([1a8549d](https://github.com/brickhouse-tech/sync-agents/commit/1a8549d280d18cf4a386e2a711e1de293c5d7938))
+* rule tempate to remove dead empty line ([b4a77b0](https://github.com/brickhouse-tech/sync-agents/commit/b4a77b0a365ab607dc1e30dd5841491d81dd9888))
+
 ## [0.2.7](https://github.com/brickhouse-tech/sync-agents/compare/v0.2.6...v0.2.7) (2026-06-16)
 
 
