@@ -477,15 +477,12 @@ EOF
   make_global_passive_rule "idem-rule"
   "$SCRIPT" global sync --global-root "$GLOBAL_ROOT" --targets copilot
 
-  stat_before="$(stat -f '%m' "$COPILOT_DIR/instructions.md" 2>/dev/null \
-                 || stat -c '%Y' "$COPILOT_DIR/instructions.md")"
-  sleep 1
-
   run "$SCRIPT" global sync --global-root "$GLOBAL_ROOT" --targets copilot
   [ "$status" -eq 0 ]
-  stat_after="$(stat -f '%m' "$COPILOT_DIR/instructions.md" 2>/dev/null \
-                || stat -c '%Y' "$COPILOT_DIR/instructions.md")"
-  [ "$stat_before" = "$stat_after" ]
+  # Second run must report "already current", NOT "regenerated".
+  # This directly asserts idempotency instead of relying on mtime
+  # comparison which can be non-deterministic across CI filesystems.
+  [[ "$output" == *"already current"* ]]
 }
 
 @test "global sync repairs drifted symlink on next run" {
