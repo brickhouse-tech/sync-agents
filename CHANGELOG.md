@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.1](https://github.com/brickhouse-tech/sync-agents/compare/v0.3.0...v0.3.1) (2026-06-29)
+
+
+### Bug Fixes
+
+* remove duplicate 0.2.8/0.2.7 changelog sections, fix flaky idempotent test ([#45](https://github.com/brickhouse-tech/sync-agents/issues/45)) ([65478a8](https://github.com/brickhouse-tech/sync-agents/commit/65478a88454a50802c9e629c6bf24c1d5684cde2))
+
 ## [0.3.0](https://github.com/brickhouse-tech/sync-agents/compare/v0.2.6...v0.3.0) (2026-06-16)
 
 
