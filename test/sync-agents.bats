@@ -1351,3 +1351,51 @@ CONF
   "$SCRIPT" -d "$TEST_DIR" init
   [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"No state snapshots yet"* ]]
 }
+
+# --------------------------------------------------------------------------
+# agents bucket (SPEC-004 Part B)
+# --------------------------------------------------------------------------
+
+@test "add agent creates .agents/agents/<name>.md from template" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" add agent reviewer
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_DIR/.agents/agents/reviewer.md" ]
+  grep -q "name: reviewer" "$TEST_DIR/.agents/agents/reviewer.md"
+}
+
+@test "sync links agents bucket into .claude only" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add agent reviewer
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [ -L "$TEST_DIR/.claude/agents" ]
+  [ ! -e "$TEST_DIR/.cursor/agents" ]
+  [ ! -e "$TEST_DIR/.windsurf/agents" ]
+  [ ! -e "$TEST_DIR/.github/copilot/agents" ]
+}
+
+@test "sync without agents dir creates no agents links (backwards compat)" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [ ! -e "$TEST_DIR/.claude/agents" ]
+}
+
+@test "index adds Agents section only when agents exist" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  run grep -q "## Agents" "$TEST_DIR/AGENTS.md"
+  [ "$status" -ne 0 ]
+  "$SCRIPT" -d "$TEST_DIR" add agent reviewer
+  grep -q "## Agents" "$TEST_DIR/AGENTS.md"
+  grep -q ".agents/agents/reviewer.md" "$TEST_DIR/AGENTS.md"
+}
+
+@test "clean removes the .claude/agents symlink" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add agent reviewer
+  "$SCRIPT" -d "$TEST_DIR" sync
+  run "$SCRIPT" -d "$TEST_DIR" clean
+  [ "$status" -eq 0 ]
+  [ ! -e "$TEST_DIR/.claude/agents" ]
+}

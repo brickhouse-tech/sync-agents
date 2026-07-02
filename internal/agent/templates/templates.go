@@ -45,3 +45,4 @@ func Rule() string     { return defaultFS.DemandFile("rule.md") }
 func Skill() string    { return defaultFS.DemandFile("skill.md") }
 func Workflow() string { return defaultFS.DemandFile("workflow.md") }
 func State() string    { return defaultFS.DemandFile("state.md") }
+func Agent() string    { return defaultFS.DemandFile("agent.md") }

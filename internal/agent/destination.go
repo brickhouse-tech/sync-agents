@@ -93,6 +93,25 @@ func TargetDestination(
 	artifactSourcePath string,
 	globalRootParent string,
 ) Destination {
+	// Agents (subagent definitions) route independently of semantic:
+	// Claude is the only registered tool with a subagent surface
+	// (~/.claude/agents/), so every other tool skips. Routing them
+	// through the per-tool semantic tables would mislabel them as
+	// commands (Claude), workflows (Windsurf), or concat fodder
+	// (Copilot/Codex).
+	if typ == ArtifactAgent {
+		if tool.ID == "claude" {
+			return Destination{
+				Strategy: StrategySymlink,
+				Path:     filepath.Join(globalRootParent, ".claude", "agents", name+".md"),
+			}
+		}
+		return Destination{
+			Strategy:   StrategySkip,
+			SkipReason: fmt.Sprintf("%s has no subagent surface", tool.ID),
+		}
+	}
+
 	switch tool.ID {
 	case "claude":
 		return claudeDestination(typ, name, sem, globalRootParent)

@@ -289,7 +289,7 @@ func (a *App) CmdInit() error {
 
 func (a *App) CmdAdd(typ, name string) error {
 	if typ == "" || name == "" {
-		a.Error("Usage: sync-agents add <rule|skill|workflow> <name>")
+		a.Error(fmt.Sprintf("Usage: sync-agents add <%s> <name>", strings.Join(ArtifactNames(), "|")))
 		return fmt.Errorf("missing args")
 	}
 
@@ -347,11 +347,14 @@ func (a *App) CmdSync() error {
 		}
 		a.Info(fmt.Sprintf("Syncing to %s/", relDisplay))
 
-		for _, subdir := range BucketDirs() {
-			subdirPath := filepath.Join(a.ProjectRoot, ".agents", subdir)
+		for _, b := range Buckets {
+			if !b.SyncsToLocalTarget(target) {
+				continue
+			}
+			subdirPath := filepath.Join(a.ProjectRoot, ".agents", b.Dir)
 			if fi, err := os.Stat(subdirPath); err == nil && fi.IsDir() {
-				sourceRel := agentsRel + "/" + subdir
-				a.CreateSymlink(sourceRel, filepath.Join(targetDir, subdir), a.DryRun)
+				sourceRel := agentsRel + "/" + b.Dir
+				a.CreateSymlink(sourceRel, filepath.Join(targetDir, b.Dir), a.DryRun)
 			}
 		}
 	}
@@ -420,16 +423,24 @@ func (a *App) CmdStatus() error {
 
 		if hasDirOrLinks {
 			fmt.Fprintf(a.Stdout, "%s/\n", displayDir)
-			for _, subdir := range BucketDirs() {
-				sub := filepath.Join(targetDir, subdir)
+			for _, b := range Buckets {
+				if !b.SyncsToLocalTarget(target) {
+					continue
+				}
+				sub := filepath.Join(targetDir, b.Dir)
 				sfi, serr := os.Lstat(sub)
 				if serr == nil && sfi.Mode()&os.ModeSymlink != 0 {
 					lt, _ := os.Readlink(sub)
-					fmt.Fprintf(a.Stdout, "  [synced] %s -> %s\n", subdir, lt)
+					fmt.Fprintf(a.Stdout, "  [synced] %s -> %s\n", b.Dir, lt)
 				} else if serr == nil && sfi.IsDir() {
-					fmt.Fprintf(a.Stdout, "  [local] %s (not symlinked)\n", subdir)
-				} else {
-					fmt.Fprintf(a.Stdout, "  [missing] %s\n", subdir)
+					fmt.Fprintf(a.Stdout, "  [local] %s (not symlinked)\n", b.Dir)
+				} else if b.InInit {
+					// Optional buckets (agents/…) are only reported
+					// when something exists for them; the classic
+					// three always show, matching pre-registry output.
+					fmt.Fprintf(a.Stdout, "  [missing] %s\n", b.Dir)
+				} else if fi, err := os.Stat(filepath.Join(a.ProjectRoot, ".agents", b.Dir)); err == nil && fi.IsDir() {
+					fmt.Fprintf(a.Stdout, "  [missing] %s\n", b.Dir)
 				}
 			}
 		} else {
@@ -1272,6 +1283,18 @@ func (a *App) generateAgentsMD() {
 		b.WriteString("_No workflows defined yet. Add one with `sync-agents add workflow <name>`._\n")
 	}
 	b.WriteString("\n")
+
+	// Agents (subagents) — optional bucket, section appears only
+	// when at least one definition exists (SPEC-004 backwards
+	// compatibility: index gains sections only for present buckets).
+	agentsBucketDir := filepath.Join(agentsDir, "agents")
+	if agentFiles := listMDFiles(agentsBucketDir); len(agentFiles) > 0 {
+		b.WriteString("## Agents\n\n")
+		for _, name := range agentFiles {
+			b.WriteString(fmt.Sprintf("- [%s](.agents/agents/%s.md)\n", name, name))
+		}
+		b.WriteString("\n")
+	}
 
 	// State
 	b.WriteString("## State\n\n")

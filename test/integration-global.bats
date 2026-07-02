@@ -743,3 +743,52 @@ EOF
   # Source must still be in global root
   [ -f "$GLOBAL_ROOT/rules/rtt-rule.md" ]
 }
+
+# ---------------------------------------------------------------------------
+# agents bucket (SPEC-004 Part B)
+# ---------------------------------------------------------------------------
+
+make_global_agent() {
+  local name="$1"
+  mkdir -p "$GLOBAL_ROOT/agents"
+  cat > "$GLOBAL_ROOT/agents/$name.md" <<AGENTEOF
+---
+name: $name
+description: Reviews code. Use when a review is requested.
+---
+You are the $name subagent.
+AGENTEOF
+}
+
+@test "promote agent copies agent to global root" {
+  init_project
+  "$SCRIPT" global init --global-root "$GLOBAL_ROOT"
+  "$SCRIPT" add agent my-reviewer -d "$PROJECT_DIR"
+
+  run "$SCRIPT" promote agent my-reviewer -d "$PROJECT_DIR" --global-root "$GLOBAL_ROOT"
+  [ "$status" -eq 0 ]
+  [ -f "$GLOBAL_ROOT/agents/my-reviewer.md" ]
+}
+
+@test "global sync: agent symlinked to claude/agents/" {
+  "$SCRIPT" global init --global-root "$GLOBAL_ROOT"
+  make_global_agent "reviewer"
+
+  run "$SCRIPT" global sync --global-root "$GLOBAL_ROOT" --targets claude
+  [ "$status" -eq 0 ]
+  [ -L "$CLAUDE_DIR/agents/reviewer.md" ]
+  [[ "$(readlink "$CLAUDE_DIR/agents/reviewer.md")" == *"$GLOBAL_ROOT"* ]]
+}
+
+@test "global sync: agent is skipped for non-claude tools" {
+  "$SCRIPT" global init --global-root "$GLOBAL_ROOT"
+  make_global_agent "reviewer"
+
+  run "$SCRIPT" global sync --global-root "$GLOBAL_ROOT" --targets cursor,codex
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no subagent surface"* ]]
+  [ ! -e "$CURSOR_DIR/rules/reviewer.md" ]
+  if [ -f "$CODEX_DIR/instructions.md" ]; then
+    ! grep -q "reviewer" "$CODEX_DIR/instructions.md"
+  fi
+}

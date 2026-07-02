@@ -19,6 +19,7 @@ const (
 	ArtifactRule     ArtifactType = "rule"
 	ArtifactSkill    ArtifactType = "skill"
 	ArtifactWorkflow ArtifactType = "workflow"
+	ArtifactAgent    ArtifactType = "agent"
 )
 
 // NormalizeArtifactType maps user-supplied type strings to their

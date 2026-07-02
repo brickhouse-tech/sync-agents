@@ -32,12 +32,38 @@ type Bucket struct {
 	// ${NAME} placeholders. Nil means `add` does not support the
 	// bucket.
 	NewTemplate func() string
+
+	// LocalTools restricts which local sync targets receive this
+	// bucket's directory symlink. Empty means every active target
+	// (the behavior of the classic three buckets). Names match the
+	// legacy AllTargets IDs ("claude", "windsurf", "cursor",
+	// "copilot").
+	LocalTools []string
+}
+
+// SyncsToLocalTarget reports whether local sync should link this
+// bucket into the given target's directory.
+func (b Bucket) SyncsToLocalTarget(target string) bool {
+	if len(b.LocalTools) == 0 {
+		return true
+	}
+	for _, t := range b.LocalTools {
+		if t == target {
+			return true
+		}
+	}
+	return false
 }
 
 var Buckets = []Bucket{
 	{Dir: "rules", Artifact: ArtifactRule, InInit: true, NewTemplate: templates.Rule},
 	{Dir: "skills", Artifact: ArtifactSkill, DirPerArtifact: true, InInit: true, NewTemplate: templates.Skill},
 	{Dir: "workflows", Artifact: ArtifactWorkflow, InInit: true, NewTemplate: templates.Workflow},
+	// Subagent definitions (SPEC-004 Part B). Claude-only: no other
+	// registered tool has a subagent surface, and the bucket is not
+	// created by init — it activates when `add agent` (or the user)
+	// creates the directory.
+	{Dir: "agents", Artifact: ArtifactAgent, NewTemplate: templates.Agent, LocalTools: []string{"claude"}},
 }
 
 // BucketDirs returns the directory names of all registered buckets,

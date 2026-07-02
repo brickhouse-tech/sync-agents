@@ -137,7 +137,7 @@ func main() {
 	// add
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "add [type] [name]",
-		Short: "Add a new rule, skill, or workflow",
+		Short: "Add a new rule, skill, workflow, or agent",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var typ, name string
 			if len(args) >= 1 {

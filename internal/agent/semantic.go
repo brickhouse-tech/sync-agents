@@ -51,6 +51,7 @@ func (s Semantic) String() string {
 //	rules/     → Passive   (always-on context)
 //	skills/    → Invocable (loaded by trigger)
 //	workflows/ → Invocable (loaded by slash invocation)
+//	agents/    → Invocable (subagents are dispatched by name/trigger)
 //
 // An unknown ArtifactType returns Passive — the conservative choice,
 // since at worst it ends up in always-on context rather than the
@@ -59,7 +60,7 @@ func BucketDefaultSemantic(typ ArtifactType) Semantic {
 	switch typ {
 	case ArtifactRule:
 		return Passive
-	case ArtifactSkill, ArtifactWorkflow:
+	case ArtifactSkill, ArtifactWorkflow, ArtifactAgent:
 		return Invocable
 	default:
 		return Passive

@@ -18,6 +18,7 @@ func TestBucketDefaultSemantic(t *testing.T) {
 		{ArtifactRule, Passive},
 		{ArtifactSkill, Invocable},
 		{ArtifactWorkflow, Invocable},
+		{ArtifactAgent, Invocable},
 	}
 	for _, c := range cases {
 		t.Run(string(c.typ), func(t *testing.T) {
@@ -29,10 +30,10 @@ func TestBucketDefaultSemantic(t *testing.T) {
 }
 
 // TestBucketDefaultSemantic_Unknown documents the "unknown type ⇒
-// passive" safe default. If we ever add a fourth artifact type, this
+// passive" safe default. If we ever add a new artifact type, this
 // is a tripwire that points at semantic.go's switch.
 func TestBucketDefaultSemantic_Unknown(t *testing.T) {
-	if got := BucketDefaultSemantic(ArtifactType("agent")); got != Passive {
+	if got := BucketDefaultSemantic(ArtifactType("not-a-real-type")); got != Passive {
 		t.Errorf("unknown type returned %q, want passive (safe default)", got)
 	}
 }
