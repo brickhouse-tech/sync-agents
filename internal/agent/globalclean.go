@@ -169,7 +169,25 @@ func (a *App) cleanToolDir(toolID, dir, agentsRoot string) (int, error) {
 	// generated subdir like global_workflows/ that's now empty.
 	a.pruneEmptyDirs(toolID, pruneCandidates, dir)
 
+	// For Claude specifically, the managed @-import block lives in
+	// <dir>/CLAUDE.md. This file is user-editable, so we don't
+	// remove it blindly during the walk (fileCarriesBanner would
+	// reject it because its first line is an HTML comment marker,
+	// not the concat banner). After the walk has pruned every
+	// other sync-agents artifact, give the CLAUDE.md one more pass
+	// — if it carries a managed block, strip the block. If the
+	// file is empty afterwards, remove it; that may re-open the
+	// per-tool root for pruning below.
+	if toolID == "claude" {
+		claudeMD := filepath.Join(dir, "CLAUDE.md")
+		if _, _, err := a.scrubClaudeManagedBlock(claudeMD, a.DryRun); err != nil {
+			a.Warn(fmt.Sprintf("[%s] failed to scrub CLAUDE.md: %v", toolID, err))
+		}
+	}
+
 	// Also pluck the per-tool root itself if it's now empty.
+	// The Claude scrub above may have removed CLAUDE.md, making
+	// the dir empty at this point — so this check runs last.
 	if a.dirIsEmpty(dir) {
 		if a.DryRun {
 			a.Info(fmt.Sprintf("[dry-run] [%s] would rmdir empty %s", toolID, dir))
@@ -182,6 +200,75 @@ func (a *App) cleanToolDir(toolID, dir, agentsRoot string) (int, error) {
 	}
 
 	return removed, nil
+}
+
+// scrubClaudeManagedBlock reads the file at claudeMDPath, strips the
+// managed @-import block (if present), and either rewrites the file
+// without it or removes the file outright if stripping would leave
+// it empty (whitespace-only). Returns (removed, dirPruned, error):
+//
+//   - removed: 1 if the scrub wrote or removed something, 0 if the
+//     file had no managed block. Used by clean's running total.
+//   - dirPruned: true when the file was removed and its parent dir
+//     may now have become empty. Useful for dry-run reporting.
+//
+// When the file has content outside the markers, only the block is
+// stripped; the rest is preserved. This protects user-authored
+// frontmatter or prose that may co-exist with the managed region.
+func (a *App) scrubClaudeManagedBlock(claudeMDPath string, dryRun bool) (int, bool, error) {
+	data, err := os.ReadFile(claudeMDPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, false, nil
+		}
+		return 0, false, err
+	}
+
+	content := string(data)
+	startIdx := strings.Index(content, ManagedImportBlockStart)
+	if startIdx < 0 {
+		return 0, false, nil
+	}
+	endIdx := strings.Index(content[startIdx:], ManagedImportBlockEnd)
+	if endIdx < 0 {
+		return 0, false, nil
+	}
+	endFull := startIdx + endIdx + len(ManagedImportBlockEnd)
+	if endFull < len(content) && content[endFull] == '\n' {
+		endFull++
+	}
+
+	if dryRun {
+		a.Info(fmt.Sprintf("[dry-run] would scrub managed block from %s", claudeMDPath))
+		return 1, false, nil
+	}
+
+	// Splice out the managed block. Collapse any resulting
+	// double-blank-lines into a single one so the preserved
+	// regions don't carry awkward whitespace after scrub.
+	remaining := content[:startIdx] + content[endFull:]
+	for strings.Contains(remaining, "\n\n\n") {
+		remaining = strings.ReplaceAll(remaining, "\n\n\n", "\n\n")
+	}
+	remaining = strings.TrimSpace(remaining)
+
+	if remaining == "" {
+		// Whole file was the managed block — drop the file so
+		// the per-tool root's empty-dir check can prune .claude/.
+		if err := os.Remove(claudeMDPath); err != nil {
+			return 0, false, err
+		}
+		return 1, true, nil
+	}
+
+	// Had user content outside the block — rewrite without it.
+	if !strings.HasSuffix(remaining, "\n") {
+		remaining += "\n"
+	}
+	if err := os.WriteFile(claudeMDPath, []byte(remaining), 0o644); err != nil {
+		return 0, false, err
+	}
+	return 1, false, nil
 }
 
 // pruneEmptyDirs walks the candidate parent paths from longest to
