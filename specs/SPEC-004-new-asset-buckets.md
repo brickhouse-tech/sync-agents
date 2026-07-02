@@ -179,6 +179,51 @@ passing unmodified.
 - Other tools: indexed in AGENTS.md (which codex/copilot consume via
   concat); no per-tool dirs in v1.
 
+## Part E — Skill frontmatter compliance: `lint` + `lint --fix`
+
+Claude's published skill authoring rules
+(<https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices>)
+require SKILL.md frontmatter that our current scaffold does not emit
+(`templates/skill.md` writes only `trigger: always_on` — no `name`,
+no `description`), and skills authored before the rules existed need
+a mechanical upgrade path. Two deliverables:
+
+1. **Claude-compatible scaffold.** `sync-agents add skill <name>`
+   emits frontmatter with `name: <name>` and a `description:` seeded
+   with the required what-it-does + when-to-use shape, in third
+   person. Existing keys (`invocable:`, `trigger:`) remain supported
+   and are preserved.
+
+2. **`sync-agents lint [skills] [--fix]`** — validate every
+   `.agents/skills/<dir>/SKILL.md` against the published rules and
+   mechanically amend what's fixable:
+
+   | Check | Rule | `--fix` action |
+   | ----- | ---- | -------------- |
+   | E001  | frontmatter block missing | inject one |
+   | E002  | `name` missing/empty | derive from dir name (slugified) |
+   | E003  | `name` has uppercase/invalid chars (must be `[a-z0-9-]`) | slugify (lowercase, `_`/space→`-`, strip the rest) |
+   | E004  | `name` > 64 chars | truncate at hyphen boundary |
+   | E005  | `name` contains reserved word (`anthropic`, `claude`) | report only |
+   | E006  | `name` ≠ skill directory name | set to dir slug |
+   | E007  | `description` missing/empty | derive from first body paragraph, else TODO stub + warning |
+   | E008  | `description` > 1024 chars | truncate |
+   | E009  | XML tags in `name`/`description` | strip |
+   | W101  | first-person description ("I can…", "You can use this…") | report only (third person required) |
+   | W102  | description lacks a when-to-use trigger clause | report only |
+   | W103  | SKILL.md body > 500 lines | report only |
+
+   `lint` exits non-zero on E-level findings (CI-friendly); warnings
+   don't affect the exit code. `--fix` rewrites only the frontmatter
+   block — body untouched, unknown frontmatter keys preserved, atomic
+   write, idempotent (second run reports clean).
+
+Scope note: v1 lints the skills bucket. The check set is organized
+per-bucket so rules/workflows (and Part B agents, whose subagent
+frontmatter has its own schema) can be added incrementally via the
+Part A registry. SPEC-005's install-time scanner reuses `lint` so
+remotely pulled skills are held to the same bar before approval.
+
 ## Backwards Compatibility
 
 - New buckets activate **only when their directory exists**. A v0.3.x
@@ -203,11 +248,17 @@ passing unmodified.
   fragment removed upstream, tampered state file (fail loud, no
   writes), `clean` on each of the above.
 - Collision tests: pre-existing real `.claude/agents/` dir → warn+skip.
+- Part E: table tests per check (E001–E009, W101–W103), fix
+  idempotency (lint → fix → lint reports clean), unknown frontmatter
+  keys survive a fix round-trip, exit codes (errors=1, warnings
+  only=0).
 
 ## Rollout
 
 1. PR 0 (Part A) — registry refactor, no behavior change.
-2. PR 1 (Part B) — `agents` bucket.
-3. PR 2 (Part D) — `plans` + `specs` (simpler than hooks; ships early).
-4. PR 3 (Part C) — `hooks` + `git-hook` rename.
-5. Docs: README bucket table, `docs/architecture/buckets.md`.
+2. PR 1 (Part E) — skill `lint`/`lint --fix` + Claude-compatible
+   scaffold (independent of the other parts; highest immediate value).
+3. PR 2 (Part B) — `agents` bucket.
+4. PR 3 (Part D) — `plans` + `specs` (simpler than hooks; ships early).
+5. PR 4 (Part C) — `hooks` + `git-hook` rename.
+6. Docs: README bucket table, `docs/architecture/buckets.md`.
