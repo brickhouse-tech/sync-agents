@@ -424,7 +424,7 @@ func (a *App) CmdStatus() error {
 
 		rulesLink := filepath.Join(targetDir, "rules")
 		hasDirOrLinks := false
-		if fi, err := os.Stat(targetDir); (err == nil && fi.IsDir()) {
+		if fi, err := os.Stat(targetDir); err == nil && fi.IsDir() {
 			hasDirOrLinks = true
 		}
 		if fi, err := os.Lstat(rulesLink); err == nil && fi.Mode()&os.ModeSymlink != 0 {
@@ -1317,7 +1317,71 @@ func (a *App) generateAgentsMD() {
 	}
 	b.WriteString("\n")
 
-	os.WriteFile(outfile, []byte(b.String()), 0644)
+	// Managed @-import block for Claude. Claude doesn't auto-scan
+	// .claude/rules/*.md and doesn't follow markdown links in
+	// AGENTS.md/CLAUDE.md, so the only reliable mechanism to get
+	// rule content into Claude's context is the `@`-import syntax.
+	// The block is fully regenerated each index (stateless); same
+	// .agents/ state produces the same bytes — idempotent and safe
+	// to re-run on every `sync-agents index` / `sync-agents sync`.
+	//
+	// Paths are project-relative (.claude/rules/<name>.md) because
+	// AGENTS.md is checked into git; absolute paths wouldn't port
+	// across developers. Claude resolves @-import symlinks, so
+	// `.claude/rules/X.md` (which is a symlink to
+	// `.agents/rules/X.md`) loads the same content.
+	var localArts []ClaudeRoutedArtifact
+	for _, name := range ruleFiles {
+		localArts = append(localArts, ClaudeRoutedArtifact{
+			Type:     ArtifactRule,
+			Name:     name,
+			Semantic: Passive, // bucket default: rules are passive
+		})
+	}
+	for _, name := range wfFiles {
+		// Bucket default for workflows is Invocable, but
+		// Claude's workflow destination is commands/<name>.md
+		// which Claude already auto-registers — so passive
+		// workflows aren't relevant to local CLAUDE.md for the
+		// common case. We still include workflows that users
+		// have explicitly marked passive via frontmatter.
+		wfPath := filepath.Join(agentsDir, "workflows", name+".md")
+		sem, err := ResolveSemantic(wfPath, ArtifactWorkflow)
+		if err != nil || sem != Passive {
+			continue
+		}
+		localArts = append(localArts, ClaudeRoutedArtifact{
+			Type:     ArtifactWorkflow,
+			Name:     name,
+			Semantic: sem,
+		})
+	}
+	if importLines := ManagedImportBlockForLocal(localArts); len(importLines) > 0 {
+		importBlock := FormatManagedImportBlockForTest(importLines)
+		b.WriteString(importBlock)
+	}
+
+	// Strip any stale managed block the user previously had in
+	// AGENTS.md when the current .agents/ has no passive rules
+	// (so a deleted rule doesn't leave a dead @-import forever).
+	finalContent := b.String()
+	if len(localArts) == 0 {
+		if existing, err := os.ReadFile(outfile); err == nil {
+			if HasManagedImportBlock(string(existing)) {
+				startIdx := strings.Index(string(existing), ManagedImportBlockStart)
+				endIdx := strings.Index(string(existing)[startIdx:], ManagedImportBlockEnd)
+				if startIdx >= 0 && endIdx >= 0 {
+					endFull := startIdx + endIdx + len(ManagedImportBlockEnd)
+					if endFull < len(existing) && existing[endFull] == '\n' {
+						endFull++
+					}
+					finalContent = string(existing[:startIdx]) + string(existing[endFull:])
+				}
+			}
+		}
+	}
+
+	os.WriteFile(outfile, []byte(finalContent), 0644)
 }
 
 func listMDFiles(dir string) []string {
