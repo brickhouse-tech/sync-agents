@@ -358,15 +358,8 @@ type Artifact struct {
 func DiscoverArtifacts(rootAgentsDir string) ([]Artifact, error) {
 	var out []Artifact
 
-	for _, spec := range []struct {
-		typ    ArtifactType
-		subdir string
-	}{
-		{ArtifactRule, "rules"},
-		{ArtifactSkill, "skills"},
-		{ArtifactWorkflow, "workflows"},
-	} {
-		dir := filepath.Join(rootAgentsDir, spec.subdir)
+	for _, b := range Buckets {
+		dir := filepath.Join(rootAgentsDir, b.Dir)
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -379,17 +372,7 @@ func DiscoverArtifacts(rootAgentsDir string) ([]Artifact, error) {
 				continue
 			}
 			abs := filepath.Join(dir, e.Name())
-			switch spec.typ {
-			case ArtifactRule, ArtifactWorkflow:
-				if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-					continue
-				}
-				out = append(out, Artifact{
-					Type:       spec.typ,
-					Name:       strings.TrimSuffix(e.Name(), ".md"),
-					SourcePath: abs,
-				})
-			case ArtifactSkill:
+			if b.DirPerArtifact {
 				if !e.IsDir() {
 					continue
 				}
@@ -397,8 +380,17 @@ func DiscoverArtifacts(rootAgentsDir string) ([]Artifact, error) {
 					continue
 				}
 				out = append(out, Artifact{
-					Type:       spec.typ,
+					Type:       b.Artifact,
 					Name:       e.Name(),
+					SourcePath: abs,
+				})
+			} else {
+				if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+					continue
+				}
+				out = append(out, Artifact{
+					Type:       b.Artifact,
+					Name:       strings.TrimSuffix(e.Name(), ".md"),
 					SourcePath: abs,
 				})
 			}

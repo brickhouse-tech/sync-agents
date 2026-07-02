@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -242,9 +243,9 @@ func (a *App) CmdInit() error {
 	a.Info("Initializing .agents/ directory structure...")
 
 	agentsDir := filepath.Join(a.ProjectRoot, ".agents")
-	os.MkdirAll(filepath.Join(agentsDir, "rules"), 0755)
-	os.MkdirAll(filepath.Join(agentsDir, "skills"), 0755)
-	os.MkdirAll(filepath.Join(agentsDir, "workflows"), 0755)
+	for _, sub := range InitBucketDirs() {
+		os.MkdirAll(filepath.Join(agentsDir, sub), 0755)
+	}
 
 	stateRule := filepath.Join(agentsDir, "rules", "state.md")
 	if _, err := os.Stat(stateRule); os.IsNotExist(err) {
@@ -292,24 +293,19 @@ func (a *App) CmdAdd(typ, name string) error {
 		return fmt.Errorf("missing args")
 	}
 
-	switch typ {
-	case "rule", "rules":
-		typ = "rules"
-	case "skill", "skills":
-		typ = "skills"
-	case "workflow", "workflows":
-		typ = "workflows"
-	default:
-		a.Error(fmt.Sprintf("Unknown type: %s. Must be one of: rule, skill, workflow", typ))
+	bucket, ok := BucketForTypeString(typ)
+	if !ok || bucket.NewTemplate == nil {
+		a.Error(fmt.Sprintf("Unknown type: %s. Must be one of: %s", typ, strings.Join(ArtifactNames(), ", ")))
 		return fmt.Errorf("unknown type")
 	}
+	typ = bucket.Dir
 
 	if err := a.EnsureAgentsDir(); err != nil {
 		return err
 	}
 
 	var fpath string
-	if typ == "skills" {
+	if bucket.DirPerArtifact {
 		fpath = filepath.Join(a.ProjectRoot, ".agents", typ, name, "SKILL.md")
 	} else {
 		fpath = filepath.Join(a.ProjectRoot, ".agents", typ, name+".md")
@@ -320,16 +316,7 @@ func (a *App) CmdAdd(typ, name string) error {
 		return fmt.Errorf("exists")
 	}
 
-	var tmpl string
-	switch typ {
-	case "rules":
-		tmpl = templates.Rule()
-	case "skills":
-		tmpl = templates.Skill()
-	case "workflows":
-		tmpl = templates.Workflow()
-	}
-	content := strings.ReplaceAll(tmpl, "${NAME}", name)
+	content := strings.ReplaceAll(bucket.NewTemplate(), "${NAME}", name)
 
 	os.MkdirAll(filepath.Dir(fpath), 0755)
 	os.WriteFile(fpath, []byte(content), 0644)
@@ -360,7 +347,7 @@ func (a *App) CmdSync() error {
 		}
 		a.Info(fmt.Sprintf("Syncing to %s/", relDisplay))
 
-		for _, subdir := range []string{"rules", "skills", "workflows"} {
+		for _, subdir := range BucketDirs() {
 			subdirPath := filepath.Join(a.ProjectRoot, ".agents", subdir)
 			if fi, err := os.Stat(subdirPath); err == nil && fi.IsDir() {
 				sourceRel := agentsRel + "/" + subdir
@@ -433,7 +420,7 @@ func (a *App) CmdStatus() error {
 
 		if hasDirOrLinks {
 			fmt.Fprintf(a.Stdout, "%s/\n", displayDir)
-			for _, subdir := range []string{"rules", "skills", "workflows"} {
+			for _, subdir := range BucketDirs() {
 				sub := filepath.Join(targetDir, subdir)
 				sfi, serr := os.Lstat(sub)
 				if serr == nil && sfi.Mode()&os.ModeSymlink != 0 {
@@ -471,7 +458,7 @@ func (a *App) CmdClean() error {
 			displayDir = targetDir[len(a.ProjectRoot)+1:]
 		}
 
-		for _, subdir := range []string{"rules", "skills", "workflows"} {
+		for _, subdir := range BucketDirs() {
 			sub := filepath.Join(targetDir, subdir)
 			fi, err := os.Lstat(sub)
 			if err == nil && fi.Mode()&os.ModeSymlink != 0 {
@@ -566,34 +553,27 @@ func (a *App) CmdImport(url string) error {
 	}
 
 	var typ string
-	switch {
-	case strings.Contains(url, "/rules/"):
-		typ = "rules"
-	case strings.Contains(url, "/skills/"):
-		typ = "skills"
-	case strings.Contains(url, "/workflows/"):
-		typ = "workflows"
+	for _, b := range Buckets {
+		if strings.Contains(url, "/"+b.Dir+"/") {
+			typ = b.Dir
+			break
+		}
 	}
 
 	if typ == "" {
 		fmt.Fprintln(a.Stdout, "Could not detect type from URL. Choose:")
-		fmt.Fprintln(a.Stdout, "  1) rule")
-		fmt.Fprintln(a.Stdout, "  2) skill")
-		fmt.Fprintln(a.Stdout, "  3) workflow")
-		fmt.Fprint(a.Stdout, "Selection (1-3): ")
+		for i, b := range Buckets {
+			fmt.Fprintf(a.Stdout, "  %d) %s\n", i+1, b.Artifact)
+		}
+		fmt.Fprintf(a.Stdout, "Selection (1-%d): ", len(Buckets))
 		var choice string
 		fmt.Scanln(&choice)
-		switch choice {
-		case "1":
-			typ = "rules"
-		case "2":
-			typ = "skills"
-		case "3":
-			typ = "workflows"
-		default:
+		idx, err := strconv.Atoi(choice)
+		if err != nil || idx < 1 || idx > len(Buckets) {
 			a.Error("Invalid selection")
 			return fmt.Errorf("invalid selection")
 		}
+		typ = Buckets[idx-1].Dir
 	}
 
 	destDir := filepath.Join(a.ProjectRoot, ".agents", typ)
@@ -666,13 +646,12 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 	}
 
 	var subdirs []string
-	switch fixType {
-	case "skills", "rules", "workflows":
-		subdirs = []string{fixType}
-	case "all", "":
-		subdirs = []string{"skills", "rules", "workflows"}
-	default:
-		a.Error(fmt.Sprintf("Unknown type: %s (expected: skills, rules, workflows, or all)", fixType))
+	if fixType == "all" || fixType == "" {
+		subdirs = BucketDirs()
+	} else if b, ok := BucketForDir(fixType); ok {
+		subdirs = []string{b.Dir}
+	} else {
+		a.Error(fmt.Sprintf("Unknown type: %s (expected: %s, or all)", fixType, strings.Join(BucketDirs(), ", ")))
 		return fmt.Errorf("unknown type")
 	}
 

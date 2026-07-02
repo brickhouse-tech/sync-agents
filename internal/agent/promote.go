@@ -31,16 +31,11 @@ const (
 // plural by reflex. We accept any case because the CLI flag value is
 // a low-stakes string that's not worth bouncing on capitalization.
 func NormalizeArtifactType(s string) (ArtifactType, bool) {
-	switch strings.ToLower(s) {
-	case "rule", "rules":
-		return ArtifactRule, true
-	case "skill", "skills":
-		return ArtifactSkill, true
-	case "workflow", "workflows":
-		return ArtifactWorkflow, true
-	default:
+	b, ok := BucketForTypeString(s)
+	if !ok {
 		return "", false
 	}
+	return b.Artifact, true
 }
 
 // PromoteOpts holds the per-call options for CmdPromote. New fields
@@ -61,25 +56,23 @@ type PromoteOpts struct {
 // of the given type and name. The path is the *canonical* form under
 // .agents/, identical at local and global scope:
 //
-//   rule     foo  → .agents/rules/foo.md
-//   skill    foo  → .agents/skills/foo            (directory)
-//   workflow foo  → .agents/workflows/foo.md
+//	rule     foo  → .agents/rules/foo.md
+//	skill    foo  → .agents/skills/foo            (directory)
+//	workflow foo  → .agents/workflows/foo.md
 //
 // Returns the empty string for an unrecognised type — callers should
 // have validated via NormalizeArtifactType first.
 func artifactRelPath(typ ArtifactType, name string) string {
-	switch typ {
-	case ArtifactRule:
-		return filepath.Join(".agents", "rules", name+".md")
-	case ArtifactSkill:
-		// Skills are directories; the SKILL.md inside is the
-		// metadata file but we copy the whole dir.
-		return filepath.Join(".agents", "skills", name)
-	case ArtifactWorkflow:
-		return filepath.Join(".agents", "workflows", name+".md")
-	default:
+	b, ok := BucketForArtifact(typ)
+	if !ok {
 		return ""
 	}
+	if b.DirPerArtifact {
+		// Dir-per-artifact buckets (skills): the SKILL.md inside is
+		// the metadata file but we copy the whole dir.
+		return filepath.Join(".agents", b.Dir, name)
+	}
+	return filepath.Join(".agents", b.Dir, name+".md")
 }
 
 // DetectArtifact maps a project-relative path under .agents/ to the
@@ -108,37 +101,32 @@ func DetectArtifact(rel string) (ArtifactType, string, error) {
 	rel = filepath.Clean(rel)
 	rel = strings.TrimPrefix(rel, "./")
 
-	const (
-		skillsPrefix    = ".agents/skills/"
-		rulesPrefix     = ".agents/rules/"
-		workflowsPrefix = ".agents/workflows/"
-	)
 	// filepath.Clean uses the OS separator. Normalize for the
-	// prefix-match against forward-slash constants so this works on
+	// prefix-match against forward-slash prefixes so this works on
 	// both POSIX and Windows.
 	slashed := filepath.ToSlash(rel)
 
-	switch {
-	case strings.HasPrefix(slashed, skillsPrefix):
-		after := strings.TrimPrefix(slashed, skillsPrefix)
-		if after == "" {
-			return "", "", fmt.Errorf("path %q points at the skills directory itself; specify a skill name", rel)
+	for _, b := range Buckets {
+		prefix := ".agents/" + b.Dir + "/"
+		if !strings.HasPrefix(slashed, prefix) {
+			continue
 		}
-		// First path segment is the skill name.
-		name := strings.SplitN(after, "/", 2)[0]
-		return ArtifactSkill, name, nil
-
-	case strings.HasPrefix(slashed, rulesPrefix) && strings.HasSuffix(slashed, ".md"):
-		name := strings.TrimSuffix(filepath.Base(slashed), ".md")
-		return ArtifactRule, name, nil
-
-	case strings.HasPrefix(slashed, workflowsPrefix) && strings.HasSuffix(slashed, ".md"):
-		name := strings.TrimSuffix(filepath.Base(slashed), ".md")
-		return ArtifactWorkflow, name, nil
-
-	default:
-		return "", "", fmt.Errorf("path %q is not under .agents/{rules,skills,workflows}/; pass `promote <type> <name>` explicitly", rel)
+		if b.DirPerArtifact {
+			after := strings.TrimPrefix(slashed, prefix)
+			if after == "" {
+				return "", "", fmt.Errorf("path %q points at the %s directory itself; specify a %s name", rel, b.Dir, b.Artifact)
+			}
+			// First path segment is the artifact name.
+			name := strings.SplitN(after, "/", 2)[0]
+			return b.Artifact, name, nil
+		}
+		if strings.HasSuffix(slashed, ".md") {
+			name := strings.TrimSuffix(filepath.Base(slashed), ".md")
+			return b.Artifact, name, nil
+		}
 	}
+
+	return "", "", fmt.Errorf("path %q is not under .agents/{%s}/; pass `promote <type> <name>` explicitly", rel, strings.Join(BucketDirs(), ","))
 }
 
 // CmdPromote copies an artifact from the local project's .agents/

@@ -52,8 +52,7 @@ func (a *App) CmdGlobalInit() error {
 	root := a.ResolveGlobalRoot()
 	a.Info(fmt.Sprintf("Initializing global .agents/ at %s", root))
 
-	subdirs := []string{"rules", "skills", "workflows"}
-	for _, sub := range subdirs {
+	for _, sub := range InitBucketDirs() {
 		path := filepath.Join(root, sub)
 		if a.DryRun {
 			a.Info(fmt.Sprintf("[dry-run] would ensure dir %s", path))
