@@ -206,3 +206,33 @@ func TestSkillIsMultiFile_NonexistentTreatedAsSingle(t *testing.T) {
 		t.Error("nonexistent path should not be reported as multi-file")
 	}
 }
+
+// TestTargetDestination_AgentClaude routes subagent definitions to
+// Claude's agents/ surface regardless of semantic (SPEC-004 Part B).
+func TestTargetDestination_AgentClaude(t *testing.T) {
+	for _, sem := range []Semantic{Invocable, Passive} {
+		d := TargetDestination(asTool(t, "claude"), ArtifactAgent, "reviewer", sem, "", "/home/u")
+		if d.Strategy != StrategySymlink {
+			t.Errorf("sem=%s strategy = %v, want StrategySymlink", sem, d.Strategy)
+		}
+		want := filepath.Join("/home/u", ".claude", "agents", "reviewer.md")
+		if d.Path != want {
+			t.Errorf("sem=%s path = %q, want %q", sem, d.Path, want)
+		}
+	}
+}
+
+// TestTargetDestination_AgentOtherToolsSkip: no other registered tool
+// has a subagent surface — every non-Claude tool must skip, never
+// concat or mislabel the agent as a workflow/command.
+func TestTargetDestination_AgentOtherToolsSkip(t *testing.T) {
+	for _, id := range []string{"codeium", "cursor", "copilot", "codex"} {
+		d := TargetDestination(asTool(t, id), ArtifactAgent, "reviewer", Invocable, "", "/home/u")
+		if d.Strategy != StrategySkip {
+			t.Errorf("[%s] strategy = %v, want StrategySkip", id, d.Strategy)
+		}
+		if d.SkipReason == "" {
+			t.Errorf("[%s] SkipReason must be set", id)
+		}
+	}
+}
