@@ -64,6 +64,13 @@ var Buckets = []Bucket{
 	// created by init — it activates when `add agent` (or the user)
 	// creates the directory.
 	{Dir: "agents", Artifact: ArtifactAgent, NewTemplate: templates.Agent, LocalTools: []string{"claude"}},
+	// Reference-doc buckets (SPEC-004 Part D). plans = per-effort
+	// how/when working documents; specs = durable what/why design
+	// docs. Same plumbing, different lifecycle. Claude-only local
+	// symlinks (@-mentionable); other tools consume them via the
+	// AGENTS.md index. Not created by init.
+	{Dir: "plans", Artifact: ArtifactPlan, NewTemplate: templates.Plan, LocalTools: []string{"claude"}},
+	{Dir: "specs", Artifact: ArtifactSpec, NewTemplate: templates.Spec, LocalTools: []string{"claude"}},
 }
 
 // BucketDirs returns the directory names of all registered buckets,

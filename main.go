@@ -169,13 +169,19 @@ func main() {
 	})
 
 	// index
-	rootCmd.AddCommand(&cobra.Command{
+	var indexNoFix bool
+	indexCmd := &cobra.Command{
 		Use:   "index",
-		Short: "Regenerate AGENTS.md",
+		Short: "Regenerate AGENTS.md (backfills skill frontmatter first)",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !indexNoFix {
+				app.CmdBackfillSkills()
+			}
 			return app.CmdIndex()
 		},
-	})
+	}
+	indexCmd.Flags().BoolVar(&indexNoFix, "no-fix", false, "Skip the skill frontmatter backfill")
+	rootCmd.AddCommand(indexCmd)
 
 	// clean
 	rootCmd.AddCommand(&cobra.Command{

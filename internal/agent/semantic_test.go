@@ -19,6 +19,8 @@ func TestBucketDefaultSemantic(t *testing.T) {
 		{ArtifactSkill, Invocable},
 		{ArtifactWorkflow, Invocable},
 		{ArtifactAgent, Invocable},
+		{ArtifactPlan, Reference},
+		{ArtifactSpec, Reference},
 	}
 	for _, c := range cases {
 		t.Run(string(c.typ), func(t *testing.T) {

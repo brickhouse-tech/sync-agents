@@ -353,3 +353,42 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	}
 	return os.Rename(tmpName, path)
 }
+
+// CmdBackfillSkills runs the `lint --fix` engine over every skill,
+// amending fixable frontmatter findings in place. Unlike CmdLint it
+// never fails: unfixable findings (reserved words, etc.) surface as
+// warnings and W-level style findings are suppressed entirely, so it
+// is safe to run as part of the normal `sync-agents index` cycle.
+func (a *App) CmdBackfillSkills() {
+	skillsDir := filepath.Join(a.ProjectRoot, ".agents", "skills")
+	entries, err := os.ReadDir(skillsDir)
+	if err != nil {
+		return
+	}
+	fixed := 0
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		skillPath := filepath.Join(skillsDir, e.Name(), "SKILL.md")
+		if _, err := os.Stat(skillPath); err != nil {
+			continue
+		}
+		findings, err := a.lintSkill(e.Name(), skillPath, true)
+		if err != nil {
+			a.Warn(fmt.Sprintf("skills/%s: %v", e.Name(), err))
+			continue
+		}
+		for _, f := range findings {
+			if f.Fixed {
+				fixed++
+				a.Info(fmt.Sprintf("%s: %s %s (fixed)", f.Path, f.Code, f.Message))
+			} else if f.Severity == "error" {
+				a.Warn(fmt.Sprintf("%s: %s %s (not auto-fixable; see `sync-agents lint`)", f.Path, f.Code, f.Message))
+			}
+		}
+	}
+	if fixed > 0 {
+		a.Info(fmt.Sprintf("backfilled skill frontmatter: %d fix(es)", fixed))
+	}
+}

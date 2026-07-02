@@ -792,3 +792,28 @@ AGENTEOF
     ! grep -q "reviewer" "$CODEX_DIR/instructions.md"
   fi
 }
+
+# ---------------------------------------------------------------------------
+# plans + specs buckets (SPEC-004 Part D)
+# ---------------------------------------------------------------------------
+
+@test "global sync: plan symlinked to claude/plans/, skipped elsewhere" {
+  "$SCRIPT" global init --global-root "$GLOBAL_ROOT"
+  mkdir -p "$GLOBAL_ROOT/plans"
+  printf -- '---\nname: roadmap\ndescription: Roadmap. Use when planning.\n---\n# Roadmap\n' > "$GLOBAL_ROOT/plans/roadmap.md"
+
+  run "$SCRIPT" global sync --global-root "$GLOBAL_ROOT" --targets claude,cursor
+  [ "$status" -eq 0 ]
+  [ -L "$CLAUDE_DIR/plans/roadmap.md" ]
+  [ ! -e "$CURSOR_DIR/rules/roadmap.md" ]
+}
+
+@test "promote spec copies spec to global root" {
+  init_project
+  "$SCRIPT" global init --global-root "$GLOBAL_ROOT"
+  "$SCRIPT" add spec my-spec -d "$PROJECT_DIR"
+
+  run "$SCRIPT" promote spec my-spec -d "$PROJECT_DIR" --global-root "$GLOBAL_ROOT"
+  [ "$status" -eq 0 ]
+  [ -f "$GLOBAL_ROOT/specs/my-spec.md" ]
+}

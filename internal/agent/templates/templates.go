@@ -46,3 +46,5 @@ func Skill() string    { return defaultFS.DemandFile("skill.md") }
 func Workflow() string { return defaultFS.DemandFile("workflow.md") }
 func State() string    { return defaultFS.DemandFile("state.md") }
 func Agent() string    { return defaultFS.DemandFile("agent.md") }
+func Plan() string     { return defaultFS.DemandFile("plan.md") }
+func Spec() string     { return defaultFS.DemandFile("spec.md") }
