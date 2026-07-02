@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.3](https://github.com/brickhouse-tech/sync-agents/compare/v0.3.2...v0.3.3) (2026-07-02)
+
+
+### Features
+
+* **lint:** skill frontmatter compliance — lint + --fix per Claude authoring rules (fixes [#54](https://github.com/brickhouse-tech/sync-agents/issues/54)) ([#55](https://github.com/brickhouse-tech/sync-agents/issues/55)) ([f27db87](https://github.com/brickhouse-tech/sync-agents/commit/f27db87bab5ae81b9defddb1e670f1feed797447))
+
 ## [0.3.2](https://github.com/brickhouse-tech/sync-agents/compare/v0.3.1...v0.3.2) (2026-07-02)
 
 
