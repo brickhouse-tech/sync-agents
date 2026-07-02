@@ -13,7 +13,6 @@ This file indexes all rules, skills, and workflows defined in `.agents/`.
 
 - [org](../.agents/AGENTS.md)
 
-
 ## Rules
 
 - [bash](.agents/rules/bash.md)
@@ -21,8 +20,11 @@ This file indexes all rules, skills, and workflows defined in `.agents/`.
 - [commitlint](.agents/rules/commitlint.md)
 - [docs-sync](.agents/rules/docs-sync.md)
 - [git](.agents/rules/git.md)
-- [no-secrets](.agents/rules/no-secrets.md)
+- [integrity](.agents/rules/integrity.md)
+- [iterative-code-review](.agents/rules/iterative-code-review.md)
 - [security](.agents/rules/security.md)
+- [testing](.agents/rules/testing.md)
+- [tradeoffs](.agents/rules/tradeoffs.md)
 
 ## Skills
 
@@ -30,9 +32,22 @@ _No skills defined yet. Add one with `sync-agents add skill <name>`._
 
 ## Workflows
 
-_No workflows defined yet. Add one with `sync-agents add workflow <name>`._
+- [pr-review-agent](.agents/workflows/pr-review-agent.md)
 
 ## State
 
 - [STATE.md](.agents/STATE.md)
 
+<!-- sync-agents:claude-imports:start -->
+<!-- managed by sync-agents; do not edit between the markers -->
+@.claude/rules/bash.md
+@.claude/rules/comments.md
+@.claude/rules/commitlint.md
+@.claude/rules/docs-sync.md
+@.claude/rules/git.md
+@.claude/rules/integrity.md
+@.claude/rules/iterative-code-review.md
+@.claude/rules/security.md
+@.claude/rules/testing.md
+@.claude/rules/tradeoffs.md
+<!-- sync-agents:claude-imports:end -->

@@ -1220,8 +1220,11 @@ func (a *App) generateAgentsMD() {
 	b.WriteString("This file indexes all rules, skills, and workflows defined in `.agents/`.\n\n")
 
 	if inheritsBlock != "" {
-		b.WriteString(inheritsBlock)
-		b.WriteString("\n")
+		// Trim captured trailing blank lines before re-adding the
+		// section separator — otherwise every regeneration appends
+		// one more blank line (index must be idempotent).
+		b.WriteString(strings.TrimRight(inheritsBlock, "\n"))
+		b.WriteString("\n\n")
 	}
 
 	// Rules

@@ -1,17 +1,19 @@
 # Semantic routing
 
-Why an artifact's bucket (`rules/`, `skills/`, `workflows/`) is not the
-same thing as its *behavioral category*, and how `sync-agents` resolves
-the latter to route correctly into each tool's per-semantic destination.
+Why an artifact's bucket (`rules/`, `skills/`, `workflows/`, `agents/`,
+`plans/`, `specs/`) is not the same thing as its *behavioral category*,
+and how `sync-agents` resolves the latter to route correctly into each
+tool's per-semantic destination.
 
-## The two semantics
+## The semantics
 
-Every artifact has one of two semantics:
+Every artifact has one of three semantics:
 
 | Semantic | Meaning |
 |---|---|
 | **`invocable`** | Loaded only when triggered by name — a user slash command, or an AI model's tool-call decision based on the artifact's description. Not in baseline context. |
 | **`passive`** | Always part of baseline context for every conversation. No trigger logic; always loaded. |
+| **`reference`** | Neither preloaded nor trigger-dispatched: indexed in `AGENTS.md` and read on demand (@-mention, file read). Used by the `plans/` and `specs/` buckets (SPEC-004 Part D). Never enters the managed import block or any invocable surface. |
 
 These are independent of the bucket directory the artifact lives in.
 
@@ -25,6 +27,16 @@ semantic:
 | `rules/` | passive | passive (concat → `memories/global_rules.md`) | passive | passive (concat → `instructions.md`) |
 | `skills/` | **invocable** | **passive** (auto-loaded as memory) | passive | passive |
 | `workflows/` | passive (reference doc) | **invocable** (slash flow) | passive | passive |
+| `agents/` | **invocable** (`agents/<name>.md` subagent) | — (skip: no subagent surface) | — (skip) | — (skip) |
+| `plans/` | reference (`plans/<name>.md`) | — (skip: read via AGENTS.md index) | — (skip) | — (skip) |
+| `specs/` | reference (`specs/<name>.md`) | — (skip: read via AGENTS.md index) | — (skip) | — (skip) |
+
+Agents, plans, and specs route **independently of semantic** — the
+per-tool destination is a property of the bucket (Claude-only), so a
+frontmatter `invocable:` override never reroutes them into commands/
+or a concat file. In particular, reference docs are never concatenated
+into always-on instruction files; that would preload reference
+material into baseline context.
 
 The conflicts are real and matter to users:
 
@@ -61,11 +73,14 @@ matching slot receives it.
 2. **Bucket default**: if the frontmatter is absent or doesn't declare
    `invocable:`, the bucket determines the default:
 
-   | Bucket | Default `invocable` |
+   | Bucket | Default semantic |
    |---|---|
-   | `rules/` | `false` (passive) |
-   | `skills/` | `true` (invocable) |
-   | `workflows/` | `true` (invocable) |
+   | `rules/` | passive |
+   | `skills/` | invocable |
+   | `workflows/` | invocable |
+   | `agents/` | invocable |
+   | `plans/` | reference |
+   | `specs/` | reference |
 
 The defaults match each authoring tool's most common case — a rule is
 usually always-on, a skill is usually triggered by name, a workflow is
