@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.4](https://github.com/brickhouse-tech/sync-agents/compare/v0.3.3...v0.3.4) (2026-07-02)
+
+
+### Features
+
+* **agents:** subagents bucket — .agents/agents/ routed to .claude/agents/ (SPEC-004 Part B, refs [#50](https://github.com/brickhouse-tech/sync-agents/issues/50)) ([#56](https://github.com/brickhouse-tech/sync-agents/issues/56)) ([839b2f2](https://github.com/brickhouse-tech/sync-agents/commit/839b2f2e5ab8490985599b375a8aa443600fa2bf))
+
 ## [0.3.3](https://github.com/brickhouse-tech/sync-agents/compare/v0.3.2...v0.3.3) (2026-07-02)
 
 
