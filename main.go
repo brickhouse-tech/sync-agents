@@ -217,6 +217,22 @@ func main() {
 		},
 	})
 
+	// lint
+	var lintFix bool
+	lintCmd := &cobra.Command{
+		Use:   "lint [type]",
+		Short: "Validate skill frontmatter against Claude authoring rules",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			lintType := ""
+			if len(args) > 0 {
+				lintType = args[0]
+			}
+			return app.CmdLint(lintType, lintFix)
+		},
+	}
+	lintCmd.Flags().BoolVar(&lintFix, "fix", false, "Amend fixable findings in place")
+	rootCmd.AddCommand(lintCmd)
+
 	// fix
 	var noClobber bool
 	fixCmd := &cobra.Command{

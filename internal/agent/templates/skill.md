@@ -1,12 +1,9 @@
 ---
-trigger: always_on
+name: ${NAME}
+description: TODO — what this skill does and the outcome it produces. Use when TODO (key triggers, file types, or user phrases).
 ---
 
 # ${NAME}
-
-## Description
-
-Brief description of what this skill enables.
 
 ## Usage
 

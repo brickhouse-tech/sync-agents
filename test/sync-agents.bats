@@ -487,9 +487,39 @@ teardown() {
 @test "add skill uses SKILL_TEMPLATE content" {
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" add skill my-skill
-  grep -q "Description" "$TEST_DIR/.agents/skills/my-skill/SKILL.md"
+  grep -q "name: my-skill" "$TEST_DIR/.agents/skills/my-skill/SKILL.md"
+  grep -q "description:" "$TEST_DIR/.agents/skills/my-skill/SKILL.md"
   grep -q "Usage" "$TEST_DIR/.agents/skills/my-skill/SKILL.md"
   grep -q "Examples" "$TEST_DIR/.agents/skills/my-skill/SKILL.md"
+}
+
+# --------------------------------------------------------------------------
+# lint (skill frontmatter compliance)
+# --------------------------------------------------------------------------
+
+@test "lint passes on a freshly scaffolded skill" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add skill fresh-skill
+  run "$SCRIPT" -d "$TEST_DIR" lint
+  [ "$status" -eq 0 ]
+}
+
+@test "lint fails on a skill without frontmatter, lint --fix repairs it" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.agents/skills/legacy-skill"
+  printf '# Legacy\n\nDoes legacy things when invoked.\n' > "$TEST_DIR/.agents/skills/legacy-skill/SKILL.md"
+
+  run "$SCRIPT" -d "$TEST_DIR" lint
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"E001"* ]]
+
+  run "$SCRIPT" -d "$TEST_DIR" lint --fix
+  [ "$status" -eq 0 ]
+  grep -q "name: legacy-skill" "$TEST_DIR/.agents/skills/legacy-skill/SKILL.md"
+  grep -q "description: Does legacy things when invoked." "$TEST_DIR/.agents/skills/legacy-skill/SKILL.md"
+
+  run "$SCRIPT" -d "$TEST_DIR" lint
+  [ "$status" -eq 0 ]
 }
 
 @test "add workflow uses WORKFLOW_TEMPLATE content" {
