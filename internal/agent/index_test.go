@@ -2,8 +2,10 @@ package agent
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -127,5 +129,156 @@ func TestCmdIndex_StripsStaleBlock(t *testing.T) {
 	s := string(data)
 	if HasManagedImportBlock(s) {
 		t.Errorf("stale managed block not stripped after rule removal:\n%s", s)
+	}
+}
+
+// TestArtifactDescription covers description extraction edge cases.
+func TestArtifactDescription(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{
+			name: "simple description",
+			content: `---
+description: Enforces security policies across the repository
+---
+# Rule
+Body.`,
+			want: "Enforces security policies across the repository",
+		},
+		{
+			name:    "no frontmatter",
+			content: `# Just a markdown file\nNo frontmatter here.`,
+			want:    "",
+		},
+		{
+			name: "TODO stub suppressed",
+			content: `---
+description: TODO — describe this later
+---
+Body.`,
+			want: "",
+		},
+		{
+			name: "multi-line scalar skipped",
+			content: `---
+description: |
+  This is a
+  multi-line description
+---
+Body.`,
+			want: "",
+		},
+		{
+			name: "long description truncated",
+			content: fmt.Sprintf(`---
+description: %s
+---
+Body.`, strings.Repeat("word ", 50)),
+			want: func() string {
+				s := strings.TrimSpace(strings.Repeat("word ", 50))
+				if len(s) > 140 {
+					// artifactDescription joins fields (strings.Fields then Join),
+					// then truncates at maxIndexDescription=140 via truncateAtWord.
+					// 50 repeats of "word " = 250 chars. Truncate to 140 chars
+					// at word boundary, append ellipsis.
+					s = truncateAtWord(s, 140) + "…"
+				}
+				return s
+			}(),
+		},
+		{
+			name:    "missing file",
+			content: "",
+			want:    "",
+		},
+		{
+			name: "empty description",
+			content: `---
+description:
+---
+Body.`,
+			want: "",
+		},
+		{
+			name: "unterminated frontmatter",
+			content: `---
+description: something bad
+Body without closing.`,
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var path string
+			if tt.content != "" {
+				f, err := os.CreateTemp(t.TempDir(), "test-*.md")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := f.WriteString(tt.content); err != nil {
+					t.Fatal(err)
+				}
+				f.Close()
+				path = f.Name()
+			} else {
+				path = filepath.Join(t.TempDir(), "nonexistent.md")
+			}
+			got := artifactDescription(path)
+			if got != tt.want {
+				t.Errorf("artifactDescription() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestIndexEntry covers the rendering of AGENTS.md index lines.
+func TestIndexEntry(t *testing.T) {
+	dir := t.TempDir()
+
+	tests := []struct {
+		name     string
+		md       string
+		linkPath string
+	}{
+		{
+			name:     "with description",
+			md:       "---\ndescription: Does something useful\n---\nBody.",
+			linkPath: ".agents/rules/useful.md",
+		},
+		{
+			name:     "without description",
+			md:       "# No frontmatter",
+			linkPath: ".agents/rules/boring.md",
+		},
+		{
+			name:     "stub description suppressed",
+			md:       "---\ndescription: TODO fill me in\n---\nBody.",
+			linkPath: ".agents/rules/wip.md",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, err := os.CreateTemp(dir, "test-*.md")
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.WriteString(tt.md)
+			f.Close()
+
+			got := indexEntry(tt.name, tt.linkPath, f.Name())
+			if !strings.Contains(got, tt.linkPath) {
+				t.Errorf("indexEntry missing link %q in:\n%s", tt.linkPath, got)
+			}
+			if !strings.Contains(got, tt.name) {
+				t.Errorf("indexEntry missing name %q in:\n%s", tt.name, got)
+			}
+			if strings.Contains(got, "TODO") {
+				t.Errorf("TODO should be suppressed in:\n%s", got)
+			}
+		})
 	}
 }

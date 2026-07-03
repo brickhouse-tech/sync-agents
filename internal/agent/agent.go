@@ -1328,7 +1328,10 @@ func (a *App) generateAgentsMD() {
 		{"Specs", "specs"},
 	} {
 		refDir := filepath.Join(agentsDir, ref.dir)
-		files := listMDFilesRecursive(refDir)
+		files, warns := listMDFilesRecursive(refDir)
+		for _, w := range warns {
+			a.Warn(w)
+		}
 		if len(files) == 0 {
 			continue
 		}
@@ -1478,10 +1481,15 @@ func listMDFiles(dir string) []string {
 // stripped ("effort-x/plan-a"). Reference buckets (plans/specs)
 // allow grouping documents per effort in subdirectories, so their
 // index sections list recursively (SPEC-004 Part D).
-func listMDFilesRecursive(dir string) []string {
+//
+// The second return value is a slice of non-fatal warning messages
+// (permission errors, unreadable files) for the caller to surface.
+func listMDFilesRecursive(dir string) ([]string, []string) {
 	var names []string
+	var warns []string
 	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
+			warns = append(warns, fmt.Sprintf("%s: %v", path, err))
 			return nil
 		}
 		name := d.Name()
@@ -1494,15 +1502,16 @@ func listMDFilesRecursive(dir string) []string {
 		if !strings.HasSuffix(name, ".md") || strings.HasPrefix(name, ".") {
 			return nil
 		}
-		rel, err := filepath.Rel(dir, path)
+		re, err := filepath.Rel(dir, path)
 		if err != nil {
+			warns = append(warns, fmt.Sprintf("%s: %v", path, err))
 			return nil
 		}
-		names = append(names, strings.TrimSuffix(filepath.ToSlash(rel), ".md"))
+		names = append(names, strings.TrimSuffix(filepath.ToSlash(re), ".md"))
 		return nil
 	})
 	sort.Strings(names)
-	return names
+	return names, warns
 }
 
 // artifactDescription extracts the frontmatter `description` of the

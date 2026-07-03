@@ -366,6 +366,9 @@ func (a *App) CmdBackfillSkills() {
 	skillsDir := filepath.Join(a.ProjectRoot, ".agents", "skills")
 	entries, err := os.ReadDir(skillsDir)
 	if err != nil {
+		if !os.IsNotExist(err) {
+			a.Warn(fmt.Sprintf("skills: %v", err))
+		}
 		return
 	}
 	fixed := 0
