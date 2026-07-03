@@ -230,6 +230,15 @@ func main() {
 	lintCmd.Flags().BoolVar(&lintFix, "fix", false, "Amend fixable findings in place")
 	rootCmd.AddCommand(lintCmd)
 
+	// hook — install git pre-commit hook
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "hook",
+		Short: "Install git pre-commit hook that syncs + indexes on commit",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return app.CmdHook()
+		},
+	})
+
 	// fix
 	var noClobber bool
 	fixCmd := &cobra.Command{
