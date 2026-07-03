@@ -76,12 +76,19 @@ SHA-256 checksums are published alongside each release as `checksums.txt`.
   │       └── rollout.md
   ├── specs/               # optional: durable design/requirements docs (what/why)
   │   └── SPEC-001.md
+  ├── adrs/                # optional: Architecture Decision Records, status = subdirectory
+  │   ├── proposed/
+  │   │   └── adopt-grpc.md
+  │   ├── accepted/
+  │   │   └── use-postgres.md
+  │   └── denied/          # kept but never indexed — prevents re-proposing rejected decisions
+  │       └── use-mongo.md
   └── STATE.md
 ```
 
 > **Note:** Skills use a directory layout (`skills/name/SKILL.md`) rather than flat files. This allows skills to include supporting files alongside their definition. The `fix` command can convert legacy flat skill files to the directory layout automatically.
 
-> **Optional buckets:** `agents/`, `plans/`, and `specs/` activate only when their directory exists — `init` does not create them, `add agent|plan|spec <name>` does. They sync to Claude only (`.claude/agents`, `.claude/plans`, `.claude/specs`); other tools consume plans/specs through the `AGENTS.md` index and have no subagent surface. `plans/` and `specs/` share plumbing but differ in lifecycle: specs are durable what/why documents, plans are per-effort how/when documents that retire when the effort lands.
+> **Optional buckets:** `agents/`, `plans/`, `specs/`, `hooks/`, and `adrs/` activate only when their directory exists — `init` does not create them, `add agent|plan|spec|hook|adr <name>` does. They sync to Claude only (`.claude/agents`, `.claude/plans`, `.claude/specs`); other tools consume plans/specs through the `AGENTS.md` index and have no subagent surface. `plans/` and `specs/` share plumbing but differ in lifecycle: specs are durable what/why documents, plans are per-effort how/when documents that retire when the effort lands.
 
 Running `sync-agents sync` creates symlinks from `.agents/` subdirectories into `.claude/`, `.windsurf/`, `.cursor/`, and `.github/copilot/`. Any changes to `.agents/` are automatically reflected in the target directories because they are symlinks, not copies.
 
@@ -104,8 +111,9 @@ AGENTS.md is also symlinked to CLAUDE.md so that Claude reads the index natively
 | `inherit --list` | List current inheritance links |
 | `inherit --remove <label>` | Remove an inheritance link by label |
 | `status` | Show the current sync status of all targets and symlinks |
-| `add <type> <name>` | Add a new artifact from a template (type is `rule`, `skill`, `workflow`, `agent`, `plan`, or `spec`) |
+| `add <type> <name>` | Add a new artifact from a template (type is `rule`, `skill`, `workflow`, `agent`, `plan`, `spec`, `hook`, or `adr`) |
 | `index [--no-fix]` | Regenerate `AGENTS.md` by scanning `.agents/`. Backfills fixable skill frontmatter first (`--no-fix` skips the backfill) |
+| `adr <accept\|deny\|propose> <name>` | Move an ADR between status directories, update its `status:` frontmatter, and reindex |
 | `lint [skills] [--fix]` | Validate SKILL.md frontmatter against [Claude's skill authoring rules](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices); `--fix` amends fixable findings in place |
 | `clean` | Remove all synced symlinks and empty target directories (does not remove `.agents/`) |
 | `fix [type]` | Migrate legacy dirs into `.agents/`, convert flat skill files to directory layout, and repair broken symlinks. Type: any bucket dir, or `all` (default) |
@@ -183,6 +191,18 @@ sync-agents lint
 
 # amend fixable findings in place
 sync-agents lint --fix
+```
+
+## ADRs (Architecture Decision Records)
+
+ADRs live in `.agents/adrs/` with **status encoded by subdirectory**: `proposed/`, `accepted/`, `denied/`. `add adr <name>` scaffolds into `proposed/`; `sync-agents adr accept|deny|propose <name>` moves a record between statuses (nested grouping subdirs are preserved) and regenerates the index.
+
+Only **accepted and proposed** records appear in `AGENTS.md`. Denied records are kept on disk and the index carries a standing note telling agents to check `.agents/adrs/denied/` before proposing a new ADR — so already-rejected decisions don't get re-proposed.
+
+```bash
+sync-agents add adr use-postgres      # → .agents/adrs/proposed/use-postgres.md
+sync-agents adr accept use-postgres   # → .agents/adrs/accepted/, reindexed
+sync-agents adr deny use-postgres     # → .agents/adrs/denied/, dropped from index
 ```
 
 ## Inheritance

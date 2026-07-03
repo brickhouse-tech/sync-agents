@@ -61,6 +61,7 @@ func (s Semantic) String() string {
 //	agents/    → Invocable (subagents are dispatched by name/trigger)
 //	plans/     → Reference (indexed, read on demand)
 //	specs/     → Reference (indexed, read on demand)
+//	adrs/      → Reference (indexed by status, read on demand)
 //
 // An unknown ArtifactType returns Passive — the conservative choice,
 // since at worst it ends up in always-on context rather than the
@@ -71,7 +72,7 @@ func BucketDefaultSemantic(typ ArtifactType) Semantic {
 		return Passive
 	case ArtifactSkill, ArtifactWorkflow, ArtifactAgent:
 		return Invocable
-	case ArtifactPlan, ArtifactSpec:
+	case ArtifactPlan, ArtifactSpec, ArtifactADR:
 		return Reference
 	default:
 		return Passive

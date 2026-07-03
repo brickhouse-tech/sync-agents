@@ -4,7 +4,7 @@ title: "New asset buckets: agents, hooks, plans, specs — .claude-first routing
 status: Draft
 owner: nmccready
 created: 2026-07-02
-updated: 2026-07-02
+updated: 2026-07-03 (rev 2: Part F — adrs bucket with status subdirectories)
 related: SPEC-002, SPEC-003, SPEC-005
 ---
 
@@ -223,6 +223,26 @@ per-bucket so rules/workflows (and Part B agents, whose subagent
 frontmatter has its own schema) can be added incrementally via the
 Part A registry. SPEC-005's install-time scanner reuses `lint` so
 remotely pulled skills are held to the same bar before approval.
+
+## Part F — `adrs` bucket (Architecture Decision Records)
+
+- Source: `.agents/adrs/<status>/<name>.md` with status ∈
+  {`proposed`, `accepted`, `denied`} encoded by subdirectory (the
+  directory is the source of truth; frontmatter `status:` mirrors it).
+  Nested grouping subdirs allowed (`adrs/accepted/db/use-postgres.md`).
+- `add adr <name>` scaffolds into `proposed/`. `sync-agents adr
+  <accept|deny|propose> <name>` moves records between statuses,
+  updates the frontmatter label, and regenerates AGENTS.md.
+  Ambiguous names (same basename under two statuses) error rather
+  than guess.
+- Index: `## ADRs` section with `### Accepted` and `### Proposed`
+  subsections. **Denied records are never indexed**; the section
+  carries a standing note directing agents to check
+  `.agents/adrs/denied/` before proposing, so rejected decisions
+  aren't re-proposed (the note ships in generated context — it can't
+  drift or be forgotten like a separate rule file).
+- Routing: Reference semantic, same as plans/specs — `.claude/adrs`
+  local symlink (Claude-only), skip elsewhere.
 
 ## Backwards Compatibility
 

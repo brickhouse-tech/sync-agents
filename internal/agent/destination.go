@@ -117,7 +117,7 @@ func TargetDestination(
 	// @-mentionable, skipped everywhere else — never concatenated
 	// into always-on instructions (that would preload reference
 	// material into baseline context).
-	if typ == ArtifactPlan || typ == ArtifactSpec {
+	if typ == ArtifactPlan || typ == ArtifactSpec || typ == ArtifactADR {
 		bucket, _ := BucketForArtifact(typ)
 		if tool.ID == "claude" {
 			return Destination{

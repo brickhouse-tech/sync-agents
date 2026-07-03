@@ -49,3 +49,4 @@ func Agent() string    { return defaultFS.DemandFile("agent.md") }
 func Plan() string     { return defaultFS.DemandFile("plan.md") }
 func Spec() string     { return defaultFS.DemandFile("spec.md") }
 func Hook() string     { return defaultFS.DemandFile("hook.json") }
+func ADR() string      { return defaultFS.DemandFile("adr.md") }

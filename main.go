@@ -137,7 +137,7 @@ func main() {
 	// add
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "add [type] [name]",
-		Short: "Add a new rule, skill, workflow, or agent",
+		Short: "Add a new rule, skill, workflow, agent, plan, spec, hook, or adr",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var typ, name string
 			if len(args) >= 1 {
@@ -211,6 +211,22 @@ func main() {
 				url = args[0]
 			}
 			return app.CmdImport(url)
+		},
+	})
+
+	// adr — transition Architecture Decision Records between statuses
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "adr <accept|deny|propose> <name>",
+		Short: "Move an ADR between proposed/accepted/denied and reindex",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var action, name string
+			if len(args) >= 1 {
+				action = args[0]
+			}
+			if len(args) >= 2 {
+				name = args[1]
+			}
+			return app.CmdADR(action, name)
 		},
 	})
 
