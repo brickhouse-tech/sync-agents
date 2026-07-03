@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.5](https://github.com/brickhouse-tech/sync-agents/compare/v0.3.4...v0.3.5) (2026-07-03)
+
+
+### Features
+
+* **index:** plans+specs buckets, description-aware index, skill header backfill (SPEC-004 Part D, refs [#50](https://github.com/brickhouse-tech/sync-agents/issues/50)) ([#57](https://github.com/brickhouse-tech/sync-agents/issues/57)) ([1f7cae8](https://github.com/brickhouse-tech/sync-agents/commit/1f7cae8cdaedb5b892c1b84ffd38df46e741cca9))
+
 ## [0.3.4](https://github.com/brickhouse-tech/sync-agents/compare/v0.3.3...v0.3.4) (2026-07-02)
 
 
