@@ -1220,8 +1220,11 @@ func (a *App) generateAgentsMD() {
 	b.WriteString("This file indexes all rules, skills, and workflows defined in `.agents/`.\n\n")
 
 	if inheritsBlock != "" {
-		b.WriteString(inheritsBlock)
-		b.WriteString("\n")
+		// Trim captured trailing blank lines before re-adding the
+		// section separator — otherwise every regeneration appends
+		// one more blank line (index must be idempotent).
+		b.WriteString(strings.TrimRight(inheritsBlock, "\n"))
+		b.WriteString("\n\n")
 	}
 
 	// Rules
@@ -1230,7 +1233,7 @@ func (a *App) generateAgentsMD() {
 	ruleFiles := listMDFiles(rulesDir)
 	if len(ruleFiles) > 0 {
 		for _, name := range ruleFiles {
-			b.WriteString(fmt.Sprintf("- [%s](.agents/rules/%s.md)\n", name, name))
+			b.WriteString(indexEntry(name, ".agents/rules/"+name+".md", filepath.Join(rulesDir, name+".md")))
 		}
 	} else {
 		b.WriteString("_No rules defined yet. Add one with `sync-agents add rule <name>`._\n")
@@ -1249,7 +1252,7 @@ func (a *App) generateAgentsMD() {
 			name := entry.Name()
 			skillFile := filepath.Join(skillsDir, name, "SKILL.md")
 			if _, err := os.Stat(skillFile); err == nil {
-				b.WriteString(fmt.Sprintf("- [%s](.agents/skills/%s/SKILL.md)\n", name, name))
+				b.WriteString(indexEntry(name, ".agents/skills/"+name+"/SKILL.md", skillFile))
 				hasSkills = true
 			}
 		}
@@ -1277,7 +1280,7 @@ func (a *App) generateAgentsMD() {
 	wfFiles := listMDFiles(workflowsDir)
 	if len(wfFiles) > 0 {
 		for _, name := range wfFiles {
-			b.WriteString(fmt.Sprintf("- [%s](.agents/workflows/%s.md)\n", name, name))
+			b.WriteString(indexEntry(name, ".agents/workflows/"+name+".md", filepath.Join(workflowsDir, name+".md")))
 		}
 	} else {
 		b.WriteString("_No workflows defined yet. Add one with `sync-agents add workflow <name>`._\n")
@@ -1291,7 +1294,27 @@ func (a *App) generateAgentsMD() {
 	if agentFiles := listMDFiles(agentsBucketDir); len(agentFiles) > 0 {
 		b.WriteString("## Agents\n\n")
 		for _, name := range agentFiles {
-			b.WriteString(fmt.Sprintf("- [%s](.agents/agents/%s.md)\n", name, name))
+			b.WriteString(indexEntry(name, ".agents/agents/"+name+".md", filepath.Join(agentsBucketDir, name+".md")))
+		}
+		b.WriteString("\n")
+	}
+
+	// Reference-doc buckets (SPEC-004 Part D): plans and specs.
+	// Optional sections like Agents, but listed recursively because
+	// these documents are commonly grouped per effort in subdirs.
+	for _, ref := range []struct{ title, dir string }{
+		{"Plans", "plans"},
+		{"Specs", "specs"},
+	} {
+		refDir := filepath.Join(agentsDir, ref.dir)
+		files := listMDFilesRecursive(refDir)
+		if len(files) == 0 {
+			continue
+		}
+		b.WriteString("## " + ref.title + "\n\n")
+		for _, rel := range files {
+			link := ".agents/" + ref.dir + "/" + rel + ".md"
+			b.WriteString(indexEntry(rel, link, filepath.Join(refDir, filepath.FromSlash(rel)+".md")))
 		}
 		b.WriteString("\n")
 	}
@@ -1403,6 +1426,74 @@ func listMDFiles(dir string) []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// listMDFilesRecursive returns the .md files under dir at any depth,
+// as slash-separated paths relative to dir with the extension
+// stripped ("effort-x/plan-a"). Reference buckets (plans/specs)
+// allow grouping documents per effort in subdirectories, so their
+// index sections list recursively (SPEC-004 Part D).
+func listMDFilesRecursive(dir string) []string {
+	var names []string
+	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		name := d.Name()
+		if d.IsDir() {
+			if strings.HasPrefix(name, ".") && path != dir {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(name, ".md") || strings.HasPrefix(name, ".") {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return nil
+		}
+		names = append(names, strings.TrimSuffix(filepath.ToSlash(rel), ".md"))
+		return nil
+	})
+	sort.Strings(names)
+	return names
+}
+
+// artifactDescription extracts the frontmatter `description` of the
+// markdown file at path for display in the AGENTS.md index. Returns
+// "" (no suffix rendered) when the file has no frontmatter, the
+// description is empty or a multi-line scalar, or it is an
+// unfinished scaffold stub (starts with "TODO"). Long descriptions
+// are truncated so one artifact can't dominate the index.
+func artifactDescription(path string) string {
+	const maxIndexDescription = 140
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	block, err := parseFMBlock(string(raw))
+	if err != nil || !block.present {
+		return ""
+	}
+	desc, _ := block.get("description")
+	if desc == "" || strings.HasPrefix(desc, "|") || strings.HasPrefix(desc, ">") || strings.HasPrefix(desc, "TODO") {
+		return ""
+	}
+	desc = strings.Join(strings.Fields(desc), " ")
+	if len(desc) > maxIndexDescription {
+		desc = truncateAtWord(desc, maxIndexDescription) + "…"
+	}
+	return desc
+}
+
+// indexEntry renders one AGENTS.md index line: `- [name](link)` with
+// an ` — description` suffix when the artifact declares one.
+func indexEntry(name, link, srcPath string) string {
+	if desc := artifactDescription(srcPath); desc != "" {
+		return fmt.Sprintf("- [%s](%s) — %s\n", name, link, desc)
+	}
+	return fmt.Sprintf("- [%s](%s)\n", name, link)
 }
 
 func (a *App) addDefaultGitignoreEntries() {

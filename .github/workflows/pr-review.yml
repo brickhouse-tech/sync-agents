@@ -1,0 +1,52 @@
+name: PR Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Get changed files
+        id: changed
+        run: |
+          echo "files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -v -E '(package-lock|yarn\.lock|\.min\.js|dist/|build/)' | tr '\n' ' ')" >> $GITHUB_OUTPUT
+      
+      - name: Run AI code review
+        # Placeholder for AI review action or custom script
+        # Example: use Gemini, Claude, or custom agent
+        run: |
+          echo "Review the following files for correctness, security, performance, and maintainability:"
+          echo "${{ steps.changed.outputs.files }}"
+          echo "Post findings as PR comments with severity levels (Critical/Warning/Suggestion/Nit)"
+      
+      - name: Post review summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const summary = `## 🤖 AI Code Review Complete
+            
+            Review performed on changed files. Check inline comments for specific findings.
+            
+            **Severity Levels:**
+            - 🔴 **Critical**: Must fix (bugs, security, data loss)
+            - 🟡 **Warning**: Should fix (performance, maintainability)
+            - 🔵 **Suggestion**: Nice to have (style, alternatives)
+            - ⚪ **Nit**: Optional (cosmetic)`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: summary
+            });

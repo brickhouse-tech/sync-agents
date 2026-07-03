@@ -112,6 +112,25 @@ func TargetDestination(
 		}
 	}
 
+	// Reference docs (plans/specs, SPEC-004 Part D) also route
+	// independently of semantic: symlinked under .claude/ so they're
+	// @-mentionable, skipped everywhere else — never concatenated
+	// into always-on instructions (that would preload reference
+	// material into baseline context).
+	if typ == ArtifactPlan || typ == ArtifactSpec {
+		bucket, _ := BucketForArtifact(typ)
+		if tool.ID == "claude" {
+			return Destination{
+				Strategy: StrategySymlink,
+				Path:     filepath.Join(globalRootParent, ".claude", bucket.Dir, name+".md"),
+			}
+		}
+		return Destination{
+			Strategy:   StrategySkip,
+			SkipReason: fmt.Sprintf("%s reference docs are Claude-only; other tools read them via the AGENTS.md index", bucket.Dir),
+		}
+	}
+
 	switch tool.ID {
 	case "claude":
 		return claudeDestination(typ, name, sem, globalRootParent)

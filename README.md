@@ -1,6 +1,6 @@
 # sync-agents
 
-One set of agent rules to rule them all. `sync-agents` keeps your AI coding agent configurations in a single `.agents/` directory and syncs them to agent-specific directories (`.claude/`, `.windsurf/`, `.cursor/`, `.github/copilot/`) via symlinks. This ensures all agents follow the same rules, skills, and workflows without duplicating files.
+One set of agent rules to rule them all. `sync-agents` keeps your AI coding agent configurations in a single `.agents/` directory and syncs them to agent-specific directories (`.claude/`, `.windsurf/`, `.cursor/`, `.github/copilot/`) via symlinks. This ensures all agents follow the same rules, skills, workflows, subagents, plans, and specs without duplicating files.
 
 AGENTS.md serves as an auto-generated index of everything in `.agents/` and is symlinked to CLAUDE.md for Claude compatibility.
 
@@ -69,10 +69,19 @@ SHA-256 checksums are published alongside each release as `checksums.txt`.
   │   ├── workflow1.md
   │   ├── workflow2.md
   │   └── ...
+  ├── agents/              # optional: Claude subagent definitions
+  │   └── reviewer.md
+  ├── plans/               # optional: per-effort implementation plans (how/when)
+  │   └── auth-effort/
+  │       └── rollout.md
+  ├── specs/               # optional: durable design/requirements docs (what/why)
+  │   └── SPEC-001.md
   └── STATE.md
 ```
 
 > **Note:** Skills use a directory layout (`skills/name/SKILL.md`) rather than flat files. This allows skills to include supporting files alongside their definition. The `fix` command can convert legacy flat skill files to the directory layout automatically.
+
+> **Optional buckets:** `agents/`, `plans/`, and `specs/` activate only when their directory exists — `init` does not create them, `add agent|plan|spec <name>` does. They sync to Claude only (`.claude/agents`, `.claude/plans`, `.claude/specs`); other tools consume plans/specs through the `AGENTS.md` index and have no subagent surface. `plans/` and `specs/` share plumbing but differ in lifecycle: specs are durable what/why documents, plans are per-effort how/when documents that retire when the effort lands.
 
 Running `sync-agents sync` creates symlinks from `.agents/` subdirectories into `.claude/`, `.windsurf/`, `.cursor/`, and `.github/copilot/`. Any changes to `.agents/` are automatically reflected in the target directories because they are symlinks, not copies.
 
@@ -95,10 +104,16 @@ AGENTS.md is also symlinked to CLAUDE.md so that Claude reads the index natively
 | `inherit --list` | List current inheritance links |
 | `inherit --remove <label>` | Remove an inheritance link by label |
 | `status` | Show the current sync status of all targets and symlinks |
-| `add <type> <name>` | Add a new rule, skill, or workflow from a template (type is `rule`, `skill`, or `workflow`) |
-| `index` | Regenerate `AGENTS.md` by scanning the contents of `.agents/` |
+| `add <type> <name>` | Add a new artifact from a template (type is `rule`, `skill`, `workflow`, `agent`, `plan`, or `spec`) |
+| `index [--no-fix]` | Regenerate `AGENTS.md` by scanning `.agents/`. Backfills fixable skill frontmatter first (`--no-fix` skips the backfill) |
+| `lint [skills] [--fix]` | Validate SKILL.md frontmatter against [Claude's skill authoring rules](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices); `--fix` amends fixable findings in place |
 | `clean` | Remove all synced symlinks and empty target directories (does not remove `.agents/`) |
-| `fix [type]` | Migrate legacy dirs into `.agents/`, convert flat skill files to directory layout, and repair broken symlinks. Type: `skills`, `rules`, `workflows`, or `all` (default) |
+| `fix [type]` | Migrate legacy dirs into `.agents/`, convert flat skill files to directory layout, and repair broken symlinks. Type: any bucket dir, or `all` (default) |
+| `promote <type> <name>` | Copy an artifact from the project's `.agents/` to the user-level global store (`~/.agents/`) |
+| `global init` | Initialize the global `~/.agents/` store |
+| `global sync` | Fan the global store out to each tool's user-level config dir with semantic-aware routing |
+| `global status` | Show per-artifact sync state across global tool dirs |
+| `global clean` | Remove global symlinks/concat files owned by sync-agents |
 
 ## Options
 
@@ -111,6 +126,8 @@ AGENTS.md is also symlinked to CLAUDE.md so that Claude reads the index natively
 | `--dry-run` | Show what would be done without making changes |
 | `--force` | Overwrite existing files and symlinks |
 | `--no-clobber` | (fix only) Skip items that already exist in `.agents/` instead of merging |
+| `--fix` | (lint only) Amend fixable frontmatter findings in place |
+| `--no-fix` | (index only) Skip the skill frontmatter backfill |
 
 ## Configuration
 
@@ -150,6 +167,22 @@ A reproducible demo is available in [`examples/fix/`](examples/fix/):
 
 ```bash
 bash examples/fix/run-demo.sh
+```
+
+## Skill frontmatter (lint & backfill)
+
+Claude discovers skills through their `SKILL.md` YAML frontmatter, with [published requirements](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices): `name` (≤64 chars, lowercase letters/numbers/hyphens, no reserved words) and `description` (non-empty, ≤1024 chars, third person, says what the skill does *and when to use it*).
+
+`sync-agents lint` checks every skill against those rules; `lint --fix` mechanically amends what it can — injecting a missing frontmatter block, deriving `name` from the directory, deriving `description` from the first body paragraph, truncating overlong values, and stripping XML tags — while preserving all other frontmatter keys verbatim. Reserved-word names are reported but never auto-renamed.
+
+`sync-agents index` runs the same backfill by default before regenerating `AGENTS.md`, so legacy skills upgrade themselves as part of the normal index cycle (`--no-fix` opts out). Unfixable findings warn but never fail indexing.
+
+```bash
+# report compliance issues (exit non-zero on errors — CI-friendly)
+sync-agents lint
+
+# amend fixable findings in place
+sync-agents lint --fix
 ```
 
 ## Inheritance
@@ -310,6 +343,15 @@ sync-agents add skill debugging
 
 # Add a new workflow
 sync-agents add workflow deploy
+
+# Add a Claude subagent / a plan / a spec (creates the bucket on demand)
+sync-agents add agent reviewer
+sync-agents add plan q3-roadmap
+sync-agents add spec sso-login
+
+# Validate + upgrade skill frontmatter
+sync-agents lint
+sync-agents lint --fix
 
 # Sync to all targets (.claude/ and .windsurf/)
 sync-agents sync

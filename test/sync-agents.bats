@@ -1399,3 +1399,80 @@ CONF
   [ "$status" -eq 0 ]
   [ ! -e "$TEST_DIR/.claude/agents" ]
 }
+
+# --------------------------------------------------------------------------
+# plans + specs buckets (SPEC-004 Part D)
+# --------------------------------------------------------------------------
+
+@test "add plan and add spec create files from templates" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" add plan q3-roadmap
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_DIR/.agents/plans/q3-roadmap.md" ]
+  run "$SCRIPT" -d "$TEST_DIR" add spec sso-login
+  [ "$status" -eq 0 ]
+  grep -q "name: sso-login" "$TEST_DIR/.agents/specs/sso-login.md"
+}
+
+@test "sync links plans and specs into .claude only" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add plan q3-roadmap
+  "$SCRIPT" -d "$TEST_DIR" add spec sso-login
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [ -L "$TEST_DIR/.claude/plans" ]
+  [ -L "$TEST_DIR/.claude/specs" ]
+  [ ! -e "$TEST_DIR/.cursor/plans" ]
+  [ ! -e "$TEST_DIR/.windsurf/specs" ]
+}
+
+@test "index lists plans and specs recursively with sections" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.agents/plans/auth-effort"
+  printf -- '---\nname: rollout\ndescription: Rollout plan for the auth effort. Use when planning auth work.\n---\n\n# Rollout\n' \
+    > "$TEST_DIR/.agents/plans/auth-effort/rollout.md"
+  run "$SCRIPT" -d "$TEST_DIR" index
+  [ "$status" -eq 0 ]
+  grep -q "## Plans" "$TEST_DIR/AGENTS.md"
+  grep -q ".agents/plans/auth-effort/rollout.md" "$TEST_DIR/AGENTS.md"
+  # description suffix rendered
+  grep -q "Rollout plan for the auth effort" "$TEST_DIR/AGENTS.md"
+  # specs section absent when bucket empty
+  run grep -q "## Specs" "$TEST_DIR/AGENTS.md"
+  [ "$status" -ne 0 ]
+}
+
+# --------------------------------------------------------------------------
+# index backfill (skill frontmatter)
+# --------------------------------------------------------------------------
+
+@test "index backfills missing skill frontmatter by default" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.agents/skills/legacy-tool"
+  printf '# Legacy Tool\n\nWraps the legacy tool when needed.\n' > "$TEST_DIR/.agents/skills/legacy-tool/SKILL.md"
+  run "$SCRIPT" -d "$TEST_DIR" index
+  [ "$status" -eq 0 ]
+  grep -q "name: legacy-tool" "$TEST_DIR/.agents/skills/legacy-tool/SKILL.md"
+  grep -q "description: Wraps the legacy tool when needed." "$TEST_DIR/.agents/skills/legacy-tool/SKILL.md"
+  # backfilled description flows into the AGENTS.md index line
+  grep -q "Wraps the legacy tool when needed" "$TEST_DIR/AGENTS.md"
+}
+
+@test "index --no-fix leaves skill headers untouched" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.agents/skills/legacy-tool"
+  printf '# Legacy Tool\n' > "$TEST_DIR/.agents/skills/legacy-tool/SKILL.md"
+  run "$SCRIPT" -d "$TEST_DIR" index --no-fix
+  [ "$status" -eq 0 ]
+  run grep -q "name:" "$TEST_DIR/.agents/skills/legacy-tool/SKILL.md"
+  [ "$status" -ne 0 ]
+}
+
+@test "index still succeeds when a skill has an unfixable finding" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.agents/skills/claude-helper"
+  printf '# Helper\n\nHelps when needed.\n' > "$TEST_DIR/.agents/skills/claude-helper/SKILL.md"
+  run "$SCRIPT" -d "$TEST_DIR" index
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"reserved word"* ]]
+}

@@ -236,3 +236,38 @@ func TestTargetDestination_AgentOtherToolsSkip(t *testing.T) {
 		}
 	}
 }
+
+// TestTargetDestination_ReferenceDocsClaude routes plans/specs to
+// .claude/plans|specs regardless of semantic (SPEC-004 Part D).
+func TestTargetDestination_ReferenceDocsClaude(t *testing.T) {
+	cases := []struct {
+		typ ArtifactType
+		dir string
+	}{
+		{ArtifactPlan, "plans"},
+		{ArtifactSpec, "specs"},
+	}
+	for _, c := range cases {
+		d := TargetDestination(asTool(t, "claude"), c.typ, "roadmap", Reference, "", "/home/u")
+		if d.Strategy != StrategySymlink {
+			t.Errorf("%s strategy = %v, want StrategySymlink", c.typ, d.Strategy)
+		}
+		want := filepath.Join("/home/u", ".claude", c.dir, "roadmap.md")
+		if d.Path != want {
+			t.Errorf("%s path = %q, want %q", c.typ, d.Path, want)
+		}
+	}
+}
+
+// TestTargetDestination_ReferenceDocsOtherToolsSkip: plans/specs are
+// never concatenated into always-on instruction files.
+func TestTargetDestination_ReferenceDocsOtherToolsSkip(t *testing.T) {
+	for _, id := range []string{"codeium", "cursor", "copilot", "codex"} {
+		for _, typ := range []ArtifactType{ArtifactPlan, ArtifactSpec} {
+			d := TargetDestination(asTool(t, id), typ, "roadmap", Reference, "", "/home/u")
+			if d.Strategy != StrategySkip {
+				t.Errorf("[%s] %s strategy = %v, want StrategySkip", id, typ, d.Strategy)
+			}
+		}
+	}
+}

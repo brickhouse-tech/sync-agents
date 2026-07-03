@@ -20,6 +20,8 @@ const (
 	ArtifactSkill    ArtifactType = "skill"
 	ArtifactWorkflow ArtifactType = "workflow"
 	ArtifactAgent    ArtifactType = "agent"
+	ArtifactPlan     ArtifactType = "plan"
+	ArtifactSpec     ArtifactType = "spec"
 )
 
 // NormalizeArtifactType maps user-supplied type strings to their

@@ -32,6 +32,13 @@ const (
 
 	// Passive marks artifacts that are always part of baseline context.
 	Passive Semantic = "passive"
+
+	// Reference marks documents that are neither preloaded nor
+	// trigger-dispatched: plans and specs (SPEC-004 Part D). They are
+	// indexed in AGENTS.md and reachable on demand (@-mention, file
+	// read) but never enter the managed import block or any
+	// invocable surface.
+	Reference Semantic = "reference"
 )
 
 // String returns the lowercase semantic name. Useful for log messages
@@ -52,6 +59,8 @@ func (s Semantic) String() string {
 //	skills/    → Invocable (loaded by trigger)
 //	workflows/ → Invocable (loaded by slash invocation)
 //	agents/    → Invocable (subagents are dispatched by name/trigger)
+//	plans/     → Reference (indexed, read on demand)
+//	specs/     → Reference (indexed, read on demand)
 //
 // An unknown ArtifactType returns Passive — the conservative choice,
 // since at worst it ends up in always-on context rather than the
@@ -62,6 +71,8 @@ func BucketDefaultSemantic(typ ArtifactType) Semantic {
 		return Passive
 	case ArtifactSkill, ArtifactWorkflow, ArtifactAgent:
 		return Invocable
+	case ArtifactPlan, ArtifactSpec:
+		return Reference
 	default:
 		return Passive
 	}
