@@ -33,12 +33,30 @@ type Bucket struct {
 	// bucket.
 	NewTemplate func() string
 
+	// NewSubdir, when set, is the subdirectory under the bucket dir
+	// where `add` scaffolds new artifacts (ADRs start life in
+	// adrs/proposed/). Empty means the bucket root.
+	NewSubdir string
+
+	// Ext is the artifact file extension for flat buckets. Empty
+	// means ".md"; hooks use ".json".
+	Ext string
+
 	// LocalTools restricts which local sync targets receive this
 	// bucket's directory symlink. Empty means every active target
 	// (the behavior of the classic three buckets). Names match the
 	// legacy AllTargets IDs ("claude", "windsurf", "cursor",
 	// "copilot").
 	LocalTools []string
+}
+
+// FileExt returns the bucket's artifact extension (".md" unless the
+// bucket overrides it, e.g. hooks → ".json").
+func (b Bucket) FileExt() string {
+	if b.Ext == "" {
+		return ".md"
+	}
+	return b.Ext
 }
 
 // SyncsToLocalTarget reports whether local sync should link this
@@ -74,7 +92,14 @@ var Buckets = []Bucket{
 	// Claude hook fragments (SPEC-004 Part C). Flat JSON files
 	// merged into .claude/settings.json rather than symlinked;
 	// routing handled separately in hooks.go. Not created by init.
-	{Dir: "hooks", Artifact: ArtifactHook, NewTemplate: templates.Hook, LocalTools: []string{"claude"}},
+	{Dir: "hooks", Artifact: ArtifactHook, NewTemplate: templates.Hook, LocalTools: []string{"claude"}, Ext: ".json"},
+	// Architecture Decision Records (SPEC-004 Part F). Status is
+	// encoded by subdirectory: proposed/, accepted/, denied/. Only
+	// accepted + proposed are indexed in AGENTS.md; denied ADRs are
+	// kept (and pointed at from the index) so past rejections aren't
+	// re-proposed. `add adr` scaffolds into proposed/; the `adr`
+	// command moves records between statuses.
+	{Dir: "adrs", Artifact: ArtifactADR, NewTemplate: templates.ADR, LocalTools: []string{"claude"}, NewSubdir: "proposed"},
 }
 
 // BucketDirs returns the directory names of all registered buckets,

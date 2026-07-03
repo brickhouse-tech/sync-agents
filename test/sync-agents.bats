@@ -1484,3 +1484,68 @@ CONF
   [ "$status" -eq 0 ]
   [[ "$output" == *"reserved word"* ]]
 }
+
+# --------------------------------------------------------------------------
+# adrs bucket (SPEC-004 Part F)
+# --------------------------------------------------------------------------
+
+@test "add adr scaffolds into adrs/proposed/" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" add adr use-postgres
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_DIR/.agents/adrs/proposed/use-postgres.md" ]
+  grep -q "status: proposed" "$TEST_DIR/.agents/adrs/proposed/use-postgres.md"
+}
+
+@test "index lists accepted+proposed ADRs, excludes denied, includes denied-dir note" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.agents/adrs/accepted" "$TEST_DIR/.agents/adrs/proposed" "$TEST_DIR/.agents/adrs/denied"
+  printf -- '---\nname: use-postgres\ndescription: Adopt Postgres. Use when persisting relational data.\nstatus: accepted\n---\n' > "$TEST_DIR/.agents/adrs/accepted/use-postgres.md"
+  printf -- '---\nname: adopt-grpc\nstatus: proposed\n---\n' > "$TEST_DIR/.agents/adrs/proposed/adopt-grpc.md"
+  printf -- '---\nname: use-mongo\nstatus: denied\n---\n' > "$TEST_DIR/.agents/adrs/denied/use-mongo.md"
+
+  run "$SCRIPT" -d "$TEST_DIR" index
+  [ "$status" -eq 0 ]
+  grep -q "## ADRs" "$TEST_DIR/AGENTS.md"
+  grep -q "### Accepted" "$TEST_DIR/AGENTS.md"
+  grep -q "use-postgres" "$TEST_DIR/AGENTS.md"
+  grep -q "### Proposed" "$TEST_DIR/AGENTS.md"
+  grep -q "adopt-grpc" "$TEST_DIR/AGENTS.md"
+  # denied excluded from listings but the guidance note points at the dir
+  run grep -q "use-mongo" "$TEST_DIR/AGENTS.md"
+  [ "$status" -ne 0 ]
+  grep -q "adrs/denied" "$TEST_DIR/AGENTS.md"
+}
+
+@test "adr accept and deny move records and reindex" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add adr use-postgres
+  run "$SCRIPT" -d "$TEST_DIR" adr accept use-postgres
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_DIR/.agents/adrs/accepted/use-postgres.md" ]
+  [ ! -f "$TEST_DIR/.agents/adrs/proposed/use-postgres.md" ]
+  grep -q "status: accepted" "$TEST_DIR/.agents/adrs/accepted/use-postgres.md"
+
+  run "$SCRIPT" -d "$TEST_DIR" adr deny use-postgres
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_DIR/.agents/adrs/denied/use-postgres.md" ]
+  run grep -q "use-postgres" "$TEST_DIR/AGENTS.md"
+  [ "$status" -ne 0 ]
+}
+
+@test "sync links adrs bucket into .claude only" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add adr use-postgres
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [ -L "$TEST_DIR/.claude/adrs" ]
+  [ ! -e "$TEST_DIR/.cursor/adrs" ]
+}
+
+@test "add hook scaffolds a .json fragment (not .md)" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" add hook guard-bash
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_DIR/.agents/hooks/guard-bash.json" ]
+  [ ! -f "$TEST_DIR/.agents/hooks/guard-bash.md" ]
+}

@@ -307,8 +307,10 @@ func (a *App) CmdAdd(typ, name string) error {
 	var fpath string
 	if bucket.DirPerArtifact {
 		fpath = filepath.Join(a.ProjectRoot, ".agents", typ, name, "SKILL.md")
+	} else if bucket.NewSubdir != "" {
+		fpath = filepath.Join(a.ProjectRoot, ".agents", typ, bucket.NewSubdir, name+bucket.FileExt())
 	} else {
-		fpath = filepath.Join(a.ProjectRoot, ".agents", typ, name+".md")
+		fpath = filepath.Join(a.ProjectRoot, ".agents", typ, name+bucket.FileExt())
 	}
 
 	if _, err := os.Stat(fpath); err == nil && !a.Force {
@@ -1341,6 +1343,40 @@ func (a *App) generateAgentsMD() {
 			b.WriteString(indexEntry(rel, link, filepath.Join(refDir, filepath.FromSlash(rel)+".md")))
 		}
 		b.WriteString("\n")
+	}
+
+	// ADRs (SPEC-004 Part F). Status is encoded by subdirectory.
+	// Only accepted + proposed records are indexed; denied records
+	// are deliberately excluded but pointed at, so an agent (or
+	// human) checks past rejections before proposing a duplicate.
+	adrsDir := filepath.Join(agentsDir, "adrs")
+	adrFiles := map[string][]string{}
+	for _, status := range ADRStatuses {
+		files, warns := listMDFilesRecursive(filepath.Join(adrsDir, status))
+		for _, w := range warns {
+			a.Warn(w)
+		}
+		adrFiles[status] = files
+	}
+	if len(adrFiles[ADRStatusAccepted])+len(adrFiles[ADRStatusProposed])+len(adrFiles[ADRStatusDenied]) > 0 {
+		b.WriteString("## ADRs\n\n")
+		b.WriteString("Architecture Decision Records. Denied records are NOT listed here — before proposing a new ADR, check `.agents/adrs/denied/` so an already-rejected decision isn't re-proposed.\n\n")
+		for _, group := range []struct{ title, status string }{
+			{"Accepted", ADRStatusAccepted},
+			{"Proposed", ADRStatusProposed},
+		} {
+			files := adrFiles[group.status]
+			if len(files) == 0 {
+				continue
+			}
+			b.WriteString("### " + group.title + "\n\n")
+			for _, rel := range files {
+				link := ".agents/adrs/" + group.status + "/" + rel + ".md"
+				src := filepath.Join(adrsDir, group.status, filepath.FromSlash(rel)+".md")
+				b.WriteString(indexEntry(rel, link, src))
+			}
+			b.WriteString("\n")
+		}
 	}
 
 	// Hooks (SPEC-004 Part C)
