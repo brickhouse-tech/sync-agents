@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.1.0](https://github.com/brickhouse-tech/sync-agents/compare/v1.0.1...v1.1.0) (2026-07-03)
+
+
+### Features
+
+* **source:** declarative source manifest, pull/update, lockfile + sha256 integrity (fixes [#51](https://github.com/brickhouse-tech/sync-agents/issues/51)) ([05c422a](https://github.com/brickhouse-tech/sync-agents/commit/05c422a23a2e9cc764e4504c6d9ca0cf51e920fa))
+
+
+### Bug Fixes
+
+* **deps:** track go.sum — required for gopkg.in/yaml.v3 integrity ([fee62fa](https://github.com/brickhouse-tech/sync-agents/commit/fee62fa7dfd967aea8b732b43a65047c9f49d67f))
+* **hooks:** preserve script-style hooks in the index; warn when nothing merges ([5ee6960](https://github.com/brickhouse-tech/sync-agents/commit/5ee6960285f4cbecf4aa60d8e521b7a02969722e))
+
 ## [1.0.1](https://github.com/brickhouse-tech/sync-agents/compare/v1.0.0...v1.0.1) (2026-07-03)
 
 ## [1.0.0](https://github.com/brickhouse-tech/sync-agents/compare/v0.3.6...v1.0.0) (2026-07-03)
