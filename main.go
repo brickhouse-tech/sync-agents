@@ -255,7 +255,7 @@ func main() {
 		Short:   "Install git pre-commit hook that syncs + indexes on commit",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if cmd.CalledAs() == "hook" {
-				fmt.Fprintln(os.Stderr, "[warn] `sync-agents hook` is deprecated; use `sync-agents git-hook` (same behavior). The alias will be removed in v1.0.")
+				fmt.Fprintln(os.Stderr, "[warn] `sync-agents hook` is deprecated; use `sync-agents git-hook` (same behavior).")
 			}
 			return app.CmdHook()
 		},
