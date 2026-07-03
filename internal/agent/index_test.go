@@ -282,3 +282,182 @@ func TestIndexEntry(t *testing.T) {
 		})
 	}
 }
+
+func TestIsBucketActive(t *testing.T) {
+	app := &App{ActiveTargets: []string{"claude", "cursor"}}
+	if !app.isBucketActive("claude") {
+		t.Error("claude should be active")
+	}
+	if !app.isBucketActive("cursor") {
+		t.Error("cursor should be active")
+	}
+	if app.isBucketActive("copilot") {
+		t.Error("copilot should NOT be active")
+	}
+	if app.isBucketActive("") {
+		t.Error("empty string should NOT be active")
+	}
+}
+
+func TestResolveTargetDir(t *testing.T) {
+	root := "/project"
+	tests := []struct {
+		target string
+		want   string
+	}{
+		{"claude", "/project/.claude"},
+		{"cursor", "/project/.cursor"},
+		{"windsurf", "/project/.windsurf"},
+		{"copilot", "/project/.github/copilot"},
+		{"codex", "/project/.codex"},
+	}
+	for _, tt := range tests {
+		got := ResolveTargetDir(tt.target, root)
+		if got != tt.want {
+			t.Errorf("ResolveTargetDir(%q, %q) = %q, want %q", tt.target, root, got, tt.want)
+		}
+	}
+}
+
+func TestResolveAgentsRel(t *testing.T) {
+	tests := []struct {
+		target string
+		want   string
+	}{
+		{"claude", "../.agents"},
+		{"windsurf", "../.agents"},
+		{"cursor", "../.agents"},
+		{"copilot", "../../.agents"},
+	}
+	for _, tt := range tests {
+		got := ResolveAgentsRel(tt.target)
+		if got != tt.want {
+			t.Errorf("ResolveAgentsRel(%q) = %q, want %q", tt.target, got, tt.want)
+		}
+	}
+}
+
+func TestListMDFilesRecursive_Nested(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "effort-a"), 0o755)
+	os.MkdirAll(filepath.Join(dir, "effort-b"), 0o755)
+	os.WriteFile(filepath.Join(dir, "plan.md"), []byte("root"), 0o644)
+	os.WriteFile(filepath.Join(dir, "effort-a", "rollout.md"), []byte("nested"), 0o644)
+	os.WriteFile(filepath.Join(dir, "effort-b", "testing.md"), []byte("nested2"), 0o644)
+	os.WriteFile(filepath.Join(dir, ".hidden.md"), []byte("hidden"), 0o644)
+	os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("not md"), 0o644)
+
+	names, warns := listMDFilesRecursive(dir)
+	if len(warns) > 0 {
+		t.Errorf("unexpected warnings: %v", warns)
+	}
+	if len(names) != 3 {
+		t.Errorf("expected 3 files, got %d: %v", len(names), names)
+	}
+	want := map[string]bool{
+		"plan":                 true,
+		"effort-a/rollout":     true,
+		"effort-b/testing":     true,
+	}
+	for _, n := range names {
+		if !want[n] {
+			t.Errorf("unexpected file: %q", n)
+		}
+	}
+}
+
+func TestCreateSymlink_Repair(t *testing.T) {
+	dir := t.TempDir()
+	var buf strings.Builder
+	app := &App{ProjectRoot: dir, Stdout: &buf, Stderr: &buf, Force: true}
+
+	os.MkdirAll(filepath.Join(dir, ".agents", "rules"), 0o755)
+	os.WriteFile(filepath.Join(dir, ".agents", "rules", "test.md"), []byte("content"), 0o644)
+	os.MkdirAll(filepath.Join(dir, ".claude", "rules"), 0o755)
+
+	target := filepath.Join(dir, ".claude", "rules", "test.md")
+	os.Symlink("wrong-target", target)
+
+	app.CreateSymlink(".agents/rules/test.md", target, false)
+
+	link, _ := os.Readlink(target)
+	if link != ".agents/rules/test.md" {
+		t.Errorf("symlink not repaired: got %q", link)
+	}
+}
+
+func TestGenerateAgentsMD_AllSections(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".agents", "rules"), 0o755)
+	os.MkdirAll(filepath.Join(dir, ".agents", "skills", "my-skill"), 0o755)
+	os.MkdirAll(filepath.Join(dir, ".agents", "workflows"), 0o755)
+	os.MkdirAll(filepath.Join(dir, ".agents", "agents"), 0o755)
+	os.MkdirAll(filepath.Join(dir, ".agents", "hooks"), 0o755)
+	os.MkdirAll(filepath.Join(dir, ".agents", "plans", "effort-x"), 0o755)
+	os.MkdirAll(filepath.Join(dir, ".agents", "specs"), 0o755)
+
+	os.WriteFile(filepath.Join(dir, ".agents", "rules", "security.md"), []byte("---\ndescription: locks down\n---\nbody"), 0o644)
+	os.WriteFile(filepath.Join(dir, ".agents", "skills", "my-skill", "SKILL.md"), []byte("---\nname: my-skill\ndescription: Does cool stuff\n---\nbody"), 0o644)
+	os.WriteFile(filepath.Join(dir, ".agents", "workflows", "deploy.md"), []byte("body"), 0o644)
+	os.WriteFile(filepath.Join(dir, ".agents", "agents", "reviewer.md"), []byte("body"), 0o644)
+	os.WriteFile(filepath.Join(dir, ".agents", "hooks", "lint.json"), []byte(`{"event":"Stop"}`), 0o644)
+	os.WriteFile(filepath.Join(dir, ".agents", "plans", "effort-x", "rollout.md"), []byte("body"), 0o644)
+	os.WriteFile(filepath.Join(dir, ".agents", "specs", "design.md"), []byte("body"), 0o644)
+
+	var buf bytes.Buffer
+	app := &App{
+		ProjectRoot:   dir,
+		GlobalRoot:    filepath.Join(dir, ".agents"),
+		ActiveTargets: []string{"claude"},
+		Stdout:        &buf,
+		Stderr:        &buf,
+	}
+	app.generateAgentsMD()
+
+	data, _ := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
+	content := string(data)
+	for _, want := range []string{
+		"## Rules", "## Skills", "## Workflows", "## Agents",
+		"## Hooks", "## Plans", "## Specs",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("missing section %q in AGENTS.md:\n%s", want, content[:min(len(content), 200)])
+		}
+	}
+	// Description renders in rules.
+	if !strings.Contains(content, "locks down") {
+		t.Errorf("description not rendered:\n%s", content[:min(len(content), 500)])
+	}
+	// Hooks list the .json file.
+	if !strings.Contains(content, "lint.json") {
+		t.Errorf("hook file not indexed:\n%s", content[:min(len(content), 500)])
+	}
+}
+
+func TestGenerateAgentsMD_EmptyTree(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".agents"), 0o755)
+	var buf bytes.Buffer
+	app := &App{
+		ProjectRoot:   dir,
+		GlobalRoot:    filepath.Join(dir, ".agents"),
+		ActiveTargets: []string{"claude"},
+		Stdout:        &buf,
+		Stderr:        &buf,
+	}
+	app.generateAgentsMD()
+
+	data, _ := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
+	content := string(data)
+	for _, want := range []string{
+		"No rules defined yet", "No skills defined yet", "No workflows defined yet",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("missing placeholder %q:\n%s", want, content[:200])
+		}
+	}
+	// New buckets without content should not appear.
+	if strings.Contains(content, "## Agents") || strings.Contains(content, "## Plans") {
+		t.Errorf("empty optional bucket should not appear in index")
+	}
+}

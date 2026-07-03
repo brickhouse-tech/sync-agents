@@ -377,6 +377,9 @@ func writeHooksState(path string, state hooksState) error {
 // deterministic output. indent="" omits indentation; otherwise
 // prefix + indent apply (like json.MarshalIndent).
 func jsonMarshalSorted(m map[string]json.RawMessage, prefix, indent string) ([]byte, error) {
+	if len(m) == 0 {
+		return []byte("{}"), nil
+	}
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
