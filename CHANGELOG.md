@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.0.0](https://github.com/brickhouse-tech/sync-agents/compare/v0.3.6...v1.0.0) (2026-07-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** `sync-agents hook` is deprecated in favor of
+`sync-agents git-hook`. The alias remains functional until v1.0.
+
+Co-authored-by: nmccready <creadbot@github.com>
+Co-authored-by: Claude Fable 5 <noreply@anthropic.com>
+
+### Features
+
+* **adrs:** ADR bucket with status subdirectories + adr lifecycle command (SPEC-004 Part F, refs [#50](https://github.com/brickhouse-tech/sync-agents/issues/50)) ([#60](https://github.com/brickhouse-tech/sync-agents/issues/60)) ([26570c9](https://github.com/brickhouse-tech/sync-agents/commit/26570c9c52794a714d18ec1df63bd61def42b85d))
+* **cli:** rename `hook` to `git-hook`, keep deprecated alias (SPEC-004 Part C, refs [#50](https://github.com/brickhouse-tech/sync-agents/issues/50)) ([#59](https://github.com/brickhouse-tech/sync-agents/issues/59)) ([2c1167d](https://github.com/brickhouse-tech/sync-agents/commit/2c1167dea64ce07566fdb1d68b489e5d8ec142cd))
+
 ## [0.3.6](https://github.com/brickhouse-tech/sync-agents/compare/v0.3.5...v0.3.6) (2026-07-03)
 
 
