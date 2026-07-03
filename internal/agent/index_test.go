@@ -461,3 +461,57 @@ func TestGenerateAgentsMD_EmptyTree(t *testing.T) {
 		t.Errorf("empty optional bucket should not appear in index")
 	}
 }
+
+func TestCmdIndex_WithStateSnapshots(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".agents", "rules"), 0o755)
+	os.WriteFile(filepath.Join(dir, ".agents", "rules", "test.md"), []byte("body"), 0o644)
+
+	// Add a state snapshot.
+	os.WriteFile(filepath.Join(dir, ".agents", "STATE_test_2026-07-02.md"), []byte("state content"), 0o644)
+
+	var buf bytes.Buffer
+	app := &App{
+		ProjectRoot:   dir,
+		GlobalRoot:    filepath.Join(dir, ".agents"),
+		ActiveTargets: []string{"claude"},
+		Stdout:        &buf,
+		Stderr:        &buf,
+	}
+
+	if err := app.CmdIndex(); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
+	content := string(data)
+	if !strings.Contains(content, "STATE_test") {
+		t.Errorf("state snapshot not indexed:\n%s", content[:500])
+	}
+}
+
+func TestBucketForArtifact_Hooks(t *testing.T) {
+	if _, ok := BucketForArtifact(ArtifactHook); !ok {
+		t.Error("ArtifactHook should be found")
+	}
+}
+
+func TestCmdIndex_NoFix(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".agents", "rules"), 0o755)
+	os.WriteFile(filepath.Join(dir, ".agents", "rules", "test.md"), []byte("body"), 0o644)
+
+	var buf bytes.Buffer
+	app := &App{
+		ProjectRoot:   dir,
+		GlobalRoot:    filepath.Join(dir, ".agents"),
+		ActiveTargets: []string{"claude"},
+		Stdout:        &buf,
+		Stderr:        &buf,
+	}
+
+	// Just verify CmdIndex doesn't fail — no-fix is handled at CLI layer.
+	if err := app.CmdIndex(); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -53,7 +53,7 @@ jobs:
       - name: Check coverage threshold
         run: |
           TOTAL=$(go tool cover -func=coverage.out | grep 'total:' | awk '{print $3}' | sed 's/%//')
-          THRESHOLD=45
+          THRESHOLD=70
           echo "Total coverage: ${TOTAL}% (threshold: ${THRESHOLD}%)"
           if (( $(echo "$TOTAL < $THRESHOLD" | bc -l) )); then
             echo "::error::Coverage ${TOTAL}% is below the ${THRESHOLD}% minimum"

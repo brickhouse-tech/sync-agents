@@ -213,3 +213,43 @@ func TestFindProjectRoot_NotFound(t *testing.T) {
 		t.Error("expected non-empty fallback")
 	}
 }
+func TestAddDefaultGitignoreEntries_ExistingGitignore(t *testing.T) {
+	dir := t.TempDir()
+	var buf strings.Builder
+	app := &App{ProjectRoot: dir, Stdout: &buf, Stderr: &buf}
+
+	// Pre-create a .gitignore with content.
+	os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("node_modules/\n"), 0o644)
+
+	app.addDefaultGitignoreEntries()
+
+	data, _ := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	content := string(data)
+	if !strings.Contains(content, "node_modules") {
+		t.Error("existing content lost")
+	}
+	if !strings.Contains(content, "sync-agents") {
+		t.Errorf("sync-agents section not added to existing gitignore:\n%s", content)
+	}
+}
+
+func TestCreateSymlink_ReplaceFile(t *testing.T) {
+	dir := t.TempDir()
+	var buf strings.Builder
+	app := &App{ProjectRoot: dir, Stdout: &buf, Stderr: &buf, Force: true}
+
+	os.MkdirAll(filepath.Join(dir, ".agents", "rules"), 0o755)
+	os.WriteFile(filepath.Join(dir, ".agents", "rules", "test.md"), []byte("content"), 0o644)
+	os.MkdirAll(filepath.Join(dir, ".claude", "rules"), 0o755)
+
+	target := filepath.Join(dir, ".claude", "rules", "test.md")
+	// Place a regular file where the symlink should go.
+	os.WriteFile(target, []byte("blocker"), 0o644)
+
+	app.CreateSymlink(".agents/rules/test.md", target, false)
+
+	fi, _ := os.Lstat(target)
+	if fi.Mode()&os.ModeSymlink == 0 {
+		t.Error("expected symlink after force replace")
+	}
+}
