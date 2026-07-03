@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // hooks.go implements SPEC-004 Part C: merging .agents/hooks/*.json
@@ -88,6 +89,18 @@ func (a *App) MergeHooks(hooksDir, claudeSettingsPath, statePath string) (int, e
 	frags, err := a.readHookFragments(hooksDir)
 	if err != nil {
 		return 0, err
+	}
+	// Legacy/script-style hooks directories hold executable scripts
+	// (.sh etc.), not JSON fragments. Those files are still indexed
+	// and synced (the bucket dir symlink covers them) but nothing
+	// here will ever merge them into settings.json — say so once per
+	// sync instead of silently doing nothing, so a user migrating
+	// from a script convention isn't left wondering why their hooks
+	// never fire.
+	if len(frags) == 0 {
+		if n := countNonFragmentHookFiles(hooksDir); n > 0 {
+			a.Warn(fmt.Sprintf("hooks/: %d non-JSON file(s) (scripts?) are indexed and synced but NOT merged into settings.json — reference them from a <name>.json fragment ({\"event\":…,\"hooks\":[{\"type\":\"command\",\"command\":\".agents/hooks/<script>\"}]}) for Claude to run them", n))
+		}
 	}
 	if len(frags) == 0 && !fileExists(statePath) && !fileExists(claudeSettingsPath) {
 		return 0, nil // nothing to merge and nothing to clean
@@ -295,8 +308,8 @@ func readHooksState(path string) (*hooksStateInternal, error) {
 // hooksStateInternal is the on-disk shape, extended with a creation
 // flag that the public hooksState doesn't expose.
 type hooksStateInternal struct {
-	Entries            map[string]hooksStateEntry `json:"entries"`
-	SyncAgentsCreated  bool                       `json:"syncAgentsCreated,omitempty"`
+	Entries           map[string]hooksStateEntry `json:"entries"`
+	SyncAgentsCreated bool                       `json:"syncAgentsCreated,omitempty"`
 }
 
 // findHookOwner returns the fragment name that owns a given hook
@@ -483,4 +496,23 @@ func (a *App) CleanHooks(claudeSettingsPath, statePath string) (int, error) {
 		return 0, err
 	}
 	return removed, nil
+}
+
+// countNonFragmentHookFiles reports how many plain files in the hooks
+// bucket are not JSON fragments (companion scripts, READMEs, legacy
+// .sh hooks). Used only for the "these never merge" warning.
+func countNonFragmentHookFiles(hooksDir string) int {
+	entries, err := os.ReadDir(hooksDir)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || strings.HasPrefix(name, ".") || filepath.Ext(name) == ".json" {
+			continue
+		}
+		n++
+	}
+	return n
 }

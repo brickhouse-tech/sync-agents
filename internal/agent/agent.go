@@ -1474,11 +1474,18 @@ func (a *App) generateAgentsMD() {
 	}
 
 	// Hooks (SPEC-004 Part C)
+	// Hooks are indexed regardless of extension: .json files are
+	// settings-fragments the sync merges into .claude/settings.json;
+	// everything else (shell scripts, helpers) is a companion file
+	// that fragments reference by path. Filtering to .json here
+	// silently erased script-style hooks from the index on every
+	// regeneration — files that exist on disk must never disappear
+	// from AGENTS.md.
 	hooksBucketDir := filepath.Join(agentsDir, "hooks")
 	if entries, err := os.ReadDir(hooksBucketDir); err == nil {
 		var hookFiles []string
 		for _, e := range entries {
-			if !e.IsDir() && filepath.Ext(e.Name()) == ".json" {
+			if !e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
 				hookFiles = append(hookFiles, e.Name())
 			}
 		}
@@ -1487,11 +1494,11 @@ func (a *App) generateAgentsMD() {
 			b.WriteString("## Hooks\n\n")
 			for _, name := range hookFiles {
 				link := ".agents/hooks/" + name
-				srcPath := filepath.Join(hooksBucketDir, name)
-				// Hook fragments don't have markdown frontmatter for
-				// description — just link the file.
-				b.WriteString(fmt.Sprintf("- [%s](%s)\n", name, link))
-				_ = srcPath
+				if filepath.Ext(name) == ".json" {
+					b.WriteString(fmt.Sprintf("- [%s](%s) — merged into `.claude/settings.json`\n", name, link))
+				} else {
+					b.WriteString(fmt.Sprintf("- [%s](%s) — companion file (not merged; reference it from a fragment)\n", name, link))
+				}
 			}
 			b.WriteString("\n")
 		}
