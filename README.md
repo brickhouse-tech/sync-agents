@@ -113,6 +113,9 @@ AGENTS.md is also symlinked to CLAUDE.md so that Claude reads the index natively
 | `source list [--json]` | Show each entry's local state: `ok` / `outdated` / `modified` / `missing` |
 | `source bundle` | Rebuild `sources.yaml` from installed artifacts' origin metadata |
 | `source detach <name>` | Un-manage an artifact: flip its origin to manual and drop the manifest entry |
+| `quarantine` | List remotely-fetched artifacts awaiting review, with their scan findings |
+| `approve <name>\|--all [--force]` | Promote a quarantined artifact into `.agents/` (`--force` accepts critical findings, recorded in the lock) |
+| `reject <name>\|--all` | Delete a quarantined artifact without installing it |
 | `git-hook` | Install a pre-commit git hook for auto-sync (`hook` remains as a deprecated alias) |
 | `inherit <label> <path>` | Add an inheritance link to AGENTS.md |
 | `inherit --list` | List current inheritance links |
@@ -143,6 +146,7 @@ AGENTS.md is also symlinked to CLAUDE.md so that Claude reads the index natively
 | `--no-clobber` | (fix only) Skip items that already exist in `.agents/` instead of merging |
 | `--fix` | (lint only) Amend fixable frontmatter findings in place |
 | `--no-fix` | (index only) Skip the skill frontmatter backfill |
+| `--trust` | (pull/update only) Bypass the quarantine gate; the scan still runs and prints findings |
 
 ## Configuration
 
@@ -222,6 +226,19 @@ sync-agents source list          # ok / outdated / modified / missing per entry
 sync-agents update               # bump tag-tracked entries when upstream moves
 sync-agents pull --offline       # cache-only, for CI or airplanes
 ```
+
+## Quarantine (remote content review)
+
+Remote installs are treated like a hostile supply chain. By default, everything `pull`/`update` fetches lands in `.agents/.quarantine/` — invisible to `sync` and the index — after a static scan for network-then-execute patterns (`curl | bash`), credential access combined with network calls, obfuscation (long base64, zero-width Unicode), and prompt-injection phrasing aimed at your agent.
+
+```bash
+sync-agents pull                  # → 1 quarantined (run `sync-agents quarantine`)
+sync-agents quarantine            # review findings per artifact
+sync-agents approve code-review   # promote into .agents/ (blocked on CRITICAL unless --force)
+sync-agents reject sketchy-rule   # delete without installing
+```
+
+Critical findings block `approve`; overriding with `--force` is recorded in `sources.lock` as `approved_with_findings` so the decision is auditable. `--trust` on `pull`/`update` skips the gate for one invocation (findings still print), and `quarantine = off` in `.agents/config` disables it for teams that review via pinned SHAs in PRs instead.
 
 ## ADRs (Architecture Decision Records)
 

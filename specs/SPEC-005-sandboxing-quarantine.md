@@ -1,7 +1,7 @@
 ---
 id: SPEC-005
 title: "Supply-chain safety by default: fetch hardening, install quarantine + static scan, sandboxed skill exec"
-status: Draft
+status: Parts A+B Implemented (Part C future)
 owner: nmccready
 created: 2026-07-02
 updated: 2026-07-02

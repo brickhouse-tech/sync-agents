@@ -75,7 +75,11 @@ type LockEntry struct {
 	Entry       string `yaml:"entry"`
 	ResolvedSHA string `yaml:"resolved_sha"`
 	ContentHash string `yaml:"content_hash"`
-	FetchedAt   string `yaml:"fetched_at"`
+	// ApprovedWithFindings marks an artifact promoted out of
+	// quarantine with `approve --force` despite critical scanner
+	// findings — an auditable record of the human override.
+	ApprovedWithFindings bool   `yaml:"approved_with_findings,omitempty"`
+	FetchedAt            string `yaml:"fetched_at"`
 }
 
 // Find returns the lock entry for the given manifest entry string,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -38,6 +39,10 @@ type SourceCmdOpts struct {
 	// Keep makes remove leave the artifact on disk as a manual one.
 	Keep bool
 
+	// Trust bypasses the quarantine gate for one invocation (the
+	// scan still runs and prints). SPEC-005 Part B.
+	Trust bool
+
 	// Fetcher overrides the GitHub fetcher — tests inject an
 	// httptest-backed one here. Nil means production GitHub.
 	Fetcher source.Fetcher
@@ -64,12 +69,14 @@ func (a *App) sourcePuller(opts SourceCmdOpts) *source.Puller {
 	for i, b := range Buckets {
 		buckets[i] = source.BucketInfo{Dir: b.Dir, DirPerArtifact: b.DirPerArtifact}
 	}
+	agentsDir := a.sourceAgentsDir(opts.Global)
 	return &source.Puller{
-		AgentsDir: a.sourceAgentsDir(opts.Global),
-		Fetcher:   f,
-		Buckets:   buckets,
-		Out:       a.Stdout,
-		Err:       a.Stderr,
+		AgentsDir:  agentsDir,
+		Fetcher:    f,
+		Buckets:    buckets,
+		Quarantine: ReadConfigQuarantine(agentsDir),
+		Out:        a.Stdout,
+		Err:        a.Stderr,
 	}
 }
 
@@ -123,6 +130,7 @@ func (a *App) CmdPull(opts SourceCmdOpts) error {
 		DryRun:  a.DryRun,
 		Offline: opts.Offline,
 		Only:    onlyList(opts.Only),
+		Trust:   opts.Trust,
 	})
 	a.renderPullReport(rep)
 	a.finishSourceWrite(rep.Changed(), opts)
@@ -142,6 +150,7 @@ func (a *App) CmdUpdate(name string, opts SourceCmdOpts) error {
 		DryRun:     a.DryRun,
 		Only:       onlyList(name),
 		UpdateMode: true,
+		Trust:      opts.Trust,
 	})
 	a.renderPullReport(rep)
 	a.finishSourceWrite(rep.Changed(), opts)
@@ -164,6 +173,7 @@ func (a *App) CmdSourceAdd(entry string, opts SourceCmdOpts) error {
 		Force:   a.Force,
 		DryRun:  a.DryRun,
 		Offline: opts.Offline,
+		Trust:   opts.Trust,
 	})
 	a.renderPullReport(rep)
 	a.finishSourceWrite(rep.Changed(), opts)
@@ -278,4 +288,103 @@ func onlyList(raw string) []string {
 		}
 	}
 	return out
+}
+
+// ReadConfigQuarantine reads the `quarantine = on|off` key from the
+// scoped .agents/config. Absent file or key means ON — remote content
+// is guilty until reviewed (SPEC-005 default; ClawHub posture).
+func ReadConfigQuarantine(agentsDir string) bool {
+	data, err := os.ReadFile(filepath.Join(agentsDir, "config"))
+	if err != nil {
+		return true
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") || !strings.Contains(line, "=") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if strings.TrimSpace(parts[0]) != "quarantine" {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(parts[1])) {
+		case "off", "false", "0", "no":
+			return false
+		}
+		return true
+	}
+	return true
+}
+
+// CmdQuarantine implements `sync-agents quarantine`: list everything
+// awaiting review, findings first.
+func (a *App) CmdQuarantine(opts SourceCmdOpts) error {
+	p := a.sourcePuller(opts)
+	pendings, err := p.ListPending()
+	if err != nil {
+		return err
+	}
+	if len(pendings) == 0 {
+		a.Info("quarantine is empty")
+		return nil
+	}
+	for _, pa := range pendings {
+		crit := 0
+		for _, f := range pa.Findings {
+			if f.Severity == source.SeverityCritical {
+				crit++
+			}
+		}
+		status := "clean scan"
+		if len(pa.Findings) > 0 {
+			status = fmt.Sprintf("%d finding(s), %d critical", len(pa.Findings), crit)
+		}
+		a.Info(fmt.Sprintf("%s (%s) — %s [from %s]", pa.Name, pa.DestRel, status, pa.Entry))
+		for _, f := range pa.Findings {
+			loc := ""
+			if f.Path != "" {
+				loc = f.Path + ": "
+			}
+			fmt.Fprintf(a.Stdout, "    [%s] %s%s (%s)\n", f.Severity, loc, f.Detail, f.Class)
+		}
+	}
+	a.Info(fmt.Sprintf("%d artifact(s) awaiting review — `sync-agents approve <name>` or `sync-agents reject <name>`", len(pendings)))
+	return nil
+}
+
+// CmdApprove implements `sync-agents approve <name> [--all --force]`.
+func (a *App) CmdApprove(name string, all bool, opts SourceCmdOpts) error {
+	if name == "" && !all {
+		a.Error("Usage: sync-agents approve <name> | --all [--force]")
+		return fmt.Errorf("missing name")
+	}
+	p := a.sourcePuller(opts)
+	approved, err := p.Approve(name, all, a.Force)
+	if err != nil {
+		a.Error(err.Error())
+		return err
+	}
+	for _, pa := range approved {
+		a.Info(fmt.Sprintf("approved: %s -> .agents/%s", pa.Name, pa.DestRel))
+	}
+	a.finishSourceWrite(len(approved) > 0, opts)
+	return nil
+}
+
+// CmdReject implements `sync-agents reject <name> [--all]`.
+func (a *App) CmdReject(name string, all bool, opts SourceCmdOpts) error {
+	if name == "" && !all {
+		a.Error("Usage: sync-agents reject <name> | --all")
+		return fmt.Errorf("missing name")
+	}
+	p := a.sourcePuller(opts)
+	rejected, err := p.Reject(name, all)
+	if err != nil {
+		a.Error(err.Error())
+		return err
+	}
+	for _, pa := range rejected {
+		a.Info(fmt.Sprintf("rejected: %s (%s) — deleted from quarantine", pa.Name, pa.DestRel))
+	}
+	return nil
 }

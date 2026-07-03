@@ -221,6 +221,7 @@ func main() {
 	var pullOffline bool
 	var pullOnly string
 	var pullGlobal bool
+	var pullTrust bool
 	pullCmd := &cobra.Command{
 		Use:   "pull",
 		Short: "Fetch every source declared in .agents/sources.yaml",
@@ -229,10 +230,12 @@ func main() {
 				Offline: pullOffline,
 				Only:    pullOnly,
 				Global:  pullGlobal,
+				Trust:   pullTrust,
 			})
 		},
 	}
 	pullCmd.Flags().BoolVar(&pullOffline, "offline", false, "Serve from the local cache only; fail on cache misses")
+	pullCmd.Flags().BoolVar(&pullTrust, "trust", false, "Bypass the quarantine gate (the scan still runs and prints findings)")
 	pullCmd.Flags().StringVar(&pullOnly, "only", "", "Pull only the named entry")
 	pullCmd.Flags().BoolVar(&pullGlobal, "global", false, "Operate on the global ~/.agents/ tree")
 	rootCmd.AddCommand(pullCmd)
@@ -240,6 +243,7 @@ func main() {
 	// update — re-resolve refs and re-pull entries whose SHA moved.
 	// SHA-pinned entries are skipped (nothing to advance).
 	var updateGlobal bool
+	var updateTrust bool
 	updateCmd := &cobra.Command{
 		Use:   "update [NAME]",
 		Short: "Re-resolve source refs and pull entries whose SHA advanced",
@@ -249,11 +253,58 @@ func main() {
 			if len(args) > 0 {
 				name = args[0]
 			}
-			return app.CmdUpdate(name, agent.SourceCmdOpts{Global: updateGlobal})
+			return app.CmdUpdate(name, agent.SourceCmdOpts{Global: updateGlobal, Trust: updateTrust})
 		},
 	}
 	updateCmd.Flags().BoolVar(&updateGlobal, "global", false, "Operate on the global ~/.agents/ tree")
+	updateCmd.Flags().BoolVar(&updateTrust, "trust", false, "Bypass the quarantine gate (the scan still runs and prints findings)")
 	rootCmd.AddCommand(updateCmd)
+
+	// quarantine / approve / reject — SPEC-005 Part B review flow.
+	var quarGlobal bool
+	quarCmd := &cobra.Command{
+		Use:   "quarantine",
+		Short: "List remotely-fetched artifacts awaiting review",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return app.CmdQuarantine(agent.SourceCmdOpts{Global: quarGlobal})
+		},
+	}
+	quarCmd.Flags().BoolVar(&quarGlobal, "global", false, "Operate on the global ~/.agents/ tree")
+	rootCmd.AddCommand(quarCmd)
+
+	var approveAll, approveGlobal bool
+	approveCmd := &cobra.Command{
+		Use:   "approve [name]",
+		Short: "Promote a quarantined artifact into .agents/ (--force accepts critical findings)",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := ""
+			if len(args) > 0 {
+				name = args[0]
+			}
+			return app.CmdApprove(name, approveAll, agent.SourceCmdOpts{Global: approveGlobal})
+		},
+	}
+	approveCmd.Flags().BoolVar(&approveAll, "all", false, "Approve everything in quarantine")
+	approveCmd.Flags().BoolVar(&approveGlobal, "global", false, "Operate on the global ~/.agents/ tree")
+	rootCmd.AddCommand(approveCmd)
+
+	var rejectAll, rejectGlobal bool
+	rejectCmd := &cobra.Command{
+		Use:   "reject [name]",
+		Short: "Delete a quarantined artifact without installing it",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := ""
+			if len(args) > 0 {
+				name = args[0]
+			}
+			return app.CmdReject(name, rejectAll, agent.SourceCmdOpts{Global: rejectGlobal})
+		},
+	}
+	rejectCmd.Flags().BoolVar(&rejectAll, "all", false, "Reject everything in quarantine")
+	rejectCmd.Flags().BoolVar(&rejectGlobal, "global", false, "Operate on the global ~/.agents/ tree")
+	rootCmd.AddCommand(rejectCmd)
 
 	// source — manifest maintenance command group (SPEC-003):
 	// add/remove/list/bundle/detach.
