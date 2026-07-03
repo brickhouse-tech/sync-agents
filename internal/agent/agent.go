@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/brickhouse-tech/sync-agents/internal/agent/source"
 	"github.com/brickhouse-tech/sync-agents/internal/agent/templates"
 	"github.com/brickhouse-tech/sync-agents/internal/version"
 )
@@ -616,16 +618,108 @@ func (a *App) CmdImport(url string) error {
 
 	a.Info(fmt.Sprintf("Importing %s → .agents/%s/%s", url, typ, filename))
 
-	cmd := exec.Command("curl", "-fsSL", url, "-o", dest)
-	cmd.Stderr = a.Stderr
-	if err := cmd.Run(); err != nil {
-		a.Error(fmt.Sprintf("Failed to download: %s", url))
+	// Native fetch (SPEC-003 rollout step 4): no curl subprocess, so
+	// import works in minimal containers. file:// stays supported —
+	// the bats suite and local workflows depend on it.
+	data, err := fetchImportURL(url)
+	if err != nil {
+		a.Error(fmt.Sprintf("Failed to download: %s (%v)", url, err))
 		return err
 	}
+	if err := os.WriteFile(dest, data, 0644); err != nil {
+		a.Error(fmt.Sprintf("Failed to write: %s (%v)", dest, err))
+		return err
+	}
+
+	// Best-effort provenance: when the URL is a raw.githubusercontent
+	// file we can recover owner/repo/ref/path and record a manual
+	// origin, which `source bundle` later converts into a manifest
+	// entry. Plain URLs simply skip this — an artifact without origin
+	// is valid and untracked (SPEC-003).
+	a.writeImportOrigin(url, dest)
 
 	a.Info("Imported successfully.")
 	a.CmdIndex()
 	return nil
+}
+
+// fetchImportURL retrieves an import URL's content. https and file
+// schemes only: plain http would silently ship artifacts over an
+// unauthenticated channel, which is exactly the tampering surface the
+// SPEC-003 integrity work exists to close.
+func fetchImportURL(rawURL string) ([]byte, error) {
+	switch {
+	case strings.HasPrefix(rawURL, "file://"):
+		return os.ReadFile(strings.TrimPrefix(rawURL, "file://"))
+	case strings.HasPrefix(rawURL, "https://"):
+		client := &http.Client{Timeout: 60 * time.Second}
+		resp, err := client.Get(rawURL)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+		}
+		// Imports are single markdown/JSON artifacts; 10 MiB is far
+		// beyond any legitimate one and bounds a hostile response.
+		return io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+	case strings.HasPrefix(rawURL, "http://"):
+		return nil, fmt.Errorf("plain http:// is not supported — use https:// (or file:// for local files)")
+	default:
+		return nil, fmt.Errorf("unsupported URL scheme — expected https:// or file://")
+	}
+}
+
+// writeImportOrigin records manual-source provenance for imports from
+// raw.githubusercontent.com. Failures only warn: origin metadata is
+// an enhancement to import, never a reason for it to fail.
+func (a *App) writeImportOrigin(rawURL, dest string) {
+	o, ok := originFromRawGitHubURL(rawURL)
+	if !ok {
+		return
+	}
+	if h, err := source.HashTree(dest); err == nil {
+		o.ContentHash = h
+	}
+	o.FetchedAt = time.Now().UTC().Format(time.RFC3339)
+	o.Source = source.SourceManual
+	if err := source.WriteOriginFor(dest, false, o); err != nil {
+		a.Warn(fmt.Sprintf("could not write origin metadata for %s: %v", dest, err))
+	}
+}
+
+// originFromRawGitHubURL parses
+// https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>
+// (including the refs/heads/<branch> and refs/tags/<tag> long forms)
+// into origin metadata. Returns ok=false for anything else.
+func originFromRawGitHubURL(rawURL string) (source.Origin, bool) {
+	const prefix = "https://raw.githubusercontent.com/"
+	if !strings.HasPrefix(rawURL, prefix) {
+		return source.Origin{}, false
+	}
+	parts := strings.Split(strings.TrimPrefix(rawURL, prefix), "/")
+	if len(parts) < 4 {
+		return source.Origin{}, false
+	}
+	owner, repo := parts[0], parts[1]
+	var ref string
+	var pathParts []string
+	if parts[2] == "refs" && len(parts) >= 6 && (parts[3] == "heads" || parts[3] == "tags") {
+		ref = parts[4]
+		pathParts = parts[5:]
+	} else {
+		ref = parts[2]
+		pathParts = parts[3:]
+	}
+	if owner == "" || repo == "" || ref == "" || len(pathParts) == 0 || pathParts[len(pathParts)-1] == "" {
+		return source.Origin{}, false
+	}
+	o := source.Origin{Owner: owner, Repo: repo, Ref: ref, Path: strings.Join(pathParts, "/")}
+	if source.IsCommitSHA(ref) {
+		o.SHA = strings.ToLower(ref)
+	}
+	return o, true
 }
 
 func (a *App) CmdHook() error {

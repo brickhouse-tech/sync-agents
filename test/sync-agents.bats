@@ -1549,3 +1549,28 @@ CONF
   [ -f "$TEST_DIR/.agents/hooks/guard-bash.json" ]
   [ ! -f "$TEST_DIR/.agents/hooks/guard-bash.md" ]
 }
+
+# --------------------------------------------------------------------------
+# source manifest (SPEC-003)
+# --------------------------------------------------------------------------
+
+@test "source add rejects invalid entry and names valid prefixes" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" source add notatype:foo/bar
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"skill:"* ]]
+  [[ "$output" == *"tree:"* ]]
+}
+
+@test "source list on empty manifest exits cleanly" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" source list
+  [ "$status" -eq 0 ]
+}
+
+@test "pull with no manifest fails with guidance" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" pull
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"source add"* ]]
+}

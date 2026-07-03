@@ -1,7 +1,7 @@
 ---
 id: SPEC-003
 title: "Source manifest & pull: install rules, skills, and workflows from upstream repos"
-status: Draft
+status: Implemented
 owner: nmccready
 created: 2026-05-14
 updated: 2026-05-14
