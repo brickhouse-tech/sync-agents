@@ -99,7 +99,7 @@ AGENTS.md is also symlinked to CLAUDE.md so that Claude reads the index natively
 | `sync` | Create symlinks from `.agents/` into all target directories, and symlink `AGENTS.md` to `CLAUDE.md` |
 | `watch` | Watch `.agents/` for changes and auto-regenerate `AGENTS.md` |
 | `import <url>` | Import a rule/skill/workflow from a URL |
-| `hook` | Install a pre-commit git hook for auto-sync |
+| `git-hook` | Install a pre-commit git hook for auto-sync (`hook` remains a deprecated alias until v1.0) |
 | `inherit <label> <path>` | Add an inheritance link to AGENTS.md |
 | `inherit --list` | List current inheritance links |
 | `inherit --remove <label>` | Remove an inheritance link by label |

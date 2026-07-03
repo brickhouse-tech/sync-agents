@@ -540,35 +540,43 @@ teardown() {
 # Git hook
 # --------------------------------------------------------------------------
 
-@test "hook creates pre-commit hook" {
+@test "git-hook creates pre-commit hook" {
   "$SCRIPT" -d "$TEST_DIR" init
-  run "$SCRIPT" -d "$TEST_DIR" hook
+  run "$SCRIPT" -d "$TEST_DIR" git-hook
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/.git/hooks/pre-commit" ]
   [ -x "$TEST_DIR/.git/hooks/pre-commit" ]
   grep -q "sync-agents" "$TEST_DIR/.git/hooks/pre-commit"
 }
 
-@test "hook is idempotent" {
+@test "git-hook is idempotent" {
   "$SCRIPT" -d "$TEST_DIR" init
-  "$SCRIPT" -d "$TEST_DIR" hook
-  run "$SCRIPT" -d "$TEST_DIR" hook
+  "$SCRIPT" -d "$TEST_DIR" git-hook
+  run "$SCRIPT" -d "$TEST_DIR" git-hook
   [ "$status" -eq 0 ]
   # Should only appear once
   count=$(grep -c "sync-agents start" "$TEST_DIR/.git/hooks/pre-commit")
   [ "$count" -eq 1 ]
 }
 
-@test "hook appends to existing pre-commit" {
+@test "git-hook appends to existing pre-commit" {
   "$SCRIPT" -d "$TEST_DIR" init
   mkdir -p "$TEST_DIR/.git/hooks"
   echo '#!/bin/sh' > "$TEST_DIR/.git/hooks/pre-commit"
   echo 'echo "existing hook"' >> "$TEST_DIR/.git/hooks/pre-commit"
   chmod +x "$TEST_DIR/.git/hooks/pre-commit"
-  run "$SCRIPT" -d "$TEST_DIR" hook
+  run "$SCRIPT" -d "$TEST_DIR" git-hook
   [ "$status" -eq 0 ]
   grep -q "existing hook" "$TEST_DIR/.git/hooks/pre-commit"
   grep -q "sync-agents" "$TEST_DIR/.git/hooks/pre-commit"
+}
+
+@test "hook alias still works and prints deprecation warning" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" hook
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_DIR/.git/hooks/pre-commit" ]
+  [[ "$output" == *"deprecated"* ]]
 }
 
 # --------------------------------------------------------------------------
@@ -606,9 +614,9 @@ teardown() {
   [[ "$output" == *"import"* ]]
 }
 
-@test "help shows hook command" {
+@test "help shows git-hook command" {
   run "$SCRIPT" --help
-  [[ "$output" == *"hook"* ]]
+  [[ "$output" == *"git-hook"* ]]
 }
 
 # --------------------------------------------------------------------------

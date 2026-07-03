@@ -230,11 +230,17 @@ func main() {
 	lintCmd.Flags().BoolVar(&lintFix, "fix", false, "Amend fixable findings in place")
 	rootCmd.AddCommand(lintCmd)
 
-	// hook — install git pre-commit hook
+	// git-hook — install git pre-commit hook. Renamed from `hook`
+	// (SPEC-004 Part C) to free the name for the hooks bucket; the
+	// old name remains a deprecated alias.
 	rootCmd.AddCommand(&cobra.Command{
-		Use:   "hook",
-		Short: "Install git pre-commit hook that syncs + indexes on commit",
+		Use:     "git-hook",
+		Aliases: []string{"hook"},
+		Short:   "Install git pre-commit hook that syncs + indexes on commit",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.CalledAs() == "hook" {
+				fmt.Fprintln(os.Stderr, "[warn] `sync-agents hook` is deprecated; use `sync-agents git-hook` (same behavior). The alias will be removed in v1.0.")
+			}
 			return app.CmdHook()
 		},
 	})
