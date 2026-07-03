@@ -71,6 +71,10 @@ var Buckets = []Bucket{
 	// AGENTS.md index. Not created by init.
 	{Dir: "plans", Artifact: ArtifactPlan, NewTemplate: templates.Plan, LocalTools: []string{"claude"}},
 	{Dir: "specs", Artifact: ArtifactSpec, NewTemplate: templates.Spec, LocalTools: []string{"claude"}},
+	// Claude hook fragments (SPEC-004 Part C). Flat JSON files
+	// merged into .claude/settings.json rather than symlinked;
+	// routing handled separately in hooks.go. Not created by init.
+	{Dir: "hooks", Artifact: ArtifactHook, NewTemplate: templates.Hook, LocalTools: []string{"claude"}},
 }
 
 // BucketDirs returns the directory names of all registered buckets,

@@ -10,7 +10,7 @@ import (
 	"io/fs"
 )
 
-//go:embed *.md
+//go:embed *.md *.json
 var embedded embed.FS
 
 // FS wraps an fs.FS and exposes DemandFile, a read that treats a missing
@@ -48,3 +48,4 @@ func State() string    { return defaultFS.DemandFile("state.md") }
 func Agent() string    { return defaultFS.DemandFile("agent.md") }
 func Plan() string     { return defaultFS.DemandFile("plan.md") }
 func Spec() string     { return defaultFS.DemandFile("spec.md") }
+func Hook() string     { return defaultFS.DemandFile("hook.json") }

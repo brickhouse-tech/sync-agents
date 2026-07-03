@@ -365,6 +365,27 @@ func (a *App) CmdSync() error {
 		a.CreateSymlink("AGENTS.md", filepath.Join(a.ProjectRoot, "CLAUDE.md"), a.DryRun)
 	}
 
+	// Hooks (SPEC-004 Part C): merge .agents/hooks/*.json fragments
+	// into .claude/settings.json. This runs after symlink creation
+	// because hooks are a JSON merge, not a directory symlink.
+	if a.isBucketActive("claude") {
+		hooksDir := filepath.Join(a.ProjectRoot, ".agents", "hooks")
+		settingsPath := filepath.Join(a.ProjectRoot, ".claude", "settings.json")
+		statePath := filepath.Join(a.ProjectRoot, ".agents", ".sync", "claude-hooks-state.json")
+		if a.DryRun {
+			if _, err := os.Stat(hooksDir); err == nil {
+				a.Info(fmt.Sprintf("[dry-run] would merge hooks into %s", settingsPath))
+			}
+		} else {
+			n, err := a.MergeHooks(hooksDir, settingsPath, statePath)
+			if err != nil {
+				a.Warn(fmt.Sprintf("hooks merge: %v", err))
+			} else if n > 0 {
+				a.Info(fmt.Sprintf("merged %d hook(s) into %s", n, settingsPath))
+			}
+		}
+	}
+
 	a.updateGitignore()
 
 	a.Info("Sync complete.")
@@ -1319,6 +1340,30 @@ func (a *App) generateAgentsMD() {
 		b.WriteString("\n")
 	}
 
+	// Hooks (SPEC-004 Part C)
+	hooksBucketDir := filepath.Join(agentsDir, "hooks")
+	if entries, err := os.ReadDir(hooksBucketDir); err == nil {
+		var hookFiles []string
+		for _, e := range entries {
+			if !e.IsDir() && filepath.Ext(e.Name()) == ".json" {
+				hookFiles = append(hookFiles, e.Name())
+			}
+		}
+		if len(hookFiles) > 0 {
+			sort.Strings(hookFiles)
+			b.WriteString("## Hooks\n\n")
+			for _, name := range hookFiles {
+				link := ".agents/hooks/" + name
+				srcPath := filepath.Join(hooksBucketDir, name)
+				// Hook fragments don't have markdown frontmatter for
+				// description — just link the file.
+				b.WriteString(fmt.Sprintf("- [%s](%s)\n", name, link))
+				_ = srcPath
+			}
+			b.WriteString("\n")
+		}
+	}
+
 	// State
 	b.WriteString("## State\n\n")
 	hasState := false
@@ -1494,6 +1539,17 @@ func indexEntry(name, link, srcPath string) string {
 		return fmt.Sprintf("- [%s](%s) — %s\n", name, link, desc)
 	}
 	return fmt.Sprintf("- [%s](%s)\n", name, link)
+}
+
+// isBucketActive reports whether the target with the given ID is in
+// ActiveTargets. Used to gate hooks merge/local-sync operations.
+func (a *App) isBucketActive(targetID string) bool {
+	for _, t := range a.ActiveTargets {
+		if t == targetID {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *App) addDefaultGitignoreEntries() {

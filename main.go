@@ -214,15 +214,6 @@ func main() {
 		},
 	})
 
-	// hook
-	rootCmd.AddCommand(&cobra.Command{
-		Use:   "hook",
-		Short: "Install pre-commit git hook",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.CmdHook()
-		},
-	})
-
 	// lint
 	var lintFix bool
 	lintCmd := &cobra.Command{

@@ -333,6 +333,9 @@ func truncateAtWord(s string, max int) string {
 // directory so a crash never leaves a half-written SKILL.md.
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
 	tmp, err := os.CreateTemp(dir, ".lint-*")
 	if err != nil {
 		return err

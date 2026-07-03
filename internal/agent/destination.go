@@ -131,6 +131,17 @@ func TargetDestination(
 		}
 	}
 
+	// Hooks (SPEC-004 Part C) are never synced one-by-one — they
+	// are collected and merged into .claude/settings.json in one
+	// batch pass after the per-artifact loop. The per-artifact
+	// routing always skips; the batch pass handles everything.
+	if typ == ArtifactHook {
+		return Destination{
+			Strategy:   StrategySkip,
+			SkipReason: "hooks are batch-merged into settings.json (see MergeHooks)",
+		}
+	}
+
 	switch tool.ID {
 	case "claude":
 		return claudeDestination(typ, name, sem, globalRootParent)

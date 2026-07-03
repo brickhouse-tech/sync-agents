@@ -1,0 +1,10 @@
+{
+  "event": "PreToolUse",
+  "matcher": "",
+  "hooks": [
+    {
+      "type": "command",
+      "command": "echo '${NAME} hook'"
+    }
+  ]
+}
