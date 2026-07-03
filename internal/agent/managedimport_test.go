@@ -241,3 +241,58 @@ func TestManagedImportBlockForLocal(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveClaudeMDPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		parent   string
+		hasAgents bool
+		want     string
+	}{
+		{
+			name:     "AGENTS.md takes precedence",
+			parent:   "/project",
+			hasAgents: true,
+			want:     "/project/AGENTS.md",
+		},
+		{
+			name:     "falls back to CLAUDE.md",
+			parent:   "/project",
+			hasAgents: false,
+			want:     "/project/CLAUDE.md",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			projectRoot := filepath.Join(dir, "project")
+			os.MkdirAll(projectRoot, 0o755)
+			if tt.hasAgents {
+				os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("test"), 0o644)
+			}
+			got := ResolveClaudeMDPath(projectRoot)
+			if got != filepath.Join(projectRoot, "AGENTS.md") && got != filepath.Join(projectRoot, "CLAUDE.md") {
+				t.Errorf("unexpected path: %s", got)
+			}
+			if tt.hasAgents && got != filepath.Join(projectRoot, "AGENTS.md") {
+				t.Errorf("wanted AGENTS.md, got %s", got)
+			}
+			if !tt.hasAgents && got != filepath.Join(projectRoot, "CLAUDE.md") {
+				t.Errorf("wanted CLAUDE.md, got %s", got)
+			}
+		})
+	}
+}
+
+func TestResolveClaudeMDPath_AgentsTakesPrecedence(t *testing.T) {
+	dir := t.TempDir()
+	projectRoot := filepath.Join(dir, "project")
+	os.MkdirAll(projectRoot, 0o755)
+	os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("test"), 0o644)
+	os.WriteFile(filepath.Join(projectRoot, "CLAUDE.md"), []byte("test"), 0o644)
+
+	got := ResolveClaudeMDPath(projectRoot)
+	if got != filepath.Join(projectRoot, "AGENTS.md") {
+		t.Errorf("AGENTS.md should take precedence, got %s", got)
+	}
+}

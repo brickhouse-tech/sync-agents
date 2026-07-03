@@ -72,9 +72,25 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 	if err != nil {
 		return err
 	}
+	// Determine hasClaudeTarget before the early-return check so
+	// we know whether to bail when there are only hooks.
+	hasClaudeTarget := false
+	for _, t := range tools {
+		if t.ID == "claude" {
+			hasClaudeTarget = true
+			break
+		}
+	}
+
 	if len(artifacts) == 0 {
-		a.Info("no artifacts under " + root + "; nothing to sync")
-		return nil
+		// Only bail when there are truly no artifacts AND no hooks.
+		// Hooks aren't discovered as Artifacts (they batch-merge
+		// into settings.json), so an empty artifact slice doesn't
+		// mean nothing to do when .agents/hooks/ has content.
+		if !hasClaudeTarget || !dirExists(filepath.Join(root, "hooks")) {
+			a.Info("no artifacts under " + root + "; nothing to sync")
+			return nil
+		}
 	}
 
 	// concatBatches accumulates entries per concat-Path so we can
@@ -88,13 +104,6 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 	// the block is how passive rules actually reach Claude's
 	// context. See SPEC-002 §Claude rule loading (issue #46).
 	var claudeRouted []ClaudeRoutedArtifact
-	hasClaudeTarget := false
-	for _, t := range tools {
-		if t.ID == "claude" {
-			hasClaudeTarget = true
-			break
-		}
-	}
 
 	a.Info(fmt.Sprintf("syncing %d artifact(s) to %d tool(s)", len(artifacts), len(tools)))
 
@@ -184,6 +193,27 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 			a.Info(fmt.Sprintf("regenerated %s (%d entries)", p, len(entries)))
 		} else {
 			a.Info(fmt.Sprintf("%s already current (%d entries)", p, len(entries)))
+		}
+	}
+
+	// Merge .agents/hooks/ fragments into .claude/settings.json
+	// (SPEC-004 Part C). This runs after the per-artifact loop
+	// because hooks are batch-processed, not one-at-a-time.
+	if hasClaudeTarget {
+		hooksDir := filepath.Join(root, "hooks")
+		settingsPath := filepath.Join(parent, ".claude", "settings.json")
+		statePath := filepath.Join(root, ".sync", "claude-hooks-state.json")
+		if a.DryRun {
+			if _, err := os.Stat(hooksDir); err == nil {
+				a.Info(fmt.Sprintf("[dry-run] would merge hooks into %s", settingsPath))
+			}
+		} else {
+			n, err := a.MergeHooks(hooksDir, settingsPath, statePath)
+			if err != nil {
+				a.Warn(fmt.Sprintf("hooks merge failed: %v", err))
+			} else if n > 0 {
+				a.Info(fmt.Sprintf("merged %d hook(s) into %s", n, settingsPath))
+			}
 		}
 	}
 

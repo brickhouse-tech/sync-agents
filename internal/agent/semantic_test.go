@@ -305,3 +305,39 @@ func indexOf(s, sub string) int {
 	}
 	return -1
 }
+
+func TestSemanticString(t *testing.T) {
+	tests := []struct {
+		s    Semantic
+		want string
+	}{
+		{Invocable, "invocable"},
+		{Passive, "passive"},
+		{Reference, "reference"},
+	}
+	for _, tt := range tests {
+		if got := tt.s.String(); got != tt.want {
+			t.Errorf("Semantic(%s).String() = %q, want %q", tt.s, got, tt.want)
+		}
+	}
+}
+
+func TestBucketDefaultSemantic_AllBuckets(t *testing.T) {
+	tests := []struct {
+		typ  ArtifactType
+		want Semantic
+	}{
+		{ArtifactRule, Passive},
+		{ArtifactSkill, Invocable},
+		{ArtifactWorkflow, Invocable},
+		{ArtifactAgent, Invocable},
+		{ArtifactPlan, Reference},
+		{ArtifactSpec, Reference},
+		{ArtifactHook, Passive}, // not listed in switch → default
+	}
+	for _, tt := range tests {
+		if got := BucketDefaultSemantic(tt.typ); got != tt.want {
+			t.Errorf("BucketDefaultSemantic(%s) = %s, want %s", tt.typ, got, tt.want)
+		}
+	}
+}

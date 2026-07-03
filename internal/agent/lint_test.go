@@ -319,3 +319,35 @@ func mustFM(t *testing.T, path string) fmBlock {
 	}
 	return block
 }
+
+func TestWriteFileAtomic_RoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sub", "nested", "file.md")
+	data := []byte("hello world\n")
+
+	if err := writeFileAtomic(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	read, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(read) != string(data) {
+		t.Errorf("got %q, want %q", read, data)
+	}
+}
+
+func TestWriteFileAtomic_Overwrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "file.md")
+	os.WriteFile(path, []byte("old"), 0o644)
+
+	if err := writeFileAtomic(path, []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	read, _ := os.ReadFile(path)
+	if string(read) != "new" {
+		t.Errorf("got %q, want 'new'", read)
+	}
+}

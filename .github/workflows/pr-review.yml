@@ -1,5 +1,11 @@
 name: PR Code Review
 
+# WIP/TODO: The "Run AI code review" step is intentionally a no-op.
+# Wire to a real AI review tool (Gemini CLI, Claude CLI, or a script that
+# posts line-level comments via gh api) before expecting actionable output.
+# This workflow exists so the infrastructure (changed-files detection,
+# PR comment permissions) is ready to go when the tooling is plugged in.
+
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -20,7 +26,7 @@ jobs:
       - name: Get changed files
         id: changed
         run: |
-          echo "files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -v -E '(package-lock|yarn\.lock|\.min\.js|dist/|build/)' | tr '\n' ' ')" >> $GITHUB_OUTPUT
+          echo "files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -v -E '(package-lock|yarn\.lock|\.min\.js|dist/|build/|CHANGELOG\.md|\.gitignore|vendor/|\.sum$)' | tr '\n' ' ')" >> $GITHUB_OUTPUT
       
       - name: Run AI code review
         # Placeholder for AI review action or custom script

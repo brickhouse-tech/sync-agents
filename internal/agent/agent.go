@@ -365,6 +365,27 @@ func (a *App) CmdSync() error {
 		a.CreateSymlink("AGENTS.md", filepath.Join(a.ProjectRoot, "CLAUDE.md"), a.DryRun)
 	}
 
+	// Hooks (SPEC-004 Part C): merge .agents/hooks/*.json fragments
+	// into .claude/settings.json. This runs after symlink creation
+	// because hooks are a JSON merge, not a directory symlink.
+	if a.isBucketActive("claude") {
+		hooksDir := filepath.Join(a.ProjectRoot, ".agents", "hooks")
+		settingsPath := filepath.Join(a.ProjectRoot, ".claude", "settings.json")
+		statePath := filepath.Join(a.ProjectRoot, ".agents", ".sync", "claude-hooks-state.json")
+		if a.DryRun {
+			if _, err := os.Stat(hooksDir); err == nil {
+				a.Info(fmt.Sprintf("[dry-run] would merge hooks into %s", settingsPath))
+			}
+		} else {
+			n, err := a.MergeHooks(hooksDir, settingsPath, statePath)
+			if err != nil {
+				a.Warn(fmt.Sprintf("hooks merge: %v", err))
+			} else if n > 0 {
+				a.Info(fmt.Sprintf("merged %d hook(s) into %s", n, settingsPath))
+			}
+		}
+	}
+
 	a.updateGitignore()
 
 	a.Info("Sync complete.")
@@ -1307,7 +1328,10 @@ func (a *App) generateAgentsMD() {
 		{"Specs", "specs"},
 	} {
 		refDir := filepath.Join(agentsDir, ref.dir)
-		files := listMDFilesRecursive(refDir)
+		files, warns := listMDFilesRecursive(refDir)
+		for _, w := range warns {
+			a.Warn(w)
+		}
 		if len(files) == 0 {
 			continue
 		}
@@ -1317,6 +1341,30 @@ func (a *App) generateAgentsMD() {
 			b.WriteString(indexEntry(rel, link, filepath.Join(refDir, filepath.FromSlash(rel)+".md")))
 		}
 		b.WriteString("\n")
+	}
+
+	// Hooks (SPEC-004 Part C)
+	hooksBucketDir := filepath.Join(agentsDir, "hooks")
+	if entries, err := os.ReadDir(hooksBucketDir); err == nil {
+		var hookFiles []string
+		for _, e := range entries {
+			if !e.IsDir() && filepath.Ext(e.Name()) == ".json" {
+				hookFiles = append(hookFiles, e.Name())
+			}
+		}
+		if len(hookFiles) > 0 {
+			sort.Strings(hookFiles)
+			b.WriteString("## Hooks\n\n")
+			for _, name := range hookFiles {
+				link := ".agents/hooks/" + name
+				srcPath := filepath.Join(hooksBucketDir, name)
+				// Hook fragments don't have markdown frontmatter for
+				// description — just link the file.
+				b.WriteString(fmt.Sprintf("- [%s](%s)\n", name, link))
+				_ = srcPath
+			}
+			b.WriteString("\n")
+		}
 	}
 
 	// State
@@ -1433,10 +1481,15 @@ func listMDFiles(dir string) []string {
 // stripped ("effort-x/plan-a"). Reference buckets (plans/specs)
 // allow grouping documents per effort in subdirectories, so their
 // index sections list recursively (SPEC-004 Part D).
-func listMDFilesRecursive(dir string) []string {
+//
+// The second return value is a slice of non-fatal warning messages
+// (permission errors, unreadable files) for the caller to surface.
+func listMDFilesRecursive(dir string) ([]string, []string) {
 	var names []string
+	var warns []string
 	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
+			warns = append(warns, fmt.Sprintf("%s: %v", path, err))
 			return nil
 		}
 		name := d.Name()
@@ -1449,15 +1502,16 @@ func listMDFilesRecursive(dir string) []string {
 		if !strings.HasSuffix(name, ".md") || strings.HasPrefix(name, ".") {
 			return nil
 		}
-		rel, err := filepath.Rel(dir, path)
+		re, err := filepath.Rel(dir, path)
 		if err != nil {
+			warns = append(warns, fmt.Sprintf("%s: %v", path, err))
 			return nil
 		}
-		names = append(names, strings.TrimSuffix(filepath.ToSlash(rel), ".md"))
+		names = append(names, strings.TrimSuffix(filepath.ToSlash(re), ".md"))
 		return nil
 	})
 	sort.Strings(names)
-	return names
+	return names, warns
 }
 
 // artifactDescription extracts the frontmatter `description` of the
@@ -1494,6 +1548,17 @@ func indexEntry(name, link, srcPath string) string {
 		return fmt.Sprintf("- [%s](%s) — %s\n", name, link, desc)
 	}
 	return fmt.Sprintf("- [%s](%s)\n", name, link)
+}
+
+// isBucketActive reports whether the target with the given ID is in
+// ActiveTargets. Used to gate hooks merge/local-sync operations.
+func (a *App) isBucketActive(targetID string) bool {
+	for _, t := range a.ActiveTargets {
+		if t == targetID {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *App) addDefaultGitignoreEntries() {
