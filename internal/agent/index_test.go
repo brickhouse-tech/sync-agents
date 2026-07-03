@@ -355,9 +355,9 @@ func TestListMDFilesRecursive_Nested(t *testing.T) {
 		t.Errorf("expected 3 files, got %d: %v", len(names), names)
 	}
 	want := map[string]bool{
-		"plan":                 true,
-		"effort-a/rollout":     true,
-		"effort-b/testing":     true,
+		"plan":             true,
+		"effort-a/rollout": true,
+		"effort-b/testing": true,
 	}
 	for _, n := range names {
 		if !want[n] {
@@ -513,5 +513,75 @@ func TestCmdIndex_NoFix(t *testing.T) {
 	// Just verify CmdIndex doesn't fail — no-fix is handled at CLI layer.
 	if err := app.CmdIndex(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestIndex_PreservesScriptHooks reproduces the acme regression:
+// .agents/hooks/ holding shell scripts (the pre-SPEC-004 convention)
+// lost its ## Hooks section on regeneration because the index
+// filtered to .json fragments. Files on disk must never disappear
+// from the index.
+func TestIndex_PreservesScriptHooks(t *testing.T) {
+	a, _, _ := newLocalIndexTestApp(t)
+	hooksDir := filepath.Join(a.ProjectRoot, ".agents", "hooks")
+	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(hooksDir, "backfill-session-id.sh"), []byte("#!/bin/sh\n"), 0o755)
+	os.WriteFile(filepath.Join(hooksDir, "guard.json"), []byte(`{"event":"PreToolUse","hooks":[{"type":"command","command":".agents/hooks/backfill-session-id.sh"}]}`), 0o644)
+
+	if err := a.CmdIndex(); err != nil {
+		t.Fatal(err)
+	}
+	idx := readFile(t, filepath.Join(a.ProjectRoot, "AGENTS.md"))
+	if !strings.Contains(idx, "## Hooks") {
+		t.Fatalf("Hooks section missing:\n%s", idx)
+	}
+	if !strings.Contains(idx, "backfill-session-id.sh") {
+		t.Fatalf("script hook dropped from index:\n%s", idx)
+	}
+	if !strings.Contains(idx, "companion file") {
+		t.Fatalf("script hook missing not-merged annotation:\n%s", idx)
+	}
+	if !strings.Contains(idx, "guard.json") || !strings.Contains(idx, "merged into") {
+		t.Fatalf("json fragment annotation missing:\n%s", idx)
+	}
+
+	// Regeneration is stable: scripts survive a second index.
+	if err := a.CmdIndex(); err != nil {
+		t.Fatal(err)
+	}
+	idx2 := readFile(t, filepath.Join(a.ProjectRoot, "AGENTS.md"))
+	if idx2 != idx {
+		t.Fatal("second index changed the Hooks section")
+	}
+}
+
+// TestMergeHooks_WarnsOnScriptOnlyDir: a hooks dir with only scripts
+// never merges anything — the sync must say so rather than silently
+// doing nothing.
+func TestMergeHooks_WarnsOnScriptOnlyDir(t *testing.T) {
+	a, _, _ := newLocalIndexTestApp(t)
+	hooksDir := filepath.Join(a.ProjectRoot, ".agents", "hooks")
+	os.MkdirAll(hooksDir, 0o755)
+	os.WriteFile(filepath.Join(hooksDir, "sync-permissions.sh"), []byte("#!/bin/sh\n"), 0o755)
+
+	var out bytes.Buffer
+	a.Stdout = &out
+	n, err := a.MergeHooks(hooksDir,
+		filepath.Join(a.ProjectRoot, ".claude", "settings.json"),
+		filepath.Join(a.ProjectRoot, ".agents", ".sync", "claude-hooks-state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("merged %d fragments from a script-only dir", n)
+	}
+	if !strings.Contains(out.String(), "NOT merged") {
+		t.Fatalf("no warning for script-only hooks dir; output:\n%s", out.String())
+	}
+	// And no settings.json conjured out of nothing.
+	if _, err := os.Stat(filepath.Join(a.ProjectRoot, ".claude", "settings.json")); !os.IsNotExist(err) {
+		t.Fatal("script-only dir created a settings.json")
 	}
 }
