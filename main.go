@@ -214,6 +214,126 @@ func main() {
 		},
 	})
 
+	// pull — install every entry declared in .agents/sources.yaml
+	// (SPEC-003). --force/--dry-run come from the persistent root
+	// flags like every other command; --offline/--only/--global are
+	// pull-specific.
+	var pullOffline bool
+	var pullOnly string
+	var pullGlobal bool
+	pullCmd := &cobra.Command{
+		Use:   "pull",
+		Short: "Fetch every source declared in .agents/sources.yaml",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return app.CmdPull(agent.SourceCmdOpts{
+				Offline: pullOffline,
+				Only:    pullOnly,
+				Global:  pullGlobal,
+			})
+		},
+	}
+	pullCmd.Flags().BoolVar(&pullOffline, "offline", false, "Serve from the local cache only; fail on cache misses")
+	pullCmd.Flags().StringVar(&pullOnly, "only", "", "Pull only the named entry")
+	pullCmd.Flags().BoolVar(&pullGlobal, "global", false, "Operate on the global ~/.agents/ tree")
+	rootCmd.AddCommand(pullCmd)
+
+	// update — re-resolve refs and re-pull entries whose SHA moved.
+	// SHA-pinned entries are skipped (nothing to advance).
+	var updateGlobal bool
+	updateCmd := &cobra.Command{
+		Use:   "update [NAME]",
+		Short: "Re-resolve source refs and pull entries whose SHA advanced",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := ""
+			if len(args) > 0 {
+				name = args[0]
+			}
+			return app.CmdUpdate(name, agent.SourceCmdOpts{Global: updateGlobal})
+		},
+	}
+	updateCmd.Flags().BoolVar(&updateGlobal, "global", false, "Operate on the global ~/.agents/ tree")
+	rootCmd.AddCommand(updateCmd)
+
+	// source — manifest maintenance command group (SPEC-003):
+	// add/remove/list/bundle/detach.
+	var srcGlobal bool
+	sourceCmd := &cobra.Command{
+		Use:   "source",
+		Short: "Manage upstream sources declared in .agents/sources.yaml",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
+	}
+	// --global is persistent on the group so every subcommand honors
+	// it uniformly (AC-12).
+	sourceCmd.PersistentFlags().BoolVar(&srcGlobal, "global", false, "Operate on the global ~/.agents/ tree")
+
+	var addOffline bool
+	sourceAddCmd := &cobra.Command{
+		Use:   "add <entry>",
+		Short: "Declare a source entry and pull it",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			entry := ""
+			if len(args) > 0 {
+				entry = args[0]
+			}
+			return app.CmdSourceAdd(entry, agent.SourceCmdOpts{Global: srcGlobal, Offline: addOffline})
+		},
+	}
+	sourceAddCmd.Flags().BoolVar(&addOffline, "offline", false, "Serve from the local cache only; fail on cache misses")
+	sourceCmd.AddCommand(sourceAddCmd)
+
+	var removeKeep bool
+	sourceRemoveCmd := &cobra.Command{
+		Use:   "remove <name>",
+		Short: "Remove a source entry and delete its artifact(s)",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := ""
+			if len(args) > 0 {
+				name = args[0]
+			}
+			return app.CmdSourceRemove(name, agent.SourceCmdOpts{Global: srcGlobal, Keep: removeKeep})
+		},
+	}
+	sourceRemoveCmd.Flags().BoolVar(&removeKeep, "keep", false, "Keep the artifact on disk as a manual (untracked) artifact")
+	sourceCmd.AddCommand(sourceRemoveCmd)
+
+	var listJSON bool
+	sourceListCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List declared sources with their resolved SHAs and local status",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return app.CmdSourceList(agent.SourceCmdOpts{Global: srcGlobal, JSON: listJSON})
+		},
+	}
+	sourceListCmd.Flags().BoolVar(&listJSON, "json", false, "Emit machine-readable JSON")
+	sourceCmd.AddCommand(sourceListCmd)
+
+	sourceCmd.AddCommand(&cobra.Command{
+		Use:   "bundle",
+		Short: "Reconstruct sources.yaml from installed artifacts' origin metadata",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return app.CmdSourceBundle(agent.SourceCmdOpts{Global: srcGlobal})
+		},
+	})
+
+	sourceCmd.AddCommand(&cobra.Command{
+		Use:   "detach <name>",
+		Short: "Convert a pulled artifact to a manual one and drop its manifest entry",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := ""
+			if len(args) > 0 {
+				name = args[0]
+			}
+			return app.CmdSourceDetach(name, agent.SourceCmdOpts{Global: srcGlobal})
+		},
+	})
+	rootCmd.AddCommand(sourceCmd)
+
 	// adr — transition Architecture Decision Records between statuses
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "adr <accept|deny|propose> <name>",

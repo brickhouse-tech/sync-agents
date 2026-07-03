@@ -106,6 +106,13 @@ AGENTS.md is also symlinked to CLAUDE.md so that Claude reads the index natively
 | `sync` | Create symlinks from `.agents/` into all target directories, and symlink `AGENTS.md` to `CLAUDE.md` |
 | `watch` | Watch `.agents/` for changes and auto-regenerate `AGENTS.md` |
 | `import <url>` | Import a rule/skill/workflow from a URL |
+| `pull [--dry-run\|--offline\|--force\|--only NAME\|--global]` | Fetch every `sources.yaml` entry, verify integrity, install into the matching buckets |
+| `update [NAME]` | Re-resolve refs and re-pull entries whose upstream moved; SHA-pinned entries are skipped |
+| `source add <entry>` | Append an entry to `sources.yaml` and pull it |
+| `source remove <name> [--keep]` | Remove the manifest entry and delete the artifact (`--keep` converts it to manual) |
+| `source list [--json]` | Show each entry's local state: `ok` / `outdated` / `modified` / `missing` |
+| `source bundle` | Rebuild `sources.yaml` from installed artifacts' origin metadata |
+| `source detach <name>` | Un-manage an artifact: flip its origin to manual and drop the manifest entry |
 | `git-hook` | Install a pre-commit git hook for auto-sync (`hook` remains as a deprecated alias) |
 | `inherit <label> <path>` | Add an inheritance link to AGENTS.md |
 | `inherit --list` | List current inheritance links |
@@ -191,6 +198,29 @@ sync-agents lint
 
 # amend fixable findings in place
 sync-agents lint --fix
+```
+
+## Source manifest (pull, lockfile & provenance)
+
+Declare upstream rules, skills, workflows — or whole `.agents/` trees — in `.agents/sources.yaml` and install them reproducibly:
+
+```yaml
+version: 1
+sources:
+  - skill:anthropic/skill-pack@v1.2.0/skills/code-review
+  - rule:my-org/agent-norms@main/rules/security.md
+  - tree:my-org/team-agents@v2.0.0   # fans out to every bucket in the upstream .agents/
+```
+
+`sync-agents pull` resolves each ref to a commit SHA via the GitHub API, fetches the repo tarball (cached by SHA under `$XDG_CACHE_HOME/sync-agents/`, no `git` binary needed), verifies a deterministic sha256 content hash against `.agents/sources.lock`, and only then installs — a tampered tarball or corrupted cache aborts before anything is written. Every installed artifact carries provenance (`_origin.json` inside skill dirs, `<name>.origin.json` beside flat files) recording owner/repo/ref/SHA/hash; commit these so clones keep their provenance.
+
+Safety rules: locally-edited artifacts are never overwritten without `--force`; a destination without origin metadata is treated as a manual conflict. Private repos use your token (`SYNC_AGENTS_GITHUB_TOKEN` > `GITHUB_TOKEN` > `GH_TOKEN` > `gh auth token`). All commands accept `--global` to operate on `~/.agents/` instead of the project.
+
+```bash
+sync-agents source add skill:anthropic/skill-pack@v1.2.0/skills/code-review
+sync-agents source list          # ok / outdated / modified / missing per entry
+sync-agents update               # bump tag-tracked entries when upstream moves
+sync-agents pull --offline       # cache-only, for CI or airplanes
 ```
 
 ## ADRs (Architecture Decision Records)
