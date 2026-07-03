@@ -24,9 +24,53 @@ jobs:
       - run: npm install
       - run: npm test
 
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run Go unit tests with coverage
+        run: |
+          go test -coverprofile=coverage.out \
+            -coverpkg=./internal/... \
+            ./internal/agent/... ./internal/version/...
+
+      - name: Report per-package coverage
+        run: |
+          echo '## Coverage by package'
+          go tool cover -func=coverage.out | grep -v 'total:' | while read pkg fn pct; do
+            # skip headers
+            case "$pkg" in
+              github.com/*) ;;
+              *) continue ;;
+            esac
+            echo "$pkg  $fn  $pct"
+          done
+
+      - name: Check coverage threshold
+        run: |
+          TOTAL=$(go tool cover -func=coverage.out | grep 'total:' | awk '{print $3}' | sed 's/%//')
+          THRESHOLD=45
+          echo "Total coverage: ${TOTAL}% (threshold: ${THRESHOLD}%)"
+          if (( $(echo "$TOTAL < $THRESHOLD" | bc -l) )); then
+            echo "::error::Coverage ${TOTAL}% is below the ${THRESHOLD}% minimum"
+            exit 1
+          fi
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.out
+          retention-days: 7
+
   gate:
     name: gate
-    needs: [test]
+    needs: [test, coverage]
     runs-on: ubuntu-latest
     if: always()
     steps:
