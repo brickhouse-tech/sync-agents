@@ -47,6 +47,13 @@ type Puller struct {
 	// grew the registry and pull must follow it.
 	Buckets []BucketInfo
 
+	// Quarantine gates remote installs (SPEC-005 Part B): staged
+	// artifacts are scanned and parked under .agents/.quarantine/
+	// for human approval instead of entering the live tree. The
+	// caller wires this from .agents/config (`quarantine = on|off`,
+	// default on); PullOpts.Trust bypasses it per invocation.
+	Quarantine bool
+
 	Out io.Writer
 	Err io.Writer
 
@@ -89,6 +96,10 @@ type PullOpts struct {
 	// UpdateMode switches pull semantics to `update`: SHA-pinned
 	// entries are skipped with a note, and moved tags are called out.
 	UpdateMode bool
+	// Trust bypasses the quarantine gate for this invocation. The
+	// scan still runs and findings still print — trust skips the
+	// approval step, not the look.
+	Trust bool
 }
 
 // ResultKind classifies one entry's outcome in a PullReport.
@@ -102,6 +113,7 @@ const (
 	ResultFailed      ResultKind = "failed"
 	ResultWouldAdd    ResultKind = "would-add"
 	ResultWouldUpdate ResultKind = "would-update"
+	ResultQuarantined ResultKind = "quarantined"
 )
 
 // EntryResult is one entry's outcome.
@@ -150,6 +162,7 @@ func (r PullReport) Summary() string {
 	add(r.Count(ResultCurrent), "already current")
 	add(r.Count(ResultWouldAdd), "would add")
 	add(r.Count(ResultWouldUpdate), "would update")
+	add(r.Count(ResultQuarantined), "quarantined (run `sync-agents quarantine`)")
 	add(r.Count(ResultSkipped), "skipped")
 	add(r.Count(ResultFailed), "failed")
 	if len(parts) == 0 {
@@ -432,6 +445,35 @@ func (p *Puller) syncArtifact(ctx context.Context, e Entry, name, sha string, re
 		return res
 	}
 
+	// SPEC-005 Part B: scan the staged artifact. With the gate on,
+	// it parks in quarantine instead of installing; with --trust (or
+	// quarantine=off) it installs but the findings still print.
+	findings := ScanTree(src)
+	fetchedAtQ := p.now().Format(time.RFC3339)
+	if p.Quarantine && !opts.Trust {
+		pa := PendingArtifact{
+			Entry:       res.Entry,
+			Name:        name,
+			DestRel:     p.destRel(dest),
+			DirArtifact: dirArtifact,
+			Origin: Origin{
+				Owner: e.Owner, Repo: e.Repo, Path: effPath, Ref: e.Ref,
+				SHA: sha, ContentHash: stagedHash, FetchedAt: fetchedAtQ, Source: SourceManifest,
+			},
+			Lock:     LockEntry{Entry: res.Entry, ResolvedSHA: sha, ContentHash: stagedHash, FetchedAt: fetchedAtQ},
+			Findings: findings,
+		}
+		if err := p.quarantineStaged(src, pa); err != nil {
+			res.Kind = ResultFailed
+			res.Detail = err.Error()
+			return res
+		}
+		res.Kind = ResultQuarantined
+		res.Detail = quarantineDetail(findings)
+		return res
+	}
+	p.printFindings(name, findings)
+
 	if err := installArtifact(src, dest, dirArtifact); err != nil {
 		res.Kind = ResultFailed
 		res.Detail = err.Error()
@@ -591,9 +633,48 @@ func (p *Puller) syncTree(ctx context.Context, e Entry, sha string, res EntryRes
 		return res
 	}
 
+	// SPEC-005 Part B: scan and (with the gate on) quarantine the
+	// whole entry — every artifact parks together, mirroring the
+	// all-or-nothing install rule. The entry-level lock rides in
+	// each pending record and is applied when the last one is
+	// approved.
+	fetchedAt := p.now().Format(time.RFC3339)
+	if p.Quarantine && !opts.Trust {
+		total := 0
+		for i, a := range arts {
+			if states[i] == destCurrent {
+				continue
+			}
+			findings := ScanTree(a.src)
+			total += len(findings)
+			pa := PendingArtifact{
+				Entry:       res.Entry,
+				Name:        artifactNameFromRel(a.rel),
+				DestRel:     p.destRel(a.dest),
+				DirArtifact: a.dirArtifact,
+				Origin: Origin{
+					Owner: e.Owner, Repo: e.Repo, Path: a.repoPath, Ref: e.Ref,
+					SHA: sha, ContentHash: "", FetchedAt: fetchedAt, Source: SourceManifest,
+				},
+				Lock:     LockEntry{Entry: res.Entry, ResolvedSHA: sha, ContentHash: stagedHash, FetchedAt: fetchedAt},
+				Findings: findings,
+			}
+			if err := p.quarantineStaged(a.src, pa); err != nil {
+				res.Kind = ResultFailed
+				res.Detail = err.Error()
+				return res
+			}
+		}
+		res.Kind = ResultQuarantined
+		res.Detail = fmt.Sprintf("%d artifact(s), %d finding(s)", len(arts), total)
+		return res
+	}
+	for _, a := range arts {
+		p.printFindings(artifactNameFromRel(a.rel), ScanTree(a.src))
+	}
+
 	// Phase 3: install. Per-artifact origins record the in-repo path
 	// so bundle/list/promote can trace each file individually.
-	fetchedAt := p.now().Format(time.RFC3339)
 	for i, a := range arts {
 		if states[i] == destCurrent {
 			continue
@@ -1001,4 +1082,51 @@ func (p *Puller) scanInstalled() []installedArtifact {
 		})
 	}
 	return out
+}
+
+// destRel converts an absolute destination under AgentsDir to the
+// bucket-relative slash path used by quarantine records.
+func (p *Puller) destRel(dest string) string {
+	rel, err := filepath.Rel(p.AgentsDir, dest)
+	if err != nil {
+		return filepath.ToSlash(dest)
+	}
+	return filepath.ToSlash(rel)
+}
+
+// artifactNameFromRel derives the approve/reject name for a tree
+// artifact from its bucket-relative path.
+func artifactNameFromRel(rel string) string {
+	base := path.Base(rel)
+	return strings.TrimSuffix(base, path.Ext(base))
+}
+
+// quarantineDetail summarizes findings for the pull report line.
+func quarantineDetail(findings []Finding) string {
+	crit := 0
+	for _, f := range findings {
+		if f.Severity == SeverityCritical {
+			crit++
+		}
+	}
+	switch {
+	case crit > 0:
+		return fmt.Sprintf("%d finding(s), %d CRITICAL — review with `sync-agents quarantine`", len(findings), crit)
+	case len(findings) > 0:
+		return fmt.Sprintf("%d finding(s) — review with `sync-agents quarantine`", len(findings))
+	default:
+		return "clean scan — `sync-agents approve` to install"
+	}
+}
+
+// printFindings surfaces scan results on the trust / quarantine-off
+// path: installation proceeds, but never silently.
+func (p *Puller) printFindings(name string, findings []Finding) {
+	for _, f := range findings {
+		loc := name
+		if f.Path != "" && f.Path != name {
+			loc = name + "/" + f.Path
+		}
+		fmt.Fprintf(p.errOut(), "[scan:%s] %s: %s (%s)\n", f.Severity, loc, f.Detail, f.Class)
+	}
 }
