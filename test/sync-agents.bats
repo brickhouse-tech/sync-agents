@@ -1344,20 +1344,20 @@ CONF
   [ -f "$TEST_DIR/.agents/rules/state.md" ]
 }
 
-@test "AGENTS.md State section lists STATE_ files" {
+@test "AGENTS.md State section indexes only shared STATE_ files" {
   "$SCRIPT" -d "$TEST_DIR" init
-  # Create some state snapshot files
+  # Per-engineer snapshot (no frontmatter) must stay out of the index
   echo "state 1" > "$TEST_DIR/.agents/STATE_feature-work_20260425120000.md"
-  echo "state 2" > "$TEST_DIR/.agents/STATE_bugfix_20260426080000.md"
+  # Shared-task snapshot opts in via frontmatter
+  printf -- '---\nshared: true\n---\n\nstate 2\n' > "$TEST_DIR/.agents/STATE_bugfix_20260426080000.md"
   "$SCRIPT" -d "$TEST_DIR" index
-  # AGENTS.md should reference the state files
-  grep -q "STATE_feature-work_20260425120000" "$TEST_DIR/AGENTS.md"
+  ! grep -q "STATE_feature-work_20260425120000" "$TEST_DIR/AGENTS.md"
   grep -q "STATE_bugfix_20260426080000" "$TEST_DIR/AGENTS.md"
 }
 
-@test "AGENTS.md State section shows placeholder when no state files" {
+@test "AGENTS.md State section points at the state convention rule" {
   "$SCRIPT" -d "$TEST_DIR" init
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"No state snapshots yet"* ]]
+  grep -q "rules/state.md" "$TEST_DIR/AGENTS.md"
 }
 
 # --------------------------------------------------------------------------
