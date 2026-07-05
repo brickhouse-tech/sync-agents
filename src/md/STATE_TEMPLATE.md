@@ -22,3 +22,16 @@ Save both if necessary, but the state file is more important for tracking progre
 Description of current state, progress, blockers, and next steps.
 
 Be sure to indicate whats left and what done via - [ ] checkboxes in state file
+
+## Sharing
+
+STATE_* snapshots are per-engineer working files. `sync-agents index` does
+not list them in AGENTS.md; only the pointer to this rule appears there.
+If a snapshot tracks a shared task the whole team should see, opt it into
+the index with frontmatter:
+
+```yaml
+---
+shared: true
+---
+```

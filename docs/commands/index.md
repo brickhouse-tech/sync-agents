@@ -10,7 +10,10 @@ Regenerates `AGENTS.md` from the contents of `.agents/`.
   content. Plans and specs are listed **recursively**, so documents
   grouped per effort in subdirectories (`plans/auth-effort/rollout.md`)
   index correctly.
-- **State** — `STATE_*.md` snapshots.
+- **State** — a pointer to the state convention rule
+  (`.agents/rules/state.md`). `STATE_*.md` snapshots are per-engineer
+  working files and are **not** listed; a snapshot that represents a
+  shared task opts into the index with `shared: true` frontmatter.
 - **Inherits** — preserved verbatim across regenerations.
 - **Managed Claude import block** — `@`-imports for passive rules (and
   explicitly-passive workflows) so Claude actually loads them; fully

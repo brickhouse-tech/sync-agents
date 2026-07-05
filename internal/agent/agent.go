@@ -1583,13 +1583,26 @@ func (a *App) generateAgentsMD() {
 		}
 	}
 
-	// State
+	// State — STATE_*.md snapshots are per-engineer working files, so
+	// the index must not enumerate them: that leaks one engineer's
+	// scratch state into the shared, committed AGENTS.md and churns it
+	// on every regeneration. The section is a pointer to the state
+	// convention rule; a snapshot appears here only when it opts in as
+	// a shared task via `shared: true` frontmatter (mirrors the
+	// `import: true` opt-in for reference docs).
 	b.WriteString("## State\n\n")
+	b.WriteString("Follow [rules/state.md](.agents/rules/state.md): record progress in `.agents/STATE_<context>_<timestamp>.md` snapshots. Snapshots are per-engineer and not indexed unless marked `shared: true` in frontmatter.\n")
 	hasState := false
 	if entries, err := os.ReadDir(agentsDir); err == nil {
 		for _, entry := range entries {
 			name := entry.Name()
 			if strings.HasPrefix(name, "STATE_") && strings.HasSuffix(name, ".md") {
+				if !stateSnapshotIsShared(filepath.Join(agentsDir, name)) {
+					continue
+				}
+				if !hasState {
+					b.WriteString("\n### Shared\n\n")
+				}
 				baseName := strings.TrimSuffix(name, ".md")
 				b.WriteString(fmt.Sprintf("- [%s](.agents/%s)\n", baseName, name))
 				hasState = true
@@ -1598,11 +1611,11 @@ func (a *App) generateAgentsMD() {
 	}
 	legacyState := filepath.Join(agentsDir, "STATE.md")
 	if _, err := os.Stat(legacyState); err == nil {
+		if !hasState {
+			b.WriteString("\n### Shared\n\n")
+			hasState = true
+		}
 		b.WriteString("- [STATE.md](.agents/STATE.md)\n")
-		hasState = true
-	}
-	if !hasState {
-		b.WriteString("_No state snapshots yet. Agents will create STATE_*context*_*timestamp*.md files as they work._\n")
 	}
 	b.WriteString("\n")
 
@@ -1783,6 +1796,23 @@ func indexEntry(name, link, srcPath string) string {
 		return fmt.Sprintf("- [%s](%s) — %s\n", name, link, desc)
 	}
 	return fmt.Sprintf("- [%s](%s)\n", name, link)
+}
+
+// stateSnapshotIsShared reports whether a STATE_*.md snapshot opts
+// into the AGENTS.md index as a shared task via `shared: true`
+// frontmatter. Snapshots are per-engineer by default and stay out of
+// the shared index.
+func stateSnapshotIsShared(path string) bool {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	block, err := parseFMBlock(string(raw))
+	if err != nil || !block.present {
+		return false
+	}
+	v, _ := block.get("shared")
+	return strings.EqualFold(strings.TrimSpace(v), "true")
 }
 
 // isBucketActive reports whether the target with the given ID is in

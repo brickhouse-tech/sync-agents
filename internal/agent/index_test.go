@@ -467,8 +467,10 @@ func TestCmdIndex_WithStateSnapshots(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, ".agents", "rules"), 0o755)
 	os.WriteFile(filepath.Join(dir, ".agents", "rules", "test.md"), []byte("body"), 0o644)
 
-	// Add a state snapshot.
-	os.WriteFile(filepath.Join(dir, ".agents", "STATE_test_2026-07-02.md"), []byte("state content"), 0o644)
+	// Per-engineer snapshot (no frontmatter) must stay out of the index.
+	os.WriteFile(filepath.Join(dir, ".agents", "STATE_private_2026-07-02.md"), []byte("state content"), 0o644)
+	// Shared-task snapshot opts in via frontmatter.
+	os.WriteFile(filepath.Join(dir, ".agents", "STATE_shared_2026-07-02.md"), []byte("---\nshared: true\n---\n\nstate content"), 0o644)
 
 	var buf bytes.Buffer
 	app := &App{
@@ -485,8 +487,14 @@ func TestCmdIndex_WithStateSnapshots(t *testing.T) {
 
 	data, _ := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
 	content := string(data)
-	if !strings.Contains(content, "STATE_test") {
-		t.Errorf("state snapshot not indexed:\n%s", content[:500])
+	if strings.Contains(content, "STATE_private") {
+		t.Errorf("per-engineer state snapshot leaked into index:\n%s", content)
+	}
+	if !strings.Contains(content, "STATE_shared") {
+		t.Errorf("shared state snapshot not indexed:\n%s", content)
+	}
+	if !strings.Contains(content, "rules/state.md") {
+		t.Errorf("state section missing pointer to rules/state.md:\n%s", content)
 	}
 }
 
