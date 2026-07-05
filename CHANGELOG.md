@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.3.1](https://github.com/brickhouse-tech/sync-agents/compare/v1.3.0...v1.3.1) (2026-07-05)
+
+
+### Bug Fixes
+
+* **index:** stop leaking per-engineer STATE_* snapshots into AGENTS.md ([a698e17](https://github.com/brickhouse-tech/sync-agents/commit/a698e1723770374af1a5e641a26f1b6d4f384096))
+
 ## [1.3.0](https://github.com/brickhouse-tech/sync-agents/compare/v1.2.1...v1.3.0) (2026-07-05)
 
 
