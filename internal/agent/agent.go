@@ -1645,6 +1645,25 @@ func (a *App) generateAgentsMD() {
 			Semantic: sem,
 		})
 	}
+	// Reference docs (plans/specs/adrs) opt into the local @-import
+	// block via `import: true` frontmatter (#65). Discovery is flat
+	// (top-level .md per bucket), matching DiscoverArtifacts.
+	for _, bk := range Buckets {
+		if !isReferenceImportType(bk.Artifact) {
+			continue
+		}
+		bkDir := filepath.Join(agentsDir, bk.Dir)
+		for _, name := range listMDFiles(bkDir) {
+			if artifactOptsIntoImport(filepath.Join(bkDir, name+".md"), bk.Artifact) {
+				localArts = append(localArts, ClaudeRoutedArtifact{
+					Type:        bk.Artifact,
+					Name:        name,
+					ImportOptIn: true,
+				})
+			}
+		}
+	}
+
 	if importLines := ManagedImportBlockForLocal(localArts); len(importLines) > 0 {
 		importBlock := FormatManagedImportBlockForTest(importLines)
 		b.WriteString(importBlock)

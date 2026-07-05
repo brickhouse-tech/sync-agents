@@ -126,9 +126,10 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 			case StrategySymlink:
 				if tool.ID == "claude" {
 					claudeRouted = append(claudeRouted, ClaudeRoutedArtifact{
-						Type:     art.Type,
-						Name:     art.Name,
-						Semantic: sem,
+						Type:        art.Type,
+						Name:        art.Name,
+						Semantic:    sem,
+						ImportOptIn: artifactOptsIntoImport(art.SourcePath, art.Type),
 					})
 				}
 				if err := a.applySymlinkDestination(tool.ID, art, dest); err != nil {

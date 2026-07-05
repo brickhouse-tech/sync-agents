@@ -2,7 +2,6 @@ package agent
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -202,15 +201,57 @@ func CollectClaudeRuleImportPaths(parent string, arts []ClaudeRoutedArtifact) []
 	claudeDir := filepath.Join(parent, ".claude")
 	var out []string
 	for _, art := range arts {
-		if art.Semantic != Passive {
-			continue
+		if suf, ok := managedImportSuffix(art); ok {
+			out = append(out, filepath.Join(claudeDir, filepath.FromSlash(suf)))
 		}
-		if art.Type != ArtifactRule && art.Type != ArtifactWorkflow {
-			continue
-		}
-		out = append(out, filepath.Join(claudeDir, "rules", art.Name+".md"))
 	}
 	return out
+}
+
+// isReferenceImportType reports whether a bucket is a reference-doc
+// bucket (plans/specs/adrs) eligible for `import: true` opt-in.
+func isReferenceImportType(t ArtifactType) bool {
+	return t == ArtifactPlan || t == ArtifactSpec || t == ArtifactADR
+}
+
+// managedImportSuffix returns the tool-relative @-import path suffix
+// ("rules/security.md", "plans/rollout.md") for an artifact that
+// qualifies for the managed CLAUDE.md block, or ok=false when it does
+// not. Passive rules and passive workflows always qualify (bucket
+// semantic); reference docs (plans/specs/adrs) qualify only when they
+// opt in via `import: true` frontmatter — SPEC-004 Part D deferred
+// item (#65). The suffix mirrors the reference-doc symlink destination
+// (`.claude/<bucket>/<name>.md`, destination.go), so the @-import
+// resolves to the same file sync creates.
+func managedImportSuffix(art ClaudeRoutedArtifact) (string, bool) {
+	switch {
+	case art.Semantic == Passive && (art.Type == ArtifactRule || art.Type == ArtifactWorkflow):
+		return "rules/" + art.Name + ".md", true
+	case art.ImportOptIn && isReferenceImportType(art.Type):
+		if b, ok := BucketForArtifact(art.Type); ok {
+			return b.Dir + "/" + art.Name + ".md", true
+		}
+	}
+	return "", false
+}
+
+// artifactOptsIntoImport reports whether a reference-doc source file
+// opts into the managed @-import block via `import: true` frontmatter.
+// Non-reference types never opt in (they qualify by semantic instead).
+func artifactOptsIntoImport(sourcePath string, typ ArtifactType) bool {
+	if !isReferenceImportType(typ) {
+		return false
+	}
+	data, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return false
+	}
+	fm, err := parseFMBlock(string(data))
+	if err != nil || !fm.present {
+		return false
+	}
+	v, _ := fm.get("import")
+	return strings.EqualFold(strings.TrimSpace(v), "true")
 }
 
 // ClaudeRoutedArtifact is the subset of artifact metadata needed to
@@ -225,6 +266,11 @@ type ClaudeRoutedArtifact struct {
 	Type     ArtifactType
 	Name     string
 	Semantic Semantic
+	// ImportOptIn marks a reference-doc artifact (plan/spec/adr) that
+	// asked to join the managed @-import block via `import: true`
+	// frontmatter. Ignored for rule/workflow types, which qualify by
+	// semantic. SPEC-004 Part D deferred item (#65).
+	ImportOptIn bool
 }
 
 // FormatManagedImportBlockForTest exposes replaceManagedBlock's
@@ -323,13 +369,9 @@ func ResolveClaudeMDPath(projectRoot string) string {
 func ManagedImportBlockForLocal(arts []ClaudeRoutedArtifact) []string {
 	var out []string
 	for _, art := range arts {
-		if art.Semantic != Passive {
-			continue
+		if suf, ok := managedImportSuffix(art); ok {
+			out = append(out, ".claude/"+suf)
 		}
-		if art.Type != ArtifactRule && art.Type != ArtifactWorkflow {
-			continue
-		}
-		out = append(out, fmt.Sprintf(".claude/rules/%s.md", art.Name))
 	}
 	return out
 }
