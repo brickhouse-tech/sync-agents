@@ -1,7 +1,7 @@
 ---
 id: SPEC-006
 title: "OS-scoped artifact routing — per-platform rules, skills, and workflows"
-status: Draft
+status: Core Implemented (routing + config override + @-imports; AGENTS.md badge & concat OS-headers pending)
 owner: nmccready
 created: 2026-07-02
 updated: 2026-07-02
