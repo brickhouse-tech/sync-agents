@@ -78,6 +78,25 @@ func (p *Puller) quarantineStaged(src string, pa PendingArtifact) error {
 	return writeFileAtomic(p.pendingPath(pa.DestRel), append(data, '\n'), 0o644)
 }
 
+// QuarantineImport stages a single manually-imported artifact into the
+// same quarantine that pull uses, so `sync-agents quarantine`
+// list/approve/reject treats a remote `import` exactly like a remote
+// `pull` (SPEC-005 Part B). srcFile is the fetched artifact on disk;
+// destRel is its bucket-relative destination ("rules/foo.md"). An
+// import is untracked (no sources.yaml entry), so the pending record
+// carries an empty Lock — Approve promotes it and writes its origin
+// (when present) but adds no lockfile entry, exactly as a direct
+// import stays untracked.
+func (p *Puller) QuarantineImport(srcFile, destRel string, origin Origin, findings []Finding) error {
+	return p.quarantineStaged(srcFile, PendingArtifact{
+		Entry:    "import:" + destRel,
+		Name:     artifactNameFromRel(destRel),
+		DestRel:  destRel,
+		Origin:   origin,
+		Findings: findings,
+	})
+}
+
 // ListPending returns every quarantined artifact's record, sorted by
 // destination path for stable output.
 func (p *Puller) ListPending() ([]PendingArtifact, error) {
@@ -162,8 +181,12 @@ func (p *Puller) Approve(name string, all, force bool) ([]PendingArtifact, error
 		if err := os.Rename(qsrc, dest); err != nil {
 			return nil, err
 		}
-		if err := WriteOriginFor(dest, pa.DirArtifact, pa.Origin); err != nil {
-			return nil, err
+		// Untracked imports may carry no origin (plain non-GitHub URL);
+		// don't write a near-empty sidecar for them.
+		if pa.Origin != (Origin{}) {
+			if err := WriteOriginFor(dest, pa.DirArtifact, pa.Origin); err != nil {
+				return nil, err
+			}
 		}
 		os.Remove(p.pendingPath(pa.DestRel))
 		p.pruneQuarantineDirs()
@@ -182,7 +205,9 @@ func (p *Puller) Approve(name string, all, force bool) ([]PendingArtifact, error
 				break
 			}
 		}
-		if entryDone {
+		// Untracked imports carry an empty Lock (no manifest entry) —
+		// promoting one must not write a spurious empty lockfile row.
+		if entryDone && pa.Lock.Entry != "" {
 			le := pa.Lock
 			if force && HasCritical(pa.Findings) {
 				le.ApprovedWithFindings = true

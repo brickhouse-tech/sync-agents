@@ -202,17 +202,20 @@ func main() {
 	})
 
 	// import
-	rootCmd.AddCommand(&cobra.Command{
+	var importTrust bool
+	importCmd := &cobra.Command{
 		Use:   "import [url]",
-		Short: "Import a rule/skill/workflow from URL",
+		Short: "Import a rule/skill/workflow from URL (quarantined + scanned by default)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var url string
 			if len(args) > 0 {
 				url = args[0]
 			}
-			return app.CmdImport(url)
+			return app.CmdImport(url, importTrust)
 		},
-	})
+	}
+	importCmd.Flags().BoolVar(&importTrust, "trust", false, "Bypass the quarantine gate (the scan still runs and prints findings)")
+	rootCmd.AddCommand(importCmd)
 
 	// pull — install every entry declared in .agents/sources.yaml
 	// (SPEC-003). --force/--dry-run come from the persistent root

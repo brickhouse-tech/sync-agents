@@ -573,7 +573,7 @@ func (a *App) CmdWatch() error {
 	return fmt.Errorf("no watcher")
 }
 
-func (a *App) CmdImport(url string) error {
+func (a *App) CmdImport(url string, trust bool) error {
 	if url == "" {
 		a.Error("Usage: sync-agents import <url>")
 		return fmt.Errorf("missing url")
@@ -612,9 +612,8 @@ func (a *App) CmdImport(url string) error {
 		typ = Buckets[idx-1].Dir
 	}
 
-	destDir := filepath.Join(a.ProjectRoot, ".agents", typ)
-	os.MkdirAll(destDir, 0755)
-	dest := filepath.Join(destDir, filename)
+	destRel := typ + "/" + filename
+	dest := filepath.Join(a.ProjectRoot, ".agents", typ, filename)
 
 	a.Info(fmt.Sprintf("Importing %s → .agents/%s/%s", url, typ, filename))
 
@@ -624,6 +623,53 @@ func (a *App) CmdImport(url string) error {
 	data, err := fetchImportURL(url)
 	if err != nil {
 		a.Error(fmt.Sprintf("Failed to download: %s (%v)", url, err))
+		return err
+	}
+
+	// SPEC-005 Part B: scan the fetched artifact and, by default, park
+	// it in quarantine for review instead of dropping it into the live
+	// tree. This closes the hole SPEC-005 names explicitly — `import`
+	// used to write remote content straight into .agents/ with no scan
+	// and no gate, while `pull` was gated. Now both route through the
+	// same quarantine. `--trust` (or `quarantine = off` in config)
+	// bypasses the gate, but the scan still runs and prints loudly.
+	tmpDir, err := os.MkdirTemp("", "sync-import-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmpDir)
+	staged := filepath.Join(tmpDir, filename)
+	if err := os.WriteFile(staged, data, 0644); err != nil {
+		return err
+	}
+	findings := source.ScanTree(staged)
+
+	gate := ReadConfigQuarantine(filepath.Join(a.ProjectRoot, ".agents"))
+	if trust {
+		gate = false
+	}
+
+	if gate {
+		origin, _ := a.importOrigin(url, staged) // zero Origin if not a GitHub URL → stays untracked
+		p := a.sourcePuller(SourceCmdOpts{})
+		if err := p.QuarantineImport(staged, destRel, origin, findings); err != nil {
+			a.Error(fmt.Sprintf("Failed to quarantine: %v", err))
+			return err
+		}
+		a.reportImportFindings(findings)
+		name := strings.TrimSuffix(filename, filepath.Ext(filename))
+		a.Info(fmt.Sprintf("Quarantined .agents/%s — review with `sync-agents quarantine`, then `sync-agents approve %s`.", destRel, name))
+		return nil
+	}
+
+	// --trust (or quarantine disabled): install directly. The scan
+	// still runs and any findings are printed — the bypass is loud,
+	// never silent.
+	if len(findings) > 0 {
+		a.Warn("--trust: installing WITHOUT the quarantine gate — scan findings below")
+		a.reportImportFindings(findings)
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		return err
 	}
 	if err := os.WriteFile(dest, data, 0644); err != nil {
@@ -641,6 +687,28 @@ func (a *App) CmdImport(url string) error {
 	a.Info("Imported successfully.")
 	a.CmdIndex()
 	return nil
+}
+
+// reportImportFindings prints scanner findings for an import in a
+// stable, human-readable form. Silent when there are none.
+func (a *App) reportImportFindings(findings []source.Finding) {
+	if len(findings) == 0 {
+		return
+	}
+	crit := 0
+	for _, f := range findings {
+		if f.Severity == source.SeverityCritical {
+			crit++
+		}
+	}
+	a.Info(fmt.Sprintf("scan: %d finding(s), %d CRITICAL", len(findings), crit))
+	for _, f := range findings {
+		loc := f.Path
+		if loc == "" {
+			loc = "artifact"
+		}
+		a.Info(fmt.Sprintf("  [%s] %s: %s (%s)", f.Severity, f.Class, f.Detail, loc))
+	}
 }
 
 // fetchImportURL retrieves an import URL's content. https and file
@@ -674,16 +742,27 @@ func fetchImportURL(rawURL string) ([]byte, error) {
 // writeImportOrigin records manual-source provenance for imports from
 // raw.githubusercontent.com. Failures only warn: origin metadata is
 // an enhancement to import, never a reason for it to fail.
-func (a *App) writeImportOrigin(rawURL, dest string) {
+// importOrigin builds manual-source provenance for an import. ok is
+// false (and the Origin zero) when the URL isn't a recoverable
+// raw.githubusercontent file — such imports are valid but untracked.
+func (a *App) importOrigin(rawURL, file string) (source.Origin, bool) {
 	o, ok := originFromRawGitHubURL(rawURL)
 	if !ok {
-		return
+		return source.Origin{}, false
 	}
-	if h, err := source.HashTree(dest); err == nil {
+	if h, err := source.HashTree(file); err == nil {
 		o.ContentHash = h
 	}
 	o.FetchedAt = time.Now().UTC().Format(time.RFC3339)
 	o.Source = source.SourceManual
+	return o, true
+}
+
+func (a *App) writeImportOrigin(rawURL, dest string) {
+	o, ok := a.importOrigin(rawURL, dest)
+	if !ok {
+		return
+	}
 	if err := source.WriteOriginFor(dest, false, o); err != nil {
 		a.Warn(fmt.Sprintf("could not write origin metadata for %s: %v", dest, err))
 	}
