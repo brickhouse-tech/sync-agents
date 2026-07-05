@@ -242,6 +242,66 @@ func TestManagedImportBlockForLocal(t *testing.T) {
 	}
 }
 
+// TestManagedImport_ReferenceOptIn covers #65 item 1: plans/specs/adrs
+// join the managed @-import block only when ImportOptIn is set, routed
+// to their own bucket dir (not rules/).
+func TestManagedImport_ReferenceOptIn(t *testing.T) {
+	arts := []ClaudeRoutedArtifact{
+		{Type: ArtifactRule, Name: "security", Semantic: Passive},
+		{Type: ArtifactSpec, Name: "SPEC-006", ImportOptIn: true},
+		{Type: ArtifactPlan, Name: "rollout", ImportOptIn: true},
+		{Type: ArtifactSpec, Name: "SPEC-099"},                    // no opt-in → excluded
+		{Type: ArtifactADR, Name: "0001-use-go", ImportOptIn: true},
+	}
+	got := CollectClaudeRuleImportPaths("/home/u", arts)
+	want := []string{
+		"/home/u/.claude/rules/security.md",
+		"/home/u/.claude/specs/SPEC-006.md",
+		"/home/u/.claude/plans/rollout.md",
+		"/home/u/.claude/adrs/0001-use-go.md",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d imports, want %d: %v", len(got), len(want), got)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("import[%d]: got %q want %q", i, got[i], w)
+		}
+	}
+}
+
+func TestArtifactOptsIntoImport(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	optIn := write("a.md", "---\ntitle: A\nimport: true\n---\nbody\n")
+	optOut := write("b.md", "---\ntitle: B\nimport: false\n---\nbody\n")
+	absent := write("c.md", "---\ntitle: C\n---\nbody\n")
+	noFM := write("d.md", "just body, no frontmatter\n")
+
+	cases := []struct {
+		path string
+		typ  ArtifactType
+		want bool
+	}{
+		{optIn, ArtifactSpec, true},
+		{optIn, ArtifactRule, false},  // non-reference type never opts in
+		{optOut, ArtifactSpec, false},
+		{absent, ArtifactPlan, false},
+		{noFM, ArtifactADR, false},
+	}
+	for _, c := range cases {
+		if got := artifactOptsIntoImport(c.path, c.typ); got != c.want {
+			t.Errorf("artifactOptsIntoImport(%s, %s) = %v, want %v", filepath.Base(c.path), c.typ, got, c.want)
+		}
+	}
+}
+
 func TestResolveClaudeMDPath(t *testing.T) {
 	tests := []struct {
 		name     string

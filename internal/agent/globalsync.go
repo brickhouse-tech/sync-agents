@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 )
@@ -126,9 +127,10 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 			case StrategySymlink:
 				if tool.ID == "claude" {
 					claudeRouted = append(claudeRouted, ClaudeRoutedArtifact{
-						Type:     art.Type,
-						Name:     art.Name,
-						Semantic: sem,
+						Type:        art.Type,
+						Name:        art.Name,
+						Semantic:    sem,
+						ImportOptIn: artifactOptsIntoImport(art.SourcePath, art.Type),
 					})
 				}
 				if err := a.applySymlinkDestination(tool.ID, art, dest); err != nil {
@@ -385,7 +387,63 @@ type Artifact struct {
 // DiscoverArtifacts is intentionally non-recursive past the first
 // level of each bucket; flatter layouts are easier to reason about
 // and SPEC-002's routing doesn't model nested sub-buckets.
+// osScopes maps an OS-scoped subdirectory name (SPEC-006) to the
+// runtime.GOOS values it matches. A bucket may carry macos/, linux/,
+// unix/, windows/ subdirs whose contents route only when the host
+// matches; root-level files always route (backward compatible).
+var osScopes = map[string]func(goos string) bool{
+	"macos":   func(goos string) bool { return goos == "darwin" },
+	"linux":   func(goos string) bool { return goos == "linux" },
+	"unix":    func(goos string) bool { return goos == "darwin" || goos == "linux" },
+	"windows": func(goos string) bool { return goos == "windows" },
+}
+
+// isOSScopeDir reports whether a bucket subdirectory name is a
+// reserved OS scope rather than an ordinary artifact/skill directory.
+func isOSScopeDir(name string) bool {
+	_, ok := osScopes[name]
+	return ok
+}
+
+// effectiveGOOS is the OS discovery filters against: the `os` key in
+// .agents/config when set (for testing and cross-compile CI), else
+// runtime.GOOS.
+func effectiveGOOS(rootAgentsDir string) string {
+	if v := readConfigOS(rootAgentsDir); v != "" {
+		return v
+	}
+	return runtime.GOOS
+}
+
+// readConfigOS reads the optional `os = <goos>` override from
+// .agents/config. Empty when absent.
+func readConfigOS(rootAgentsDir string) string {
+	data, err := os.ReadFile(filepath.Join(rootAgentsDir, "config"))
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") || !strings.Contains(line, "=") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if strings.TrimSpace(parts[0]) == "os" {
+			return strings.ToLower(strings.TrimSpace(parts[1]))
+		}
+	}
+	return ""
+}
+
 func DiscoverArtifacts(rootAgentsDir string) ([]Artifact, error) {
+	return discoverArtifactsForOS(rootAgentsDir, effectiveGOOS(rootAgentsDir))
+}
+
+// discoverArtifactsForOS is DiscoverArtifacts with an explicit host OS,
+// so tests (and the `os` config override) exercise every platform
+// without cross-compiling. SPEC-006: OS-scoped subdirs route only when
+// goos matches; non-matching subtrees are skipped entirely.
+func discoverArtifactsForOS(rootAgentsDir, goos string) ([]Artifact, error) {
 	var out []Artifact
 
 	for _, b := range Buckets {
@@ -401,28 +459,25 @@ func DiscoverArtifacts(rootAgentsDir string) ([]Artifact, error) {
 			if strings.HasPrefix(e.Name(), ".") {
 				continue
 			}
-			abs := filepath.Join(dir, e.Name())
-			if b.DirPerArtifact {
-				if !e.IsDir() {
+			// OS-scoped subdirectory: descend one level only when the
+			// host matches; otherwise skip the whole subtree (cheaper
+			// than discovering then filtering). Scoped artifacts keep
+			// the subdir as a name prefix ("macos/brew") so their
+			// destination mirrors the source tree and platforms don't
+			// collide in the flat target dir.
+			if e.IsDir() && isOSScopeDir(e.Name()) {
+				if !osScopes[e.Name()](goos) {
 					continue
 				}
-				if _, err := os.Stat(filepath.Join(abs, "SKILL.md")); err != nil {
-					continue
+				scoped, err := discoverBucketDir(filepath.Join(dir, e.Name()), b, e.Name()+"/")
+				if err != nil {
+					return nil, err
 				}
-				out = append(out, Artifact{
-					Type:       b.Artifact,
-					Name:       e.Name(),
-					SourcePath: abs,
-				})
-			} else {
-				if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-					continue
-				}
-				out = append(out, Artifact{
-					Type:       b.Artifact,
-					Name:       strings.TrimSuffix(e.Name(), ".md"),
-					SourcePath: abs,
-				})
+				out = append(out, scoped...)
+				continue
+			}
+			if art, ok := artifactFromEntry(dir, e, b, ""); ok {
+				out = append(out, art)
 			}
 		}
 	}
@@ -437,4 +492,44 @@ func DiscoverArtifacts(rootAgentsDir string) ([]Artifact, error) {
 		return out[i].Name < out[j].Name
 	})
 	return out, nil
+}
+
+// discoverBucketDir lists the artifacts directly inside one directory
+// of a bucket (used for OS-scoped subdirs), naming each with prefix.
+func discoverBucketDir(dir string, b Bucket, prefix string) ([]Artifact, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var out []Artifact
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		if art, ok := artifactFromEntry(dir, e, b, prefix); ok {
+			out = append(out, art)
+		}
+	}
+	return out, nil
+}
+
+// artifactFromEntry builds one Artifact from a directory entry,
+// honoring the bucket's DirPerArtifact rule. prefix is prepended to
+// the name (OS scope, e.g. "macos/"). ok is false for entries that
+// aren't artifacts (stray files, skill dirs without SKILL.md).
+func artifactFromEntry(dir string, e os.DirEntry, b Bucket, prefix string) (Artifact, bool) {
+	abs := filepath.Join(dir, e.Name())
+	if b.DirPerArtifact {
+		if !e.IsDir() {
+			return Artifact{}, false
+		}
+		if _, err := os.Stat(filepath.Join(abs, "SKILL.md")); err != nil {
+			return Artifact{}, false
+		}
+		return Artifact{Type: b.Artifact, Name: prefix + e.Name(), SourcePath: abs}, true
+	}
+	if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+		return Artifact{}, false
+	}
+	return Artifact{Type: b.Artifact, Name: prefix + strings.TrimSuffix(e.Name(), ".md"), SourcePath: abs}, true
 }
