@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.3.0](https://github.com/brickhouse-tech/sync-agents/compare/v1.2.1...v1.3.0) (2026-07-05)
+
+
+### Features
+
+* [#65](https://github.com/brickhouse-tech/sync-agents/issues/65) remaining polish — import gate, import:true opt-in, SPEC-006 core (3 of 4) ([#67](https://github.com/brickhouse-tech/sync-agents/issues/67)) ([8cddbdf](https://github.com/brickhouse-tech/sync-agents/commit/8cddbdf2c510ae50ca6b3633782bde51c7b90b5a))
+
 ## [1.2.1](https://github.com/brickhouse-tech/sync-agents/compare/v1.2.0...v1.2.1) (2026-07-04)
 
 ## [1.2.0](https://github.com/brickhouse-tech/sync-agents/compare/v1.1.0...v1.2.0) (2026-07-03)
