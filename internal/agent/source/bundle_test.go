@@ -107,7 +107,7 @@ func TestDetach_FlipsToManualAndDropsEntry(t *testing.T) {
 	}
 	dest := filepath.Join(p.AgentsDir, "rules", "security.md")
 
-	if err := p.Detach("security"); err != nil {
+	if _, err := p.Detach("security"); err != nil {
 		t.Fatalf("detach: %v", err)
 	}
 	if _, err := os.Stat(dest); err != nil {

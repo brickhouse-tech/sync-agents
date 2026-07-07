@@ -1,10 +1,10 @@
 ---
 id: SPEC-007
 title: "Linked (editable) sources: npm-link / go-replace for .agents artifacts"
-status: Draft
+status: Implemented
 owner: nmccready
 created: 2026-07-06
-updated: 2026-07-06
+updated: 2026-07-07
 related: SPEC-003, SPEC-005
 ---
 

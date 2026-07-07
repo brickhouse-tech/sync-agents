@@ -43,9 +43,20 @@ type SourceCmdOpts struct {
 	// scan still runs and prints). SPEC-005 Part B.
 	Trust bool
 
+	// Link marks `source add --link` (SPEC-007): declare a linked
+	// (editable) source instead of a fetched snapshot. LinkPath is the
+	// checkout path when the flag was given as `--link=<path>`; an
+	// empty LinkPath with Link set means a managed clone.
+	Link     bool
+	LinkPath string
+
 	// Fetcher overrides the GitHub fetcher — tests inject an
 	// httptest-backed one here. Nil means production GitHub.
 	Fetcher source.Fetcher
+
+	// CloneURL overrides the managed-clone git URL (SPEC-007) — tests
+	// point it at a local repo. Nil means github.com over HTTPS.
+	CloneURL func(owner, repo string) string
 }
 
 // sourceAgentsDir resolves which .agents/ tree the command targets.
@@ -77,6 +88,7 @@ func (a *App) sourcePuller(opts SourceCmdOpts) *source.Puller {
 		Quarantine: ReadConfigQuarantine(agentsDir),
 		Out:        a.Stdout,
 		Err:        a.Stderr,
+		CloneURL:   opts.CloneURL,
 	}
 }
 
@@ -162,8 +174,12 @@ func (a *App) CmdUpdate(name string, opts SourceCmdOpts) error {
 	return nil
 }
 
-// CmdSourceAdd implements `sync-agents source add <entry>`.
+// CmdSourceAdd implements `sync-agents source add <entry>` and, with
+// --link, `source add --link[=<path>]` (SPEC-007 linked sources).
 func (a *App) CmdSourceAdd(entry string, opts SourceCmdOpts) error {
+	if opts.Link {
+		return a.cmdSourceAddLink(entry, opts)
+	}
 	if entry == "" {
 		a.Error("Usage: sync-agents source add <type>:<owner>/<repo>[@ref][/path]")
 		return fmt.Errorf("missing entry")
@@ -182,6 +198,28 @@ func (a *App) CmdSourceAdd(entry string, opts SourceCmdOpts) error {
 		return err
 	}
 	a.Info(fmt.Sprintf("Added source: %s", entry))
+	return nil
+}
+
+// cmdSourceAddLink handles the --link variants of `source add`.
+func (a *App) cmdSourceAddLink(entry string, opts SourceCmdOpts) error {
+	if opts.LinkPath == "" && entry == "" {
+		a.Error("Usage: sync-agents source add --link=<path> <entry> | --link <entry> | --link=<path>")
+		return fmt.Errorf("missing entry or path")
+	}
+	p := a.sourcePuller(opts)
+	rep, err := p.AddLink(context.Background(), opts.LinkPath, entry, source.PullOpts{
+		Force:  a.Force,
+		DryRun: a.DryRun,
+		Trust:  opts.Trust,
+	})
+	a.renderPullReport(rep)
+	a.finishSourceWrite(rep.Changed(), opts)
+	if err != nil {
+		a.Error(err.Error())
+		return err
+	}
+	a.Info("Linked source wired")
 	return nil
 }
 
@@ -226,6 +264,11 @@ func (a *App) CmdSourceList(opts SourceCmdOpts) error {
 		return nil
 	}
 	for _, it := range items {
+		if it.Link != "" {
+			// Linked entries (SPEC-007) render their target, not a SHA.
+			fmt.Fprintf(a.Stdout, "[%s] %s  link → %s\n", it.Status, it.Entry, it.Link)
+			continue
+		}
 		sha := it.ResolvedSHA
 		if sha == "" {
 			sha = "(never pulled)"
@@ -267,11 +310,17 @@ func (a *App) CmdSourceDetach(name string, opts SourceCmdOpts) error {
 		return fmt.Errorf("missing name")
 	}
 	p := a.sourcePuller(opts)
-	if err := p.Detach(name); err != nil {
+	frozen, err := p.Detach(name)
+	if err != nil {
 		a.Error(err.Error())
 		return err
 	}
-	a.Info(fmt.Sprintf("Detached %s — artifact kept, now source: \"manual\"", name))
+	a.finishSourceWrite(frozen, opts)
+	if frozen {
+		a.Info(fmt.Sprintf("Detached %s — link frozen into a vendored snapshot (still manifest-governed)", name))
+	} else {
+		a.Info(fmt.Sprintf("Detached %s — artifact kept, now source: \"manual\"", name))
+	}
 	return nil
 }
 

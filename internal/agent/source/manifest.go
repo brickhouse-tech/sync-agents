@@ -36,14 +36,20 @@ type Manifest struct {
 }
 
 // Override is a per-entry tweak matched by glob against the entry
-// string. v1 applies rename and pin_sha; exclude_paths is parsed and
-// preserved but not yet applied (TODO: filter excluded paths during
+// string. v1 applies rename, pin_sha, and link; exclude_paths is parsed
+// and preserved but not yet applied (TODO: filter excluded paths during
 // staging — accepted-but-inert so manifests written for a future
 // version still parse today).
+//
+// Link redirects resolution to a live local git checkout via a
+// relative file: path instead of an immutable SHA-pinned snapshot
+// (SPEC-007). It is mutually exclusive with PinSHA — a link cannot also
+// be SHA-pinned — and the exclusion is enforced at load time.
 type Override struct {
 	Match        string   `yaml:"match"`
 	Rename       string   `yaml:"rename,omitempty"`
 	PinSHA       string   `yaml:"pin_sha,omitempty"`
+	Link         string   `yaml:"link,omitempty"`
 	ExcludePaths []string `yaml:"exclude_paths,omitempty"`
 }
 
@@ -78,8 +84,20 @@ type LockEntry struct {
 	// ApprovedWithFindings marks an artifact promoted out of
 	// quarantine with `approve --force` despite critical scanner
 	// findings — an auditable record of the human override.
-	ApprovedWithFindings bool   `yaml:"approved_with_findings,omitempty"`
-	FetchedAt            string `yaml:"fetched_at"`
+	ApprovedWithFindings bool `yaml:"approved_with_findings,omitempty"`
+	// Link echoes the override's relative file: path for a linked
+	// source (SPEC-007). Present ⇒ this entry is a symlink into a live
+	// checkout, not a fetched snapshot. ResolvedSHA for a linked entry
+	// is informational (the checkout's HEAD at link/update time; not
+	// used for drift or integrity), and ContentHash is empty (a live
+	// checkout has no stable content hash).
+	Link string `yaml:"link,omitempty"`
+	// ManagedClone is true when sync-agents owns the checkout under
+	// .agents/.sources/ (bare `--link <entry>`); false for a user's
+	// own checkout linked by path. `update` only `git pull`s managed
+	// clones.
+	ManagedClone bool   `yaml:"managed_clone,omitempty"`
+	FetchedAt    string `yaml:"fetched_at"`
 }
 
 // Find returns the lock entry for the given manifest entry string,
@@ -139,6 +157,21 @@ func LoadManifest(agentsDir string) (Manifest, bool, error) {
 	}
 	if m.Version != 1 {
 		return Manifest{}, true, fmt.Errorf("%s: unsupported manifest version %d (this build understands 1)", ManifestPath(agentsDir), m.Version)
+	}
+	// SPEC-007: validate link overrides at load so a malformed manifest
+	// fails once, up front, rather than deep inside a pull. A link may
+	// not also be SHA-pinned, and its path must be a relative file:
+	// reference (absolute paths do not round-trip through git).
+	for _, o := range m.Overrides {
+		if o.Link == "" {
+			continue
+		}
+		if o.PinSHA != "" {
+			return Manifest{}, true, fmt.Errorf("%s: override %q sets both link and pin_sha — a linked source cannot also be SHA-pinned", ManifestPath(agentsDir), o.Match)
+		}
+		if _, err := ParseLinkPath(o.Link); err != nil {
+			return Manifest{}, true, fmt.Errorf("%s: override %q: %w", ManifestPath(agentsDir), o.Match, err)
+		}
 	}
 	return m, true, nil
 }
@@ -201,4 +234,28 @@ func applyOverrides(e Entry, m Manifest) (name, pinSHA string) {
 		}
 	}
 	return name, pinSHA
+}
+
+// linkFor returns the effective link override (relative file: path,
+// with the file: scheme stripped) for an entry, or "" when the entry
+// is not linked. Last matching override wins, mirroring
+// applyOverrides' last-writer semantics.
+func linkFor(e Entry, m Manifest) string {
+	link := ""
+	for _, o := range m.Overrides {
+		if !o.Matches(e.Raw) {
+			continue
+		}
+		if o.Link != "" {
+			// Already validated at load; a parse error here would have
+			// aborted LoadManifest, so the error branch is unreachable
+			// in normal flow — fall back to the raw value defensively.
+			if rel, err := ParseLinkPath(o.Link); err == nil {
+				link = rel
+			} else {
+				link = strings.TrimPrefix(o.Link, linkScheme)
+			}
+		}
+	}
+	return link
 }

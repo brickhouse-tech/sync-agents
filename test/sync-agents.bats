@@ -1574,3 +1574,100 @@ CONF
   [ "$status" -ne 0 ]
   [[ "$output" == *"source add"* ]]
 }
+
+# --------------------------------------------------------------------------
+# SPEC-007: linked (editable) sources
+# --------------------------------------------------------------------------
+
+# Create a local skill checkout at $TEST_DIR/<name> with a SKILL.md and
+# an optional git origin remote.
+_make_checkout() {
+  local name="$1" remote="$2"
+  mkdir -p "$TEST_DIR/$name"
+  printf -- '---\nname: %s\ndescription: linked demo. Use when testing.\n---\n# %s\n' "$name" "$name" > "$TEST_DIR/$name/SKILL.md"
+  git -C "$TEST_DIR/$name" init --quiet
+  git -C "$TEST_DIR/$name" config user.email t@example.com
+  git -C "$TEST_DIR/$name" config user.name t
+  git -C "$TEST_DIR/$name" add . >/dev/null
+  git -C "$TEST_DIR/$name" commit --quiet -m init
+  [ -n "$remote" ] && git -C "$TEST_DIR/$name" remote add origin "$remote"
+  return 0
+}
+
+@test "source add --link=<path> wires a relative symlink and indexes the skill" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  _make_checkout foo-skill ""
+  run "$SCRIPT" -d "$TEST_DIR" source add --link="$TEST_DIR/foo-skill" skill:me/foo-skill
+  [ "$status" -eq 0 ]
+  [ -L "$TEST_DIR/.agents/skills/foo-skill" ]
+  # symlink target must be relative (portability invariant)
+  local target
+  target="$(readlink "$TEST_DIR/.agents/skills/foo-skill")"
+  [[ "$target" != /* ]]
+  # resolves to the real SKILL.md
+  [ -f "$TEST_DIR/.agents/skills/foo-skill/SKILL.md" ]
+  # indexed in AGENTS.md
+  grep -q "foo-skill" "$TEST_DIR/AGENTS.md"
+}
+
+@test "linked source: lock and manifest contain no absolute paths" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  _make_checkout foo-skill ""
+  "$SCRIPT" -d "$TEST_DIR" source add --link="$TEST_DIR/foo-skill" skill:me/foo-skill
+  run grep -F "$TEST_DIR" "$TEST_DIR/.agents/sources.lock"
+  [ "$status" -ne 0 ]
+  run grep -F "$TEST_DIR" "$TEST_DIR/.agents/sources.yaml"
+  [ "$status" -ne 0 ]
+}
+
+@test "source list marks a linked entry" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  _make_checkout foo-skill ""
+  "$SCRIPT" -d "$TEST_DIR" source add --link="$TEST_DIR/foo-skill" skill:me/foo-skill
+  run "$SCRIPT" -d "$TEST_DIR" source list
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"linked"* ]]
+  [[ "$output" == *"link →"* ]]
+}
+
+@test "re-pull over a link is a no-op and does not clobber the symlink" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  _make_checkout foo-skill ""
+  "$SCRIPT" -d "$TEST_DIR" source add --link="$TEST_DIR/foo-skill" skill:me/foo-skill
+  run "$SCRIPT" -d "$TEST_DIR" pull
+  [ "$status" -eq 0 ]
+  [ -L "$TEST_DIR/.agents/skills/foo-skill" ]
+}
+
+@test "source add --link=<path> derives the entry from the git remote" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  _make_checkout widget "https://github.com/acme/widget.git"
+  run "$SCRIPT" -d "$TEST_DIR" source add --link="$TEST_DIR/widget"
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_DIR/.agents/skills/widget/SKILL.md" ]
+  grep -q "skill:acme/widget" "$TEST_DIR/.agents/sources.yaml"
+}
+
+@test "detach freezes a link into a real vendored copy" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  _make_checkout foo-skill ""
+  "$SCRIPT" -d "$TEST_DIR" source add --link="$TEST_DIR/foo-skill" skill:me/foo-skill
+  run "$SCRIPT" -d "$TEST_DIR" source detach foo-skill
+  [ "$status" -eq 0 ]
+  [ ! -L "$TEST_DIR/.agents/skills/foo-skill" ]
+  [ -f "$TEST_DIR/.agents/skills/foo-skill/SKILL.md" ]
+  [ -f "$TEST_DIR/.agents/skills/foo-skill/_origin.json" ]
+  # link override dropped, identity entry kept
+  run grep -c "link:" "$TEST_DIR/.agents/sources.yaml"
+  [ "$output" -eq 0 ]
+  grep -q "skill:me/foo-skill" "$TEST_DIR/.agents/sources.yaml"
+}
+
+@test "source add refuses an absolute file: link in the manifest" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.agents"
+  printf 'version: 1\nsources:\n  - skill:me/foo\noverrides:\n  - match: skill:me/foo*\n    link: file:/abs/foo\n' > "$TEST_DIR/.agents/sources.yaml"
+  run "$SCRIPT" -d "$TEST_DIR" source list
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"absolute"* ]]
+}

@@ -520,7 +520,10 @@ func discoverBucketDir(dir string, b Bucket, prefix string) ([]Artifact, error) 
 func artifactFromEntry(dir string, e os.DirEntry, b Bucket, prefix string) (Artifact, bool) {
 	abs := filepath.Join(dir, e.Name())
 	if b.DirPerArtifact {
-		if !e.IsDir() {
+		// A linked skill (SPEC-007) is a symlink to a checkout dir, so
+		// e.IsDir() is false — stat-through the entry so linked skills
+		// enumerate exactly like vendored ones.
+		if !entryIsDir(abs, e) {
 			return Artifact{}, false
 		}
 		if _, err := os.Stat(filepath.Join(abs, "SKILL.md")); err != nil {
@@ -528,8 +531,23 @@ func artifactFromEntry(dir string, e os.DirEntry, b Bucket, prefix string) (Arti
 		}
 		return Artifact{Type: b.Artifact, Name: prefix + e.Name(), SourcePath: abs}, true
 	}
-	if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+	if entryIsDir(abs, e) || !strings.HasSuffix(e.Name(), ".md") {
 		return Artifact{}, false
 	}
 	return Artifact{Type: b.Artifact, Name: prefix + strings.TrimSuffix(e.Name(), ".md"), SourcePath: abs}, true
+}
+
+// entryIsDir reports whether a directory entry is (or points at, via a
+// symlink) a directory. os.DirEntry.IsDir() reports the symlink itself,
+// not its target, so a linked skill dir would otherwise read as a
+// non-directory and vanish from discovery (SPEC-007 §index).
+func entryIsDir(abs string, e os.DirEntry) bool {
+	if e.IsDir() {
+		return true
+	}
+	if e.Type()&os.ModeSymlink == 0 {
+		return false
+	}
+	fi, err := os.Stat(abs) // follows the symlink
+	return err == nil && fi.IsDir()
 }

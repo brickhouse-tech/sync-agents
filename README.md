@@ -109,10 +109,11 @@ AGENTS.md is also symlinked to CLAUDE.md so that Claude reads the index natively
 | `pull [--dry-run\|--offline\|--force\|--only NAME\|--global]` | Fetch every `sources.yaml` entry, verify integrity, install into the matching buckets |
 | `update [NAME]` | Re-resolve refs and re-pull entries whose upstream moved; SHA-pinned entries are skipped |
 | `source add <entry>` | Append an entry to `sources.yaml` and pull it |
+| `source add --link[=<path>] [<entry>]` | Declare a **linked (editable)** source — symlink a live local checkout instead of a fetched snapshot (SPEC-007) |
 | `source remove <name> [--keep]` | Remove the manifest entry and delete the artifact (`--keep` converts it to manual) |
-| `source list [--json]` | Show each entry's local state: `ok` / `outdated` / `modified` / `missing` |
+| `source list [--json]` | Show each entry's local state: `ok` / `outdated` / `modified` / `missing` / `linked` |
 | `source bundle` | Rebuild `sources.yaml` from installed artifacts' origin metadata |
-| `source detach <name>` | Un-manage an artifact: flip its origin to manual and drop the manifest entry |
+| `source detach <name>` | Un-manage an artifact: flip its origin to manual and drop the manifest entry (for a **linked** source, freeze the live copy into a vendored snapshot) |
 | `quarantine` | List remotely-fetched artifacts awaiting review, with their scan findings |
 | `approve <name>\|--all [--force]` | Promote a quarantined artifact into `.agents/` (`--force` accepts critical findings, recorded in the lock) |
 | `reject <name>\|--all` | Delete a quarantined artifact without installing it |
@@ -239,6 +240,32 @@ sync-agents reject sketchy-rule   # delete without installing
 ```
 
 Critical findings block `approve`; overriding with `--force` is recorded in `sources.lock` as `approved_with_findings` so the decision is auditable. `--trust` on `pull`/`update` skips the gate for one invocation (findings still print), and `quarantine = off` in `.agents/config` disables it for teams that review via pinned SHAs in PRs instead.
+
+## Linked (editable) sources
+
+When you're **actively developing** a skill that lives in another repo (or the upstream repo itself), a SHA-pinned snapshot forces a slow `edit → commit → push → update` loop. A **linked** source is the `npm link` / `go mod replace` for `.agents/` — it symlinks the artifact at a live local checkout, so edits flow both ways and `git pull` in the checkout reaps updates with no re-fetch (SPEC-007).
+
+```bash
+# Link a checkout you already have (path relative to cwd or absolute):
+sync-agents source add --link=../foo-skill skill:me/foo-skill
+
+# Derive the entry from the checkout's github remote + layout:
+sync-agents source add --link=../foo-skill
+
+# Managed clone: sync-agents clones the repo under .agents/.sources/ and links out of it
+# (the initial clone is scanned once through the quarantine scanner; --trust to skip):
+sync-agents source add --link skill:me/foo-skill
+```
+
+The link is recorded declaratively as a `link:` override in `sources.yaml` and echoed in `sources.lock`, so the intent is committed and reviewable:
+
+```yaml
+overrides:
+  - match: skill:me/foo-skill
+    link: file:../foo-skill      # relative to .agents/; mutually exclusive with pin_sha
+```
+
+All persisted paths are **relative** (`file:` scheme) and the on-disk symlink is created relative too — an absolute path would break the instant another machine cloned the repo, so absolute `file:` paths are rejected at parse time. `pull` verifies (and self-heals) the symlink and never re-fetches a snapshot over it; a missing checkout surfaces as a warning, not a silent revert. `update` advances a **managed clone** with `git pull --ff-only` (a checkout you own is yours to drive). `source list` shows linked entries as `[linked] … link → file:../foo-skill`, and `source detach` **freezes** the live copy into an ordinary vendored snapshot (materialize the files, drop the `link` override, keep the upstream identity). Because a linked source is a local working tree you own, it is trusted by default — only the first fetch of a managed clone is scanned.
 
 ## ADRs (Architecture Decision Records)
 

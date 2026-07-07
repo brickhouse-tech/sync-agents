@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 )
 
 // bundle.go implements the manifest-maintenance half of SPEC-003:
@@ -119,20 +121,32 @@ func (p *Puller) removeOrDetachArtifact(dest string, dirArtifact bool, o Origin,
 	return nil
 }
 
-// Detach flips an artifact to source:"manual" and removes its
-// manifest + lock entries. The artifact stays on disk — this is the
-// documented escape hatch for "I want to keep my local edits".
-func (p *Puller) Detach(name string) error {
+// Detach severs a pulled artifact from live management while keeping it
+// on disk. For a normal source it flips origin to source:"manual" and
+// drops the manifest + lock entries. For a linked source (SPEC-007) it
+// instead FREEZES the dev copy into a vendored snapshot — see
+// detachLink. The returned frozen bool is true in the latter case, so
+// callers can report the right outcome.
+func (p *Puller) Detach(name string) (frozen bool, err error) {
 	m, exists, err := LoadManifest(p.AgentsDir)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !exists {
-		return fmt.Errorf("no %s found", ManifestPath(p.AgentsDir))
+		return false, fmt.Errorf("no %s found", ManifestPath(p.AgentsDir))
 	}
 	raw, e, err := findEntry(m, name)
 	if err != nil {
-		return err
+		return false, err
+	}
+
+	// SPEC-007: detaching a linked source is "freeze my dev copy" —
+	// materialize the symlink target into a real vendored artifact,
+	// drop the link override, and record a normal snapshot lock entry.
+	// The upstream identity in `sources` stays, so pull governs it as a
+	// snapshot from here on.
+	if linkRel := linkFor(e, m); linkRel != "" {
+		return true, p.detachLink(raw, e, linkRel, m)
 	}
 
 	if e.Type == EntryTree {
@@ -140,7 +154,7 @@ func (p *Puller) Detach(name string) error {
 			if a.origin.Owner == e.Owner && a.origin.Repo == e.Repo {
 				a.origin.Source = SourceManual
 				if err := WriteOriginFor(a.dest, a.dirArtifact, a.origin); err != nil {
-					return err
+					return false, err
 				}
 			}
 		}
@@ -150,12 +164,68 @@ func (p *Puller) Detach(name string) error {
 		if o, oerr := ReadOriginFor(dest, dirArtifact); oerr == nil {
 			o.Source = SourceManual
 			if err := WriteOriginFor(dest, dirArtifact, o); err != nil {
-				return err
+				return false, err
 			}
 		}
 	}
 
 	m.Sources = removeString(m.Sources, raw)
+	if err := SaveManifest(p.AgentsDir, m); err != nil {
+		return false, err
+	}
+	lock, err := LoadLock(p.AgentsDir)
+	if err != nil {
+		return false, err
+	}
+	lock.Remove(raw)
+	return false, SaveLock(p.AgentsDir, lock)
+}
+
+// detachLink freezes a linked source (SPEC-007): it replaces the
+// symlink with a real copy of the current target contents, drops the
+// link override (keeping the upstream `sources` entry), writes normal
+// origin metadata, and records a snapshot lock entry hashed over the
+// materialized files. After this the entry is an ordinary vendored
+// artifact that pull governs by SHA.
+func (p *Puller) detachLink(raw string, e Entry, linkRel string, m Manifest) error {
+	name, _ := applyOverrides(e, m)
+	dest, dirArtifact := p.artifactDest(e, name)
+
+	checkoutRoot := filepath.Join(p.AgentsDir, filepath.FromSlash(linkRel))
+	target := linkArtifactTarget(checkoutRoot, e)
+	if _, err := os.Stat(target); err != nil {
+		return fmt.Errorf("cannot detach %s: link target %s is missing (%w) — restore the checkout or `source remove` it", name, target, err)
+	}
+
+	// Provenance to freeze into the snapshot: the informational HEAD the
+	// lock recorded at link/update time (empty if never resolved).
+	sha := ""
+	if lock, err := LoadLock(p.AgentsDir); err == nil {
+		if le := lock.Find(raw); le != nil {
+			sha = le.ResolvedSHA
+		}
+	}
+
+	// Materialize: real copy replaces the symlink. installArtifact copies
+	// the target into a sibling temp first, then swaps — the checkout is
+	// never mutated.
+	if err := installArtifact(target, dest, dirArtifact); err != nil {
+		return err
+	}
+	contentHash, err := HashTree(dest)
+	if err != nil {
+		return err
+	}
+	fetchedAt := p.now().Format(time.RFC3339)
+	if err := WriteOriginFor(dest, dirArtifact, Origin{
+		Owner: e.Owner, Repo: e.Repo, Path: e.Path, Ref: e.Ref,
+		SHA: sha, ContentHash: contentHash, FetchedAt: fetchedAt, Source: SourceManifest,
+	}); err != nil {
+		return err
+	}
+
+	// Drop the link override; keep the sources identity entry.
+	m.Overrides = dropLinkOverride(m.Overrides, e)
 	if err := SaveManifest(p.AgentsDir, m); err != nil {
 		return err
 	}
@@ -163,8 +233,28 @@ func (p *Puller) Detach(name string) error {
 	if err != nil {
 		return err
 	}
-	lock.Remove(raw)
+	lock.Set(LockEntry{
+		Entry: raw, ResolvedSHA: sha, ContentHash: contentHash, FetchedAt: fetchedAt,
+	})
 	return SaveLock(p.AgentsDir, lock)
+}
+
+// dropLinkOverride clears the link field from an entry's override,
+// removing the override entirely when nothing else remains on it.
+func dropLinkOverride(overrides []Override, e Entry) []Override {
+	out := overrides[:0]
+	for _, o := range overrides {
+		if o.Matches(e.Raw) && o.Link != "" {
+			o.Link = ""
+			// An override that was link-only is now empty — drop it so
+			// the manifest stays clean.
+			if o.Rename == "" && o.PinSHA == "" && len(o.ExcludePaths) == 0 {
+				continue
+			}
+		}
+		out = append(out, o)
+	}
+	return out
 }
 
 // BundleReport summarizes what Bundle changed.
