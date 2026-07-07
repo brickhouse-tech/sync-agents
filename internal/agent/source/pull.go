@@ -60,6 +60,16 @@ type Puller struct {
 	// Now is injectable for deterministic fetched_at timestamps in
 	// tests. Nil means time.Now.
 	Now func() time.Time
+
+	// CloneURL maps an entry's owner/repo to the git URL a managed
+	// linked source (SPEC-007) clones from. Nil defaults to
+	// https://github.com/<owner>/<repo>.git; tests point it at a local
+	// repo to stay hermetic.
+	CloneURL func(owner, repo string) string
+
+	// WorkDir is the directory a user-supplied --link path is resolved
+	// against. Empty means os.Getwd() (normal shell semantics).
+	WorkDir string
 }
 
 func (p *Puller) now() time.Time {
@@ -239,6 +249,14 @@ func (p *Puller) pullOne(ctx context.Context, raw string, m Manifest, lock *Lock
 	}
 	name, pinSHA := applyOverrides(e, m)
 	res := EntryResult{Entry: raw, Name: name}
+
+	// SPEC-007: a linked entry resolves to a live checkout, not a
+	// tarball — skip the fetcher entirely and verify/advance the link.
+	// The manifest override is authoritative; a lingering lock link
+	// with no override means the user unlinked, so fall through.
+	if linkRel := linkFor(e, m); linkRel != "" {
+		return p.pullLinked(e, name, linkRel, lock.Find(raw), lock, opts)
+	}
 
 	// Update semantics: a SHA-pinned entry can never advance, so skip
 	// it before any network traffic (AC-3's "no fetch" guarantee).
@@ -919,6 +937,11 @@ func copyTree(srcDir, dstDir string) error {
 		if rel == "." {
 			return nil
 		}
+		// Never vendor a nested VCS dir (a linked/managed checkout being
+		// frozen by `detach` carries .git — SPEC-007).
+		if d.IsDir() && d.Name() == ".git" {
+			return filepath.SkipDir
+		}
 		target := filepath.Join(dstDir, rel)
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
@@ -950,8 +973,12 @@ type ListItem struct {
 	Entry       string `json:"entry"`
 	Name        string `json:"name"`
 	ResolvedSHA string `json:"resolved_sha,omitempty"`
-	// Status ∈ ok | outdated | modified | missing (AC-5).
+	// Status ∈ ok | outdated | modified | missing | linked (AC-5,
+	// SPEC-007 adds linked).
 	Status string `json:"status"`
+	// Link is the relative file: path for a linked entry (SPEC-007),
+	// empty for a normal snapshot entry.
+	Link string `json:"link,omitempty"`
 }
 
 // List reports each manifest entry's local state without touching the
@@ -982,10 +1009,31 @@ func (p *Puller) List() ([]ListItem, error) {
 		if le := lock.Find(raw); le != nil {
 			item.ResolvedSHA = le.ResolvedSHA
 		}
+		if linkRel := linkFor(e, m); linkRel != "" {
+			item.Link = linkScheme + linkRel
+			item.Status = p.linkStatus(e, name)
+			items = append(items, item)
+			continue
+		}
 		item.Status = p.entryStatus(e, name, item.ResolvedSHA)
 		items = append(items, item)
 	}
 	return items, nil
+}
+
+// linkStatus reports a linked entry's local state: "linked" when the
+// symlink is present and resolves, "missing" when it is absent or
+// dangling (SPEC-007). No network, same as the rest of list.
+func (p *Puller) linkStatus(e Entry, name string) string {
+	dest, _ := p.artifactDest(e, name)
+	fi, err := os.Lstat(dest)
+	if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		return "missing"
+	}
+	if _, err := os.Stat(dest); err != nil {
+		return "missing" // dangling target
+	}
+	return "linked"
 }
 
 func (p *Puller) entryStatus(e Entry, name, lockSHA string) string {

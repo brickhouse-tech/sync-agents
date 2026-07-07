@@ -162,7 +162,16 @@ func ScanTree(root string) []Finding {
 		return findings
 	}
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			// A linked/managed checkout (SPEC-007) carries a .git dir;
+			// its binary objects are not artifact content and would
+			// drown the scan in false "binary file" warnings.
+			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		rel, rerr := filepath.Rel(root, path)

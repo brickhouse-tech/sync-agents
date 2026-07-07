@@ -324,19 +324,38 @@ func main() {
 	sourceCmd.PersistentFlags().BoolVar(&srcGlobal, "global", false, "Operate on the global ~/.agents/ tree")
 
 	var addOffline bool
+	var addTrust bool
+	var addLink string
 	sourceAddCmd := &cobra.Command{
 		Use:   "add <entry>",
 		Short: "Declare a source entry and pull it",
-		Args:  cobra.MaximumNArgs(1),
+		Long: "Declare a source entry and pull it.\n\n" +
+			"With --link, declare a linked (editable) source instead of a fetched\n" +
+			"snapshot (SPEC-007) — the artifact symlinks a live local checkout:\n" +
+			"  source add --link=<path> <entry>   link a checkout you own\n" +
+			"  source add --link <entry>          managed clone under .agents/.sources/\n" +
+			"  source add --link=<path>           derive the entry from the checkout's git remote",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			entry := ""
 			if len(args) > 0 {
 				entry = args[0]
 			}
-			return app.CmdSourceAdd(entry, agent.SourceCmdOpts{Global: srcGlobal, Offline: addOffline})
+			return app.CmdSourceAdd(entry, agent.SourceCmdOpts{
+				Global:   srcGlobal,
+				Offline:  addOffline,
+				Trust:    addTrust,
+				Link:     cmd.Flags().Changed("link"),
+				LinkPath: addLink,
+			})
 		},
 	}
 	sourceAddCmd.Flags().BoolVar(&addOffline, "offline", false, "Serve from the local cache only; fail on cache misses")
+	sourceAddCmd.Flags().BoolVar(&addTrust, "trust", false, "Skip the quarantine gate on a managed-clone link (the scan still prints)")
+	sourceAddCmd.Flags().StringVar(&addLink, "link", "", "Declare a linked (editable) source; optional =<path> to a local checkout")
+	// NoOptDefVal lets `--link` stand alone (managed clone) or take a
+	// value (`--link=<path>`), disambiguating the three SPEC-007 forms.
+	sourceAddCmd.Flags().Lookup("link").NoOptDefVal = ""
 	sourceCmd.AddCommand(sourceAddCmd)
 
 	var removeKeep bool

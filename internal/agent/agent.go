@@ -1442,7 +1442,9 @@ func (a *App) generateAgentsMD() {
 	skillsDir := filepath.Join(agentsDir, "skills")
 	if entries, err := os.ReadDir(skillsDir); err == nil {
 		for _, entry := range entries {
-			if !entry.IsDir() {
+			// Follow symlinks so a linked skill (SPEC-007) — a symlink
+			// to a checkout dir — is indexed like a vendored one.
+			if !entryIsDir(filepath.Join(skillsDir, entry.Name()), entry) {
 				continue
 			}
 			name := entry.Name()
@@ -1454,7 +1456,7 @@ func (a *App) generateAgentsMD() {
 		}
 		// Legacy flat skills
 		for _, entry := range entries {
-			if entry.IsDir() {
+			if entryIsDir(filepath.Join(skillsDir, entry.Name()), entry) {
 				continue
 			}
 			name := entry.Name()
