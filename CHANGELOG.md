@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.4.0](https://github.com/brickhouse-tech/sync-agents/compare/v1.3.2...v1.4.0) (2026-07-07)
+
+
+### Features
+
+* **source:** linked (editable) sources — SPEC-007 (closes [#69](https://github.com/brickhouse-tech/sync-agents/issues/69)) ([dd8abfc](https://github.com/brickhouse-tech/sync-agents/commit/dd8abfc3c9a7d571ae9ec94a7daedf6849826853))
+
 ## [1.3.2](https://github.com/brickhouse-tech/sync-agents/compare/v1.3.1...v1.3.2) (2026-07-07)
 
 ## [1.3.1](https://github.com/brickhouse-tech/sync-agents/compare/v1.3.0...v1.3.1) (2026-07-05)
