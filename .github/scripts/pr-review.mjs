@@ -119,7 +119,7 @@ Do NOT report style nits, formatting, naming preferences, or hypothetical concer
 Respond with strict JSON only (no markdown fences, no prose outside the JSON):
 {"summary": "<1-3 sentence overall assessment>", "findings": [{"path": "<file path from the diff>", "line": <new-file line number the issue is on>, "severity": "critical|warning|suggestion", "body": "<specific, actionable comment>"}]}
 
-Maximum ${MAX_FINDINGS} findings. Order by severity (critical first).`;
+Maximum ${MAX_FINDINGS} findings. Each finding must be distinct — never report the same issue more than once. Order by severity (critical first).`;
 
 async function callModel(model, diff, files) {
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -182,7 +182,15 @@ function parseFindings(content) {
       body: String(f.body ?? "").trim(),
     }))
     .filter((f) => f.path && f.body);
-  return { summary: String(parsed.summary ?? "").trim(), findings };
+  // Models sometimes emit near-duplicate findings; keep one per (path, line).
+  const seen = new Set();
+  const deduped = findings.filter((f) => {
+    const key = `${f.path}:${f.line}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return { summary: String(parsed.summary ?? "").trim(), findings: deduped };
 }
 
 function estimateCost(model, usage) {
@@ -215,6 +223,23 @@ async function upsertSticky(body) {
 async function postInline(findings) {
   if (findings.length === 0) return true;
   try {
+    // Don't re-post an identical inline comment on a later push.
+    const existing = await gh(
+      "GET",
+      `/repos/${REPO}/pulls/${PR_NUMBER}/comments?per_page=100`,
+    );
+    const posted = new Set(
+      existing
+        .filter((c) => c.body?.includes(`${MARKER}-inline`))
+        .map((c) => `${c.path}:${c.line}:${c.body}`),
+    );
+    findings = findings.filter(
+      (f) =>
+        !posted.has(
+          `${f.path}:${f.line}:${SEV_ICON[f.severity]} **${f.severity}**: ${f.body}\n\n${MARKER}-inline`,
+        ),
+    );
+    if (findings.length === 0) return true;
     await gh("POST", `/repos/${REPO}/pulls/${PR_NUMBER}/reviews`, {
       event: "COMMENT",
       body: "",
