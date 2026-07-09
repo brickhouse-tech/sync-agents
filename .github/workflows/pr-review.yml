@@ -1,10 +1,11 @@
 name: PR Code Review
 
-# WIP/TODO: The "Run AI code review" step is intentionally a no-op.
-# Wire to a real AI review tool (Gemini CLI, Claude CLI, or a script that
-# posts line-level comments via gh api) before expecting actionable output.
-# This workflow exists so the infrastructure (changed-files detection,
-# PR comment permissions) is ready to go when the tooling is plugged in.
+# AI review via OpenRouter (deepseek-v4-flash, qwen fallback).
+# Logic lives in .github/scripts/pr-review.mjs: it reviews the diff only,
+# posts inline comments where the diff supports them, and maintains ONE
+# sticky summary comment per PR (marker <!-- pr-review-bot -->).
+# The reviewer never blocks merges — failures are reported in the sticky
+# comment and the step continues on error.
 
 on:
   pull_request:
@@ -15,44 +16,29 @@ permissions:
   contents: read
   pull-requests: write
 
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   review:
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]'
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
-      - name: Get changed files
-        id: changed
-        run: |
-          echo "files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -v -E '(package-lock|yarn\.lock|\.min\.js|dist/|build/|CHANGELOG\.md|\.gitignore|vendor/|\.sum$)' | tr '\n' ' ')" >> $GITHUB_OUTPUT
-      
-      - name: Run AI code review
-        # Placeholder for AI review action or custom script
-        # Example: use Gemini, Claude, or custom agent
-        run: |
-          echo "Review the following files for correctness, security, performance, and maintainability:"
-          echo "${{ steps.changed.outputs.files }}"
-          echo "Post findings as PR comments with severity levels (Critical/Warning/Suggestion/Nit)"
-      
-      - name: Post review summary
-        uses: actions/github-script@v7
+
+      - uses: actions/setup-node@v4
         with:
-          script: |
-            const summary = `## 🤖 AI Code Review Complete
-            
-            Review performed on changed files. Check inline comments for specific findings.
-            
-            **Severity Levels:**
-            - 🔴 **Critical**: Must fix (bugs, security, data loss)
-            - 🟡 **Warning**: Should fix (performance, maintainability)
-            - 🔵 **Suggestion**: Nice to have (style, alternatives)
-            - ⚪ **Nit**: Optional (cosmetic)`;
-            
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: summary
-            });
+          node-version: 20
+
+      - name: AI code review (OpenRouter)
+        continue-on-error: true
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_REF: ${{ github.base_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: node .github/scripts/pr-review.mjs
