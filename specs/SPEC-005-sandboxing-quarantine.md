@@ -1,10 +1,10 @@
 ---
 id: SPEC-005
 title: "Supply-chain safety by default: fetch hardening, install quarantine + static scan, sandboxed skill exec"
-status: Parts A+B Implemented (Part C future)
+status: Parts A+B Shipped (v1.1.0–v1.2.0); Part C (sandboxed exec) open
 owner: nmccready
 created: 2026-07-02
-updated: 2026-07-02
+updated: 2026-07-09 (rev 2: Parts A+B trimmed to a shipped summary; doc now tracks only the open Part C)
 related: SPEC-003, SPEC-004
 ---
 
@@ -16,117 +16,49 @@ Make remote artifact installation safe **by default** on macOS and
 Linux. Three layers, in dependency order:
 
 1. **Fetch hardening** (Part A) — the download/extract path itself can
-   neither execute content nor escape the target directory.
+   neither execute content nor escape the target directory. **Shipped.**
 2. **Quarantine + static scan** (Part B) — remotely-fetched artifacts
    land in a holding area, get scanned, and require explicit approval
-   before entering the live `.agents/` tree.
+   before entering the live `.agents/` tree. **Shipped.**
 3. **Sandboxed exec wrapper** (Part C, stretch) — an opt-in runner that
    executes skill scripts under an OS sandbox (macOS `sandbox-exec`,
-   Linux `bwrap`/Landlock) with a default-deny profile.
+   Linux `bwrap`/Landlock) with a default-deny profile. **Open.**
 
 sync-agents does not itself execute skills — harnesses do — so the
-highest-leverage safety work is at **install time** (Parts A + B).
+highest-leverage safety work was at **install time** (Parts A + B).
 Part C covers the residual risk for skills that ship scripts.
 
-## Motivation
+## Shipped (Parts A + B)
 
-- `CmdImport` today shells out to `curl -fsSL <url> -o <dest>` and
-  drops the result directly into the live tree: no integrity check, no
-  review gate, no record of origin. One malicious or typo'd URL and a
-  hostile rule/skill is in every synced harness on the machine.
-- SPEC-003 adds manifest + lockfile + sha256 integrity (tamper
-  detection), but integrity ≠ safety: a correctly-hashed artifact can
-  still contain `curl | bash`, credential exfiltration, or prompt
-  injection. Treat skill registries and "tap" repos as a hostile
-  supply chain, like npm.
-- Agent harnesses increasingly auto-load whatever is in their config
-  dirs. The install pipeline is the last human checkpoint.
+Landed in v1.1.0 (fetch hardening rode in with the SPEC-003 pull
+pipeline, PR #62) and v1.2.0 (quarantine + scanner, PR #64, issue #52).
+User-facing behavior is documented in
+[docs/quarantine.md](../docs/quarantine.md); this list is the
+requirements-level summary:
 
-## Goals
+- **Fetch hardening:** native Go `net/http` (no `curl` subprocess),
+  TLS verification, capped redirects, https-only by default, timeout +
+  size caps; tarball extraction rejects path traversal, absolute
+  paths, escaping symlinks, and hardlinks; strips exec/setuid bits;
+  entry-count and total-size caps (zip-bomb guard); temp-dir download
+  with atomic move-into-place.
+- **Quarantine flow:** `pull`/`update`/`import` land remote content in
+  `.agents/.quarantine/` (never synced, indexed, or imported);
+  `quarantine` lists findings; `approve <name>|--all` promotes;
+  `reject <name>|--all` deletes.
+- **Static scanner (heuristic v1):** shell-execution surface,
+  network-then-execute chains (`curl | bash` etc.), credential-read +
+  network exfiltration combos, obfuscation (long base64/hex,
+  zero-width/bidi Unicode), prompt-injection phrasing, frontmatter
+  anomalies. Severity info/warn/critical.
+- **Escape hatches, loud and audited:** critical findings block
+  `approve` unless `--force` (recorded in `sources.lock` as
+  `approved_with_findings`); `--trust` skips the gate for one
+  invocation but still scans and prints; `quarantine = off` in
+  `.agents/config` disables the gate. Local authoring (`add`,
+  `promote`) is never quarantined.
 
-- No code path in sync-agents ever executes fetched content.
-- Remote installs (`import`, SPEC-003 `pull`/`update`) default to
-  quarantine; promotion to the live tree is an explicit, logged action.
-- `sync-agents scan` produces a human-readable findings report per
-  artifact; findings recorded in the SPEC-003 lockfile on approve.
-- Escape hatches exist (`--trust`, config default) but are loud.
-- Part C runner works on macOS and Linux; other unixes get best-effort
-  (no sandbox available → refuse unless `--unsandboxed`).
-
-## Non-Goals
-
-- Sandboxing the harnesses themselves (Claude/Cursor own their exec).
-- Signature verification / sigstore — future; sha256 pinning only
-  (SPEC-003).
-- Windows sandboxing (AppContainer) — deferred.
-- LLM-based semantic scanning — heuristics only in v1.
-
-## Part A — Fetch hardening
-
-- Replace the `curl` subprocess in `CmdImport` with native Go
-  `net/http`: TLS verification on, redirects capped (5), https-only by
-  default (`--insecure-http` to override), timeout + size cap
-  (default 10 MiB/artifact, configurable).
-- SPEC-003 tarball extraction: reject path traversal (`..`, absolute
-  paths, symlinks pointing outside the extract root), reject
-  hardlinks, strip setuid/setgid/exec bits on extract, entry-count and
-  total-size caps (zip-bomb guard).
-- Downloads land in a temp dir and move into place only after all
-  checks pass (already SPEC-003's atomic-write requirement; restated
-  here as a security invariant, not just a crash-safety one).
-
-## Part B — Quarantine + static scan
-
-### Flow
-
-```
-import/pull ──▶ .agents/.quarantine/<bucket>/<name>/   (+ _origin.json)
-                      │
-                      ▼
-              sync-agents scan [name]     # automatic after fetch
-                      │  findings report (stdout + .findings.json)
-                      ▼
-              sync-agents approve <name>  # human gate
-                      │  moves into .agents/<bucket>/, records
-                      ▼  scan verdict + content hash in lockfile
-              live tree (synced to harnesses on next sync)
-```
-
-- Quarantined artifacts are **invisible to `sync`** — nothing under
-  `.agents/.quarantine/` is ever symlinked, indexed, or imported.
-- `sync-agents approve <name> [--all]` promotes; `sync-agents reject
-  <name>` deletes with its findings.
-- `--trust` on `import`/`pull` skips the gate but still runs the scan
-  and prints findings (loud escape hatch, for CI bootstrap of
-  already-reviewed manifests). `.agents/config` gains
-  `quarantine = on|off` (default `on`) for teams that pin by sha and
-  review in PRs instead.
-- Local authoring (`add`, `promote`) is untouched — quarantine applies
-  to remote content only.
-
-### Scanner heuristics (v1)
-
-Per-file findings with severity (info / warn / critical):
-
-- Shell execution surface: shebang scripts in skill dirs, `Bash(`
-  tool grants in frontmatter, `exec`/`eval`/`system` in embedded code.
-- Network-then-execute: `curl … | sh`, `wget … | bash`, `iwr | iex`,
-  base64-decode-then-exec chains.
-- Exfiltration patterns: reads of `~/.ssh`, `~/.aws`, `.env`,
-  `*_TOKEN`/`*_API_KEY` env references combined with network calls.
-- Obfuscation: long base64/hex blobs, zero-width/bidi Unicode,
-  homoglyph command names.
-- Prompt-injection markers in markdown: "ignore previous
-  instructions", hidden HTML comments with directives, instructions
-  addressed to the agent to disable safety/review steps.
-- Frontmatter anomalies: undeclared extra files in single-file
-  buckets, `import: true` on remote reference docs (context
-  preloading from an untrusted source).
-
-Critical findings block `approve` unless `--force` (logged into the
-lockfile entry as `approved_with_findings`).
-
-## Part C — Sandboxed exec wrapper (stretch)
+## Open — Part C: Sandboxed exec wrapper (stretch)
 
 - `sync-agents run <skill> -- <cmd…>` executes a skill's script under:
   - macOS: `sandbox-exec` with a generated seatbelt profile.
@@ -147,36 +79,23 @@ permissions:
 - Harness integration is out of scope; the wrapper exists so harness
   configs *can* route skill exec through it (documented recipe for
   Claude hooks: PreToolUse hook rewriting skill-script invocations).
+- Other unixes get best-effort (no sandbox available → refuse unless
+  `--unsandboxed`). Windows sandboxing (AppContainer) remains deferred.
 
-## Backwards Compatibility
+### Part C test plan
 
-- `import` keeps its CLI shape; the only visible change is the
-  quarantine step. `quarantine = off` restores v0.3.x behavior
-  exactly.
-- No new runtime dependencies for Parts A/B (pure Go + stdlib;
-  scanner is regex/AST heuristics). Part C shells out to OS tools that
-  are present by default (`sandbox-exec`) or clearly diagnosed when
-  missing (`bwrap`).
-- `.agents/.quarantine/` and `.findings.json` are gitignored via the
-  existing `updateGitignore` mechanism.
+- Sandboxed process cannot read a canary file outside the allow-list.
+- Cannot open a socket when network is denied.
+- Permission frontmatter round-trips into the generated profile.
+- CI: macOS + ubuntu runners.
 
-## Test Plan
+### Part C rollout
 
-- Part A: traversal/symlink/hardlink/zip-bomb fixture tarballs → no
-  writes outside root, loud errors; http→https redirect; size cap.
-- Part B: fixture artifacts per heuristic class → expected findings;
-  approve/reject state transitions; quarantined content never synced
-  (run `sync`, assert absent); `--trust` still scans; idempotent
-  re-pull of a quarantined name.
-- Part C: sandboxed process cannot read a canary file outside the
-  allow-list, cannot open a socket when network denied; permission
-  frontmatter round-trips into the generated profile. CI: macOS +
-  ubuntu runners.
+Single PR series: runner on macOS first, then Linux.
 
-## Rollout
+## Non-Goals (unchanged)
 
-1. PR 1 (Part A) — fetch hardening; lands independently, hardens
-   existing `import` immediately.
-2. PR 2+3 (Part B) — quarantine flow, then scanner heuristics.
-   Sequenced after SPEC-003's pull pipeline (quarantine hooks into it).
-3. PR 4 (Part C) — runner, macOS first, then Linux.
+- Sandboxing the harnesses themselves (Claude/Cursor own their exec).
+- Signature verification / sigstore — future; sha256 pinning only
+  (SPEC-003, retired to git history).
+- LLM-based semantic scanning — heuristics only in v1.
