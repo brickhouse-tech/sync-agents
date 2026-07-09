@@ -94,7 +94,7 @@ sync-agents global status --global-root /tmp/.agents
 
 ## See also
 
-- [SPEC-002 §Requirement: Global status](../../specs/SPEC-002-promote-global-sync.md)
+- SPEC-002 §Requirement: Global status (shipped; spec retired to git history)
 - [`sync-agents global sync`](./global-sync.md)
 - [`sync-agents global clean`](./global-clean.md)
 - `internal/agent/globalstatus.go` — the implementation.

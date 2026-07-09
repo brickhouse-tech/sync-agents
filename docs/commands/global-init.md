@@ -89,7 +89,7 @@ add any missing subdirectories without disturbing existing content.
 
 ## See also
 
-- [SPEC-002 §Global agents directory](../../specs/SPEC-002-promote-global-sync.md)
+- SPEC-002 §Global agents directory (shipped; spec retired to git history)
 - [Global root resolution](../architecture/global-root-resolution.md)
 - [Scope and target directories](../architecture/scope-and-targets.md)
 - `internal/agent/globalinit.go` — the implementation.

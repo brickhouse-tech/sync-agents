@@ -126,7 +126,7 @@ sync-agents promote --global-root /tmp/test/.agents rule security
 
 ## See also
 
-- [SPEC-002 §Promote command](../../specs/SPEC-002-promote-global-sync.md)
+- SPEC-002 §Promote command (shipped; spec retired to git history)
 - [Global root resolution](../architecture/global-root-resolution.md)
 - [Scope and target directories](../architecture/scope-and-targets.md)
 - `internal/agent/promote.go` — the implementation.

@@ -4,6 +4,16 @@ Validates every `.agents/skills/<dir>/SKILL.md` against Claude's
 [skill authoring rules](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
 and, with `--fix`, mechanically amends what's fixable (SPEC-004 Part E).
 
+Claude discovers skills through their `SKILL.md` YAML frontmatter, with
+published requirements: `name` (≤64 chars, lowercase
+letters/numbers/hyphens, no reserved words) and `description`
+(non-empty, ≤1024 chars, third person, says what the skill does *and
+when to use it*). `lint --fix` amends what it can — injecting a missing
+frontmatter block, deriving `name` from the directory, deriving
+`description` from the first body paragraph, truncating overlong
+values, and stripping XML tags — while preserving all other frontmatter
+keys verbatim. Reserved-word names are reported but never auto-renamed.
+
 ## Checks
 
 | Code | Rule | `--fix` action |

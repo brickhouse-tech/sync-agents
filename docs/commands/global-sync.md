@@ -141,7 +141,7 @@ preferable to all-or-nothing for fan-out operations.
 ## What `global sync` does NOT do
 
 - It does not pull artifacts from upstream repos — that's
-  [SPEC-003](../../specs/SPEC-003-source-manifest-pull.md).
+  SPEC-003 (shipped; spec retired to git history).
 - It does not regenerate per-project sync targets (the local
   `.claude/`, `.windsurf/`, etc.). Use the existing `sync-agents
   sync` command for project scope.
@@ -150,8 +150,8 @@ preferable to all-or-nothing for fan-out operations.
 
 ## See also
 
-- [SPEC-002 §Requirement: Global sync](../../specs/SPEC-002-promote-global-sync.md)
-- [SPEC-002 §Requirement: Semantic-aware routing](../../specs/SPEC-002-promote-global-sync.md)
+- SPEC-002 §Requirement: Global sync (shipped; spec retired to git history)
+- SPEC-002 §Requirement: Semantic-aware routing (shipped; spec retired to git history)
 - [Semantic routing](../architecture/semantic-routing.md)
 - [Scope and target directories](../architecture/scope-and-targets.md)
 - [`sync-agents promote`](./promote.md)
