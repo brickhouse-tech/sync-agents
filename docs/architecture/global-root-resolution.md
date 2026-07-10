@@ -98,6 +98,6 @@ will fail with a clearer error than the resolver itself could give.
 
 - [Scope and target directories](./scope-and-targets.md) — how the
   resolved global root composes with per-tool dir names.
-- [SPEC-002 §Configurable global root](../../specs/SPEC-002-promote-global-sync.md) —
+- SPEC-002 §Configurable global root (shipped; spec retired to git history) —
   the spec that requires this resolver.
 - `internal/agent/globalroot.go` — the implementation.

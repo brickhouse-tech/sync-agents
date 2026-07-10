@@ -108,7 +108,7 @@ permissions, say) produce warnings but don't abort the loop.
 
 ## See also
 
-- [SPEC-002 §Requirement: Global clean](../../specs/SPEC-002-promote-global-sync.md)
+- SPEC-002 §Requirement: Global clean (shipped; spec retired to git history)
 - [`sync-agents global sync`](./global-sync.md)
 - [`sync-agents global status`](./global-status.md)
 - `internal/agent/globalclean.go` — the implementation.

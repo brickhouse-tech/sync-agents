@@ -138,8 +138,8 @@ output is a derived artifact.
 
 ## See also
 
-- [SPEC-002 §Semantic categories (bucket ≠ semantic)](../../specs/SPEC-002-promote-global-sync.md)
-- [SPEC-002 §Requirement: Semantic-aware routing](../../specs/SPEC-002-promote-global-sync.md)
+- SPEC-002 §Semantic categories (bucket ≠ semantic) (shipped; spec retired to git history)
+- SPEC-002 §Requirement: Semantic-aware routing (shipped; spec retired to git history)
 - [Scope and target directories](./scope-and-targets.md)
 - `internal/agent/semantic.go` — `Semantic`, `BucketDefaultSemantic`,
   `ParseFrontmatterInvocable`, `ResolveSemantic`.

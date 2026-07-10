@@ -87,7 +87,7 @@ the registry.
 
 - [Global root resolution](./global-root-resolution.md) — the
   precedence chain that determines the global canonical path.
-- [SPEC-002](../../specs/SPEC-002-promote-global-sync.md) — the spec
+- SPEC-002 (shipped; spec retired to git history) — the spec
   that introduced global scope, the `Tool.DirByScope` model, and the
   semantic-aware routing layer that builds on top of it.
 - `internal/agent/scope.go`, `internal/agent/tool.go`,
