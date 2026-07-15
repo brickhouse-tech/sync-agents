@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.4.7](https://github.com/brickhouse-tech/sync-agents/compare/v1.4.6...v1.4.7) (2026-07-15)
+
 ## [1.4.6](https://github.com/brickhouse-tech/sync-agents/compare/v1.4.5...v1.4.6) (2026-07-15)
 
 ## [1.4.5](https://github.com/brickhouse-tech/sync-agents/compare/v1.4.4...v1.4.5) (2026-07-15)
