@@ -34,5 +34,6 @@ treat retired spec content as current intent.
 | SPEC-006 | OS-scoped routing | 🟡 core shipped v1.3.0; **badge + concat headers open** | — (active) | [os-scoped-routing](../docs/os-scoped-routing.md) |
 | SPEC-007 | linked sources | ✅ shipped v1.4.0 | `6c53595` | [linked-sources](../docs/linked-sources.md) |
 | SPEC-008 | full-context integrity lock (`agents.lock` + `agents.sum`) | 📝 draft | — (active) | — |
+| SPEC-009 | spec lifecycle tooling (`lint` spec checks + `spec retire`) | 📝 draft | — (active) | — |
 
-Next spec ID: **SPEC-009**.
+Next spec ID: **SPEC-010**.
