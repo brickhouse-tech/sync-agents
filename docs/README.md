@@ -90,10 +90,10 @@ The authoritative source for *what we're building and why* lives in
 IDs but is never the source of truth for them.
 
 Only specs with **open work** are kept in the tree; fully-shipped specs
-(SPEC-001 go-install/goreleaser, SPEC-002 promote/global sync, SPEC-003
-source manifest, SPEC-004 asset buckets, SPEC-007 linked sources) are
-retired to git history — `git log --all --oneline -- specs/` finds
-them.
+are promoted into `docs/` and retired to git history. The
+[**spec ledger**](../specs/README.md) is the permanent index — every
+SPEC ID ever used has a row there (status, retire commit, where its
+durable content lives), so IDs stay resolvable after the file is gone.
 
 - [SPEC-005](../specs/SPEC-005-sandboxing-quarantine.md) — supply-chain
   safety: Parts A+B (fetch hardening, quarantine + scan) shipped;

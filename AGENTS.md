@@ -23,6 +23,7 @@ This file indexes all rules, skills, and workflows defined in `.agents/`.
 - [integrity](.agents/rules/integrity.md)
 - [iterative-code-review](.agents/rules/iterative-code-review.md)
 - [security](.agents/rules/security.md)
+- [specs](.agents/rules/specs.md)
 - [testing](.agents/rules/testing.md)
 - [tradeoffs](.agents/rules/tradeoffs.md)
 
@@ -36,6 +37,10 @@ _No skills defined yet. Add one with `sync-agents add skill <name>`._
 
 ## State
 
+Follow [rules/state.md](.agents/rules/state.md): record progress in `.agents/STATE_<context>_<timestamp>.md` snapshots. Snapshots are per-engineer and not indexed unless marked `shared: true` in frontmatter.
+
+### Shared
+
 - [STATE.md](.agents/STATE.md)
 
 <!-- sync-agents:claude-imports:start -->
@@ -48,6 +53,7 @@ _No skills defined yet. Add one with `sync-agents add skill <name>`._
 @.claude/rules/integrity.md
 @.claude/rules/iterative-code-review.md
 @.claude/rules/security.md
+@.claude/rules/specs.md
 @.claude/rules/testing.md
 @.claude/rules/tradeoffs.md
 <!-- sync-agents:claude-imports:end -->
