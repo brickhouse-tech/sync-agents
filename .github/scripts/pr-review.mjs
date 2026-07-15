@@ -98,7 +98,13 @@ function rightSideLines(diff) {
       continue;
     }
     if (!path) continue;
-    if (l.startsWith("+") || l.startsWith(" ") || l === "") {
+    // Added ('+') and context (' ') lines exist on the right side and are
+    // anchorable. A blank line in the file shows up as a single space (" ")
+    // or "+" — never as "", so the only "" we ever see here is the trailing
+    // element from splitting the diff's final newline. Anchoring to it would
+    // add a phantom line one past the last hunk, and a finding landing there
+    // would 422 the entire inline review batch. Skip it.
+    if (l.startsWith("+") || l.startsWith(" ")) {
       anchors.get(path).add(line);
       line++;
     }
