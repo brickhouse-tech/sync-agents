@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.5.0](https://github.com/brickhouse-tech/sync-agents/compare/v1.4.8...v1.5.0) (2026-07-20)
+
+### Features
+
+* full-context integrity lock — agents.lock + agents.sum with lock/verify (SPEC-008) ([db2fed4](https://github.com/brickhouse-tech/sync-agents/commit/db2fed41f8e3a98e3218ade4eea8d8eb12ad253c)), references [#73](https://github.com/brickhouse-tech/sync-agents/issues/73) [#73](https://github.com/brickhouse-tech/sync-agents/issues/73)
 ## [1.4.8](https://github.com/brickhouse-tech/sync-agents/compare/v1.4.7...v1.4.8) (2026-07-18)
 ## [1.4.7](https://github.com/brickhouse-tech/sync-agents/compare/v1.4.6...v1.4.7) (2026-07-15)
 
