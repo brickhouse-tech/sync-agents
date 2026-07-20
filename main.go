@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -407,6 +408,42 @@ func main() {
 	})
 	rootCmd.AddCommand(sourceCmd)
 
+	// lock — SPEC-008: write agents.lock + agents.sum (full-context
+	// integrity lock over the whole .agents/ tree).
+	var lockGlobal, lockDryRun, lockJSON bool
+	lockCmd := &cobra.Command{
+		Use:   "lock",
+		Short: "Write agents.lock + agents.sum (full-context integrity lock)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return app.CmdLock(agent.SourceCmdOpts{Global: lockGlobal, JSON: lockJSON})
+		},
+	}
+	lockCmd.Flags().BoolVar(&lockGlobal, "global", false, "Operate on the user-scope .agents/ tree")
+	lockCmd.Flags().BoolVar(&lockDryRun, "dry-run", false, "Print the would-be entry delta without writing")
+	lockCmd.Flags().BoolVar(&lockJSON, "json", false, "Machine-readable output")
+	lockCmd.PreRun = func(cmd *cobra.Command, args []string) {
+		if lockDryRun {
+			app.DryRun = true
+		}
+	}
+	rootCmd.AddCommand(lockCmd)
+
+	// verify — SPEC-008: check the tree against agents.lock + agents.sum.
+	var verifyGlobal, verifyStrict, verifyJSON bool
+	var verifyExplain string
+	verifyCmd := &cobra.Command{
+		Use:   "verify",
+		Short: "Check the .agents/ tree against agents.lock + agents.sum",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return app.CmdVerify(agent.SourceCmdOpts{Global: verifyGlobal, JSON: verifyJSON}, verifyStrict, verifyExplain)
+		},
+	}
+	verifyCmd.Flags().BoolVar(&verifyGlobal, "global", false, "Operate on the user-scope .agents/ tree")
+	verifyCmd.Flags().BoolVar(&verifyStrict, "strict", false, "Promote INFO (linked drift) to ERROR")
+	verifyCmd.Flags().BoolVar(&verifyJSON, "json", false, "Machine-readable findings for CI/agents")
+	verifyCmd.Flags().StringVar(&verifyExplain, "explain", "", "Explain origin + hashes for one artifact path")
+	rootCmd.AddCommand(verifyCmd)
+
 	// adr — transition Architecture Decision Records between statuses
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "adr <accept|deny|propose> <name>",
@@ -646,7 +683,14 @@ func main() {
 			fmt.Fprintf(os.Stderr, "[error] Unknown option: %s\n", flag)
 			printUsage(rootCmd)
 		}
-		os.Exit(1)
+		// Commands may request a specific exit code (e.g. `verify`
+		// returns 1 on drift, 2 on usage/IO error).
+		code := 1
+		var ee *agent.ExitError
+		if errors.As(err, &ee) {
+			code = ee.ExitCode()
+		}
+		os.Exit(code)
 	}
 }
 

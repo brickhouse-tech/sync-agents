@@ -80,6 +80,9 @@ Remote installs are treated like a hostile supply chain. Fetched artifacts are s
 ### 🔗 Linked (editable) sources — *new in 1.4.0*
 `npm link` for agent context: point a source at a live local checkout instead of a frozen snapshot. Edits flow both ways, `git pull` reaps updates, and the link is recorded declaratively so it survives clones. [Linked sources →](docs/linked-sources.md)
 
+### 🔐 Full-context integrity lock — *new in 1.5.0*
+`sync-agents lock` writes `agents.lock` (provenance — where every rule, skill, hook, and spec came from) + `agents.sum` (go.sum-style content hashes for the whole tree). `sync-agents verify` then proves the tree is exactly what was reviewed — a post-install edit to a pulled artifact, an injected file that skipped quarantine, or a swapped symlink all fail `verify --json` with a non-zero exit. PLEX-style drift detection for your AI context. [Integrity lock →](docs/integrity.md)
+
 ### 🖥️ OS-scoped routing
 Drop rules into `rules/macos/`, `rules/linux/`, or `rules/unix/` and they only sync on matching machines. One committed tree, no brew-rules noise on your Linux box. [OS routing →](docs/os-scoped-routing.md)
 
@@ -98,7 +101,7 @@ The full manual lives in [`docs/`](docs/README.md):
 
 - [Command reference](docs/commands/README.md) — every command and flag
 - [Topology & configuration](docs/topology.md) — the `.agents/` tree, `config`, `STATE.md`
-- [Sources, lockfile & provenance](docs/sources.md) · [Quarantine](docs/quarantine.md) · [Linked sources](docs/linked-sources.md)
+- [Sources, lockfile & provenance](docs/sources.md) · [Quarantine](docs/quarantine.md) · [Linked sources](docs/linked-sources.md) · [Integrity lock](docs/integrity.md)
 - [Inheritance](docs/inheritance.md) · [ADRs](docs/adrs.md) · [OS-scoped routing](docs/os-scoped-routing.md)
 - [Architecture](docs/README.md#architecture) — scope resolution, semantic routing, global roots
 - [Examples](examples/README.md) — ready-to-import rules, skills, and workflows
