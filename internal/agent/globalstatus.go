@@ -143,7 +143,7 @@ func (a *App) CmdGlobalStatus(opts GlobalStatusOpts) error {
 		return err
 	}
 
-	entries, concatRows := computeStatus(artifacts, tools, parent)
+	entries, concatRows, expected := computeStatus(artifacts, tools, parent)
 
 	a.Info(fmt.Sprintf("global status (%d artifacts, %d tool(s)):", len(artifacts), len(tools)))
 
@@ -153,17 +153,32 @@ func (a *App) CmdGlobalStatus(opts GlobalStatusOpts) error {
 	for _, e := range concatRows {
 		a.printStatusEntry(e)
 	}
+
+	// SPEC-010 Phase 1: reverse sweep — classify what occupies the
+	// managed subdirs beyond what the .agents/ tree claims. Read-only;
+	// foreign entries are reported and never touched.
+	sweepRows := sweepUnmanaged(tools, parent, root, expected)
+	for _, e := range sweepRows {
+		a.printStatusEntry(e)
+	}
+
+	all := append(append(append([]StatusEntry{}, entries...), concatRows...), sweepRows...)
+	a.Info(auditSummary(all))
 	return nil
 }
 
 // computeStatus is the pure logic of `global status`: given the
 // discovered artifacts and tool set, return the per-destination
-// entries and the aggregated concat rows.
+// entries, the aggregated concat rows, and the set of symlink
+// destination paths the .agents/ tree claims (consumed by the
+// SPEC-010 reverse sweep to separate managed entries from
+// foreign/orphaned ones).
 //
 // Split out from CmdGlobalStatus so tests can exercise the state
 // classification without going through the App + filesystem-write
 // surface.
-func computeStatus(artifacts []Artifact, tools []Tool, parent string) (perDestination []StatusEntry, concatRows []StatusEntry) {
+func computeStatus(artifacts []Artifact, tools []Tool, parent string) (perDestination []StatusEntry, concatRows []StatusEntry, expected map[string]bool) {
+	expected = map[string]bool{}
 	// Track concat targets and the entries that contribute to them
 	// so we can both classify their state AND show the contributor
 	// count.
@@ -196,6 +211,7 @@ func computeStatus(artifacts []Artifact, tools []Tool, parent string) (perDestin
 					Detail:       dest.SkipReason,
 				})
 			case StrategySymlink:
+				expected[dest.Path] = true
 				state, detail := classifySymlinkDestination(dest.Path, symlinkTarget(art))
 				perDestination = append(perDestination, StatusEntry{
 					Tool:            tool.ID,
@@ -246,7 +262,7 @@ func computeStatus(artifacts []Artifact, tools []Tool, parent string) (perDestin
 		})
 	}
 
-	return perDestination, concatRows
+	return perDestination, concatRows, expected
 }
 
 // classifySymlinkDestination inspects a symlink destination and
@@ -260,6 +276,15 @@ func classifySymlinkDestination(destPath, wantTarget string) (DestinationState, 
 		return StateNotSymlink, err.Error()
 	}
 	if info.Mode()&os.ModeSymlink == 0 {
+		// Not a symlink itself — but Lstat follows intermediate
+		// components, so the path may be reached through a folded
+		// ancestor symlink (SPEC-010): .claude/skills/<name> ->
+		// .agents/skills/<name> makes <name>/SKILL.md resolve to the
+		// canonical file with no per-file link. That's conformant,
+		// not a conflict.
+		if foldedResolves(destPath, wantTarget) {
+			return DestinationState(StateFolded), "resolves via ancestor symlink"
+		}
 		return StateNotSymlink, ""
 	}
 	current, err := os.Readlink(destPath)
