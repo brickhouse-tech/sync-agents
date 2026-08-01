@@ -34,9 +34,10 @@ for shell pipelines that want to grep for `[drifted]` or `[stale]`.
 |---|---|
 | `[synced]` | A symlink exists and points at the correct canonical artifact under `~/.agents/`. No action needed. |
 | `[drifted]` | A symlink exists but its target is wrong (the canonical artifact moved, or a previous sync used a different path). Re-run `global sync` to repair. |
-| `[not-a-symlink]` | A regular file or directory occupies the destination. `global sync` will skip it unless `--force` is set. |
+| `[not-a-symlink]` | A regular file or directory occupies the destination — a conflict: the canonical tree claims this artifact but something real shadows it. `global sync` will skip it unless `--force` is set. |
 | `[missing]` | Nothing at the destination. `global sync` will create the symlink. |
 | `[skipped]` | The (artifact, tool) pair is intentionally not routable — e.g. a multi-file invocable skill targeting Windsurf workflows. The Detail field explains. |
+| `[folded]` | The exact per-artifact link is absent, but the path *resolves* to the canonical artifact through an ancestor symlink (e.g. a dir-level `.claude/skills/<name>` link). Conformant at a coarser granularity — no action needed. (SPEC-010) |
 
 ### Concat destinations
 
@@ -46,6 +47,23 @@ for shell pipelines that want to grep for `[drifted]` or `[stale]`.
 | `[concat stale]` | The file exists with the banner but content differs from what regeneration would produce. `global sync` will rewrite it. |
 | `[concat missing]` | No file at the destination. `global sync` will create it. |
 | `[concat foreign]` | A file exists at the destination but lacks the sync-agents banner — likely user-owned. `global sync` will overwrite (concat targets are sync-agents-owned by design); `global clean` will leave it alone with a warning. |
+
+### Audit sweep (SPEC-010)
+
+After the per-destination rows, `global status` enumerates the managed
+artifact subdirs of each tool (for Claude: `skills/`, `commands/`,
+`rules/`, `agents/`, `plans/`, `specs/`, `adrs/`; Windsurf:
+`global_workflows/`; Cursor: `rules/`) and reports entries the
+canonical tree does *not* claim. The tool root itself is application
+state (credentials, sessions, caches) and is never enumerated.
+
+| State | Meaning |
+|---|---|
+| `[foreign]` | An entry no `~/.agents/` artifact claims and that doesn't point into the canonical tree. Hands-off: reported, never touched. Adoption into `~/.agents/` is a future explicit command (SPEC-010 Phase 2). |
+| `[orphaned]` | A symlink pointing into the `~/.agents/` tree that no current artifact claims — usually left behind by an artifact removal or rename. Prune candidate. |
+
+The report ends with a one-line summary counting every state, e.g.
+`audit: 4 synced, 1 folded, 2 foreign, 1 orphaned`.
 
 ### Special states
 

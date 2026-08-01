@@ -35,5 +35,6 @@ treat retired spec content as current intent.
 | SPEC-007 | linked sources | ✅ shipped v1.4.0 | `6c53595` | [linked-sources](../docs/linked-sources.md) |
 | SPEC-008 | full-context integrity lock (`agents.lock` + `agents.sum`) | 📝 draft | — (active) | — |
 | SPEC-009 | spec lifecycle tooling (`lint` spec checks + `spec retire`) | 📝 draft | — (active) | — |
+| SPEC-010 | conformance audit + unified fold/drill sync | 📝 draft — Phase 1 (audit) in flight | — (active) | — |
 
-Next spec ID: **SPEC-010**.
+Next spec ID: **SPEC-011**.
