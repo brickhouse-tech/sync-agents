@@ -488,14 +488,48 @@ EOF
 @test "global sync repairs drifted symlink on next run" {
   "$SCRIPT" global init --global-root "$GLOBAL_ROOT"
   make_global_passive_rule "drift-rule"
+  make_global_passive_rule "other-rule"
   "$SCRIPT" global sync --global-root "$GLOBAL_ROOT" --targets claude
 
-  # Deliberately drift the symlink
-  ln -sfn /tmp/wrong "$CLAUDE_DIR/rules/drift-rule.md"
+  # Drift the link to another artifact INSIDE the global tree. Per
+  # SPEC-011 Part A this is the "ours, drifted" case — the link points
+  # back into the tree we manage, so sync repairs it in place.
+  ln -sfn "$GLOBAL_ROOT/rules/other-rule.md" "$CLAUDE_DIR/rules/drift-rule.md"
 
   run "$SCRIPT" global sync --global-root "$GLOBAL_ROOT" --targets claude
   [ "$status" -eq 0 ]
-  [[ "$(readlink "$CLAUDE_DIR/rules/drift-rule.md")" == *"$GLOBAL_ROOT"* ]]
+  [[ "$(readlink "$CLAUDE_DIR/rules/drift-rule.md")" == *"/rules/drift-rule.md" ]]
+}
+
+@test "global sync leaves a foreign symlink untouched without --force" {
+  "$SCRIPT" global init --global-root "$GLOBAL_ROOT"
+  make_global_passive_rule "keep-rule"
+  "$SCRIPT" global sync --global-root "$GLOBAL_ROOT" --targets claude
+
+  # A symlink pointing OUTSIDE the global tree is foreign wiring, not
+  # ours to repair (SPEC-011 Part A hazard fix). Without --force sync
+  # must leave it exactly as-is and warn rather than destroy it.
+  ln -sfn /tmp/wrong "$CLAUDE_DIR/rules/keep-rule.md"
+
+  run "$SCRIPT" global sync --global-root "$GLOBAL_ROOT" --targets claude
+  [ "$status" -eq 0 ]
+  [[ "$(readlink "$CLAUDE_DIR/rules/keep-rule.md")" == "/tmp/wrong" ]]
+  [[ "$output" == *"--force"* ]]
+}
+
+@test "global sync --force replaces a foreign symlink and backs it up" {
+  "$SCRIPT" global init --global-root "$GLOBAL_ROOT"
+  make_global_passive_rule "take-rule"
+  "$SCRIPT" global sync --global-root "$GLOBAL_ROOT" --targets claude
+
+  ln -sfn /tmp/wrong "$CLAUDE_DIR/rules/take-rule.md"
+
+  run "$SCRIPT" global sync --global-root "$GLOBAL_ROOT" --targets claude --force
+  [ "$status" -eq 0 ]
+  # The link now points back into the managed tree...
+  [[ "$(readlink "$CLAUDE_DIR/rules/take-rule.md")" == *"/rules/take-rule.md" ]]
+  # ...and the displaced foreign link is preserved, never deleted.
+  ls "$CLAUDE_DIR/rules/"take-rule.md.replaced-by-sync-agents-* >/dev/null 2>&1
 }
 
 @test "global sync fails when global root does not exist" {
