@@ -289,10 +289,26 @@ func (a *App) CmdInit() error {
 	return nil
 }
 
-func (a *App) CmdAdd(typ, name string) error {
+// CmdAdd creates a new artifact in the canonical tree.
+//
+// Two modes (SPEC-011 Part C):
+//
+//   - Default: scaffold from the bucket's template, with ${NAME}
+//     substituted.
+//   - opts.From set: seed from an artifact that already exists
+//     elsewhere, either as a normalized copy or, with opts.Link, as a
+//     symlink that leaves the source owning its content.
+//
+// Both modes end at the same canonical path and regenerate AGENTS.md,
+// so nothing downstream needs to know which one ran.
+func (a *App) CmdAdd(typ, name string, opts AddOpts) error {
 	if typ == "" || name == "" {
 		a.Error(fmt.Sprintf("Usage: sync-agents add <%s> <name>", strings.Join(ArtifactNames(), "|")))
 		return fmt.Errorf("missing args")
+	}
+	if opts.Link && opts.From == "" {
+		a.Error("--link requires --from: there is nothing to link to when scaffolding from a template")
+		return fmt.Errorf("link without from")
 	}
 
 	bucket, ok := BucketForTypeString(typ)
@@ -315,9 +331,36 @@ func (a *App) CmdAdd(typ, name string) error {
 		fpath = filepath.Join(a.ProjectRoot, ".agents", typ, name+bucket.FileExt())
 	}
 
-	if _, err := os.Stat(fpath); err == nil && !a.Force {
+	// Lstat, not Stat: a dangling symlink at the canonical path is
+	// still something the user put there, and reporting "does not
+	// exist" before overwriting it would be a lie.
+	if _, err := os.Lstat(fpath); err == nil && !a.Force {
 		a.Error(fmt.Sprintf("File already exists: %s (use --force to overwrite)", fpath))
 		return fmt.Errorf("exists")
+	}
+
+	if opts.From != "" {
+		srcPath, err := a.resolveAddSource(opts.From)
+		if err != nil {
+			a.Error(err.Error())
+			return err
+		}
+		if opts.Link {
+			if err := a.importByLink(srcPath, fpath, name, bucket); err != nil {
+				a.Error(err.Error())
+				return err
+			}
+			a.Info(fmt.Sprintf("Linked %s: %s -> %s", typ, fpath, srcPath))
+		} else {
+			if err := a.importByCopy(srcPath, fpath, name, bucket); err != nil {
+				a.Error(err.Error())
+				return err
+			}
+			a.Info(fmt.Sprintf("Imported %s: %s (from %s)", typ, fpath, srcPath))
+		}
+		a.generateAgentsMD()
+		a.Info("Updated AGENTS.md index")
+		return nil
 	}
 
 	content := strings.ReplaceAll(bucket.NewTemplate(), "${NAME}", name)
@@ -352,7 +395,7 @@ func (a *App) CmdSync() error {
 		a.Info(fmt.Sprintf("Syncing to %s/", relDisplay))
 
 		for _, b := range Buckets {
-			if !b.SyncsToLocalTarget(target) {
+			if !b.SyncsToTool(target) {
 				continue
 			}
 			subdirPath := filepath.Join(a.ProjectRoot, ".agents", b.Dir)
@@ -449,7 +492,7 @@ func (a *App) CmdStatus() error {
 		if hasDirOrLinks {
 			fmt.Fprintf(a.Stdout, "%s/\n", displayDir)
 			for _, b := range Buckets {
-				if !b.SyncsToLocalTarget(target) {
+				if !b.SyncsToTool(target) {
 					continue
 				}
 				sub := filepath.Join(targetDir, b.Dir)

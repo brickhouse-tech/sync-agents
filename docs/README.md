@@ -62,6 +62,9 @@ form that's easier to read end-to-end than scattered code comments.
 
 ### Command deep-dives
 
+- [`sync-agents add`](./commands/add.md) — create an artifact from a
+  template, or import one that already exists by copy (`--from`) or by
+  symlink (`--from --link`).
 - [`sync-agents index`](./commands/index.md) — AGENTS.md regeneration,
   section-by-section, including the skill frontmatter backfill.
 - [`sync-agents lint`](./commands/lint.md) — SKILL.md compliance
@@ -101,6 +104,9 @@ durable content lives), so IDs stay resolvable after the file is gone.
 - [SPEC-006](../specs/SPEC-006-os-scoped-routing.md) — OS-scoped
   routing: core shipped; AGENTS.md OS badge and concat OS headers
   open.
+- [SPEC-011](../specs/SPEC-011-agent-bucket-import-routing.md) — agent
+  bucket: import (`add --from`) and multi-tool subagent routing
+  shipped; per-agent selective load (Part D) open.
 
 ## Conventions
 

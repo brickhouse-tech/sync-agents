@@ -33,19 +33,19 @@ func TestArtifactNames_CoversAllBuckets(t *testing.T) {
 	}
 }
 
-func TestSyncsToLocalTarget_NoRestriction(t *testing.T) {
-	b := Bucket{} // zero value, no LocalTools
-	if !b.SyncsToLocalTarget("anything") {
-		t.Error("empty LocalTools should sync to any target")
+func TestSyncsToTool_NoRestriction(t *testing.T) {
+	b := Bucket{} // zero value, no Tools
+	if !b.SyncsToTool("anything") {
+		t.Error("empty Tools should sync to any target")
 	}
 }
 
-func TestSyncsToLocalTarget_Restricted(t *testing.T) {
-	b := Bucket{LocalTools: []string{"claude"}}
-	if !b.SyncsToLocalTarget("claude") {
+func TestSyncsToTool_Restricted(t *testing.T) {
+	b := Bucket{Tools: []string{"claude"}}
+	if !b.SyncsToTool("claude") {
 		t.Error("should sync to claude")
 	}
-	if b.SyncsToLocalTarget("cursor") {
+	if b.SyncsToTool("cursor") {
 		t.Error("should NOT sync to cursor")
 	}
 }

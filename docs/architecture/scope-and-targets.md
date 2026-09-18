@@ -11,8 +11,8 @@ of two scopes:
 
 | Scope | Canonical tree | Per-tool fan-out |
 |---|---|---|
-| **Local** (project) | `<project>/.agents/` | `<project>/.claude/`, `<project>/.windsurf/`, `<project>/.cursor/`, `<project>/.github/copilot/`, `<project>/.codex/` |
-| **Global** (user) | `$HOME/.agents/` (overridable, see [global-root-resolution.md](./global-root-resolution.md)) | `$HOME/.claude/`, `$HOME/.codeium/`, `$HOME/.cursor/`, `$HOME/.github/copilot/`, `$HOME/.codex/` |
+| **Local** (project) | `<project>/.agents/` | `<project>/.claude/`, `<project>/.windsurf/`, `<project>/.cursor/`, `<project>/.github/copilot/`, `<project>/.codex/`, `<project>/.opencode/` |
+| **Global** (user) | `$HOME/.agents/` (overridable, see [global-root-resolution.md](./global-root-resolution.md)) | `$HOME/.claude/`, `$HOME/.codeium/`, `$HOME/.cursor/`, `$HOME/.github/copilot/`, `$HOME/.codex/`, `$HOME/.config/opencode/` |
 
 The canonical tree is the **single source of truth**. The per-tool
 directories are derived from it: `sync` creates symlinks that point
@@ -47,6 +47,18 @@ known tools.
 | `cursor` | `.cursor/` | `~/.cursor/` |
 | `copilot` | `.github/copilot/` | `~/.github/copilot/` |
 | `codex` | `.codex/` | `~/.codex/` |
+| `opencode` | `.opencode/` | `~/.config/opencode/` |
+
+`opencode` is the third shape-changer, and the only one that differs
+by *convention* rather than by branding: it uses a plain `.opencode/`
+dotdir inside a project, but follows XDG at user scope, so its global
+home is `~/.config/opencode/` rather than `~/.opencode/`. Writing to
+the latter would produce a directory opencode never reads.
+
+`opencode` is registered but **not** enabled by default. Adding a tool
+to the registry makes it available to opt into (via `.agents/config`
+or `--targets`); it does not enroll existing users, whose `.opencode/`
+directories may be hand-managed.
 
 `copilot` is the other shape-changer: it lives nested under `.github/`
 rather than as a top-level dot-dir.

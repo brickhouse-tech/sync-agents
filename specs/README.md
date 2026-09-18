@@ -36,5 +36,6 @@ treat retired spec content as current intent.
 | SPEC-008 | full-context integrity lock (`agents.lock` + `agents.sum`) | 📝 draft | — (active) | — |
 | SPEC-009 | spec lifecycle tooling (`lint` spec checks + `spec retire`) | 📝 draft | — (active) | — |
 | SPEC-010 | conformance audit + unified fold/drill sync | 📝 draft — Phase 1 (audit) in flight | — (active) | — |
+| SPEC-011 | `add agent` import + selective load + multi-tool subagent routing | 🟡 Parts A–C shipped; **Part D open** | — (active) | [add](../docs/commands/add.md), [topology](../docs/topology.md), [scope-and-targets](../docs/architecture/scope-and-targets.md) |
 
-Next spec ID: **SPEC-011**.
+Next spec ID: **SPEC-012**.

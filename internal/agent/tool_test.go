@@ -66,13 +66,42 @@ func TestResolveTool_CaseSensitivity(t *testing.T) {
 }
 
 // TestTools_Registry_HasExpectedIDs is a regression guard: SPEC-002
-// names 5 tools (claude, codeium, cursor, copilot, codex). Anything
-// that changes that set should require an update here and a
-// corresponding spec change.
+// names 5 tools (claude, codeium, cursor, copilot, codex) and
+// SPEC-011 Part B adds opencode. Anything that changes that set
+// should require an update here and a corresponding spec change.
 func TestTools_Registry_HasExpectedIDs(t *testing.T) {
-	want := []string{"claude", "codeium", "cursor", "copilot", "codex"}
+	want := []string{"claude", "codeium", "cursor", "copilot", "codex", "opencode"}
 	if got := ToolIDs(); !reflect.DeepEqual(got, want) {
 		t.Errorf("ToolIDs() = %v, want %v", got, want)
+	}
+}
+
+// TestTool_Opencode_XDGGlobalDir pins opencode's asymmetric scope
+// mapping (SPEC-011 Part B): a plain dotdir at project scope, but an
+// XDG path under ~/.config at user scope. Getting this backwards
+// would write into a directory opencode never reads.
+func TestTool_Opencode_XDGGlobalDir(t *testing.T) {
+	tool, ok := ResolveTool("opencode")
+	if !ok {
+		t.Fatal("opencode must resolve from the registry")
+	}
+	if got, want := tool.DirForScope(ScopeLocal, "/proj"), filepath.Join("/proj", ".opencode"); got != want {
+		t.Errorf("local dir = %q, want %q", got, want)
+	}
+	if got, want := tool.DirForScope(ScopeGlobal, "/home/u"), filepath.Join("/home/u", ".config", "opencode"); got != want {
+		t.Errorf("global dir = %q, want %q", got, want)
+	}
+}
+
+// TestTools_OpencodeNotInDefaultTargets guards SPEC-011 Open Question
+// 1: registering opencode must not enroll existing users. A tool in
+// the registry is available to opt into, not switched on — otherwise
+// the next sync walks into a hand-managed .opencode/ tree uninvited.
+func TestTools_OpencodeNotInDefaultTargets(t *testing.T) {
+	for _, target := range AllTargets {
+		if target == "opencode" {
+			t.Fatal("opencode must not be in AllTargets; it is opt-in via config or --targets")
+		}
 	}
 }
 
