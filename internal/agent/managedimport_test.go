@@ -250,7 +250,7 @@ func TestManagedImport_ReferenceOptIn(t *testing.T) {
 		{Type: ArtifactRule, Name: "security", Semantic: Passive},
 		{Type: ArtifactSpec, Name: "SPEC-006", ImportOptIn: true},
 		{Type: ArtifactPlan, Name: "rollout", ImportOptIn: true},
-		{Type: ArtifactSpec, Name: "SPEC-099"},                    // no opt-in → excluded
+		{Type: ArtifactSpec, Name: "SPEC-099"}, // no opt-in → excluded
 		{Type: ArtifactADR, Name: "0001-use-go", ImportOptIn: true},
 	}
 	got := CollectClaudeRuleImportPaths("/home/u", arts)
@@ -290,7 +290,7 @@ func TestArtifactOptsIntoImport(t *testing.T) {
 		want bool
 	}{
 		{optIn, ArtifactSpec, true},
-		{optIn, ArtifactRule, false},  // non-reference type never opts in
+		{optIn, ArtifactRule, false}, // non-reference type never opts in
 		{optOut, ArtifactSpec, false},
 		{absent, ArtifactPlan, false},
 		{noFM, ArtifactADR, false},
@@ -304,22 +304,22 @@ func TestArtifactOptsIntoImport(t *testing.T) {
 
 func TestResolveClaudeMDPath(t *testing.T) {
 	tests := []struct {
-		name     string
-		parent   string
+		name      string
+		parent    string
 		hasAgents bool
-		want     string
+		want      string
 	}{
 		{
-			name:     "AGENTS.md takes precedence",
-			parent:   "/project",
+			name:      "AGENTS.md takes precedence",
+			parent:    "/project",
 			hasAgents: true,
-			want:     "/project/AGENTS.md",
+			want:      "/project/AGENTS.md",
 		},
 		{
-			name:     "falls back to CLAUDE.md",
-			parent:   "/project",
+			name:      "falls back to CLAUDE.md",
+			parent:    "/project",
 			hasAgents: false,
-			want:     "/project/CLAUDE.md",
+			want:      "/project/CLAUDE.md",
 		},
 	}
 	for _, tt := range tests {

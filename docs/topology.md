@@ -24,7 +24,7 @@ workflows, and state for your agents:
   │   ├── workflow1.md
   │   ├── workflow2.md
   │   └── ...
-  ├── agents/              # optional: Claude subagent definitions
+  ├── agents/              # optional: subagent definitions (Claude, Cursor, opencode)
   │   └── reviewer.md
   ├── plans/               # optional: per-effort implementation plans (how/when)
   │   └── auth-effort/
@@ -42,8 +42,8 @@ workflows, and state for your agents:
 ```
 
 Running `sync-agents sync` creates symlinks from `.agents/`
-subdirectories into `.claude/`, `.windsurf/`, `.cursor/`, and
-`.github/copilot/`. Any changes to `.agents/` are automatically
+subdirectories into `.claude/`, `.windsurf/`, `.cursor/`,
+`.github/copilot/`, and — when enabled — `.opencode/`. Any changes to `.agents/` are automatically
 reflected in the target directories because they are symlinks, not
 copies.
 
@@ -61,10 +61,26 @@ flat skill files to the directory layout automatically.
 
 `agents/`, `plans/`, `specs/`, `hooks/`, and `adrs/` activate only when
 their directory exists — `init` does not create them,
-`add agent|plan|spec|hook|adr <name>` does. They sync to Claude only
-(`.claude/agents`, `.claude/plans`, `.claude/specs`); other tools
-consume plans/specs through the `AGENTS.md` index and have no subagent
-surface.
+`add agent|plan|spec|hook|adr <name>` does.
+
+`plans/`, `specs/`, `hooks/`, and `adrs/` are Claude-only
+(`.claude/plans`, `.claude/specs`, …); other tools consume them
+through the `AGENTS.md` index.
+
+`agents/` reaches every tool that has a **native subagent surface**
+reading markdown with YAML frontmatter — Claude (`.claude/agents/`),
+Cursor (`.cursor/agents/`), and opencode (`.opencode/agents/`,
+`~/.config/opencode/agents/` at user scope). Windsurf, Copilot, and
+Codex have no subagent concept, so they are skipped rather than sent a
+mislabeled artifact; they see agents only through the `AGENTS.md`
+index.
+
+Frontmatter is **not translated** between harnesses. Claude's `tools:`
+and `model:` sit alongside Cursor's `readonly:` and `is_background:` in
+the same file, and each tool ignores the keys it does not recognize.
+That is also why sync-agents' own routing keys are namespaced — a bare
+`tools:` would collide with Claude's tool-permission allowlist and
+silently strip the subagent's access.
 
 `plans/` and `specs/` share plumbing but differ in lifecycle: specs are
 durable what/why documents, plans are per-effort how/when documents

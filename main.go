@@ -136,9 +136,19 @@ func main() {
 	})
 
 	// add
-	rootCmd.AddCommand(&cobra.Command{
+	var addFrom string
+	var addFromLink bool
+	addCmd := &cobra.Command{
 		Use:   "add [type] [name]",
 		Short: "Add a new rule, skill, workflow, agent, plan, spec, hook, or adr",
+		Long: "Add a new artifact to .agents/.\n\n" +
+			"By default the artifact is scaffolded from its bucket template.\n" +
+			"With --from, it is seeded from an artifact that already exists\n" +
+			"elsewhere — useful for bringing a curated subagent under\n" +
+			"sync-agents management without retyping it.\n\n" +
+			"  add agent reviewer                                  scaffold from template\n" +
+			"  add agent reviewer --from ~/agents/reviewer.md      import a normalized copy\n" +
+			"  add agent tars --from ~/personas/tars.md --link     link; the source stays authoritative",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var typ, name string
 			if len(args) >= 1 {
@@ -147,9 +157,12 @@ func main() {
 			if len(args) >= 2 {
 				name = args[1]
 			}
-			return app.CmdAdd(typ, name)
+			return app.CmdAdd(typ, name, agent.AddOpts{From: addFrom, Link: addFromLink})
 		},
-	})
+	}
+	addCmd.Flags().StringVar(&addFrom, "from", "", "Seed the artifact from an existing file or directory instead of the template")
+	addCmd.Flags().BoolVar(&addFromLink, "link", false, "With --from, symlink the source instead of copying it (the source stays authoritative)")
+	rootCmd.AddCommand(addCmd)
 
 	// sync
 	rootCmd.AddCommand(&cobra.Command{

@@ -42,12 +42,19 @@ type Bucket struct {
 	// means ".md"; hooks use ".json".
 	Ext string
 
-	// LocalTools restricts which local sync targets receive this
-	// bucket's directory symlink. Empty means every active target
-	// (the behavior of the classic three buckets). Names match the
-	// legacy AllTargets IDs ("claude", "windsurf", "cursor",
-	// "copilot").
-	LocalTools []string
+	// Tools restricts which sync targets receive this bucket's
+	// artifacts. Empty means every active target (the behavior of the
+	// classic three buckets). Names match canonical Tool IDs
+	// ("claude", "cursor", "codeium", "copilot", "codex",
+	// "opencode").
+	//
+	// The restriction applies at BOTH scopes (SPEC-011 Part A): local
+	// sync consults it before creating the bucket's directory
+	// symlink, and TargetDestination consults it before routing an
+	// individual artifact into a per-tool global dir. Keeping one
+	// field for both is deliberate — a bucket that means nothing to a
+	// tool means nothing to it at either scope.
+	Tools []string
 }
 
 // FileExt returns the bucket's artifact extension (".md" unless the
@@ -59,47 +66,65 @@ func (b Bucket) FileExt() string {
 	return b.Ext
 }
 
-// SyncsToLocalTarget reports whether local sync should link this
-// bucket into the given target's directory.
-func (b Bucket) SyncsToLocalTarget(target string) bool {
-	if len(b.LocalTools) == 0 {
+// SyncsToTool reports whether this bucket's artifacts belong in the
+// given tool's tree, at either scope. An unrestricted bucket (empty
+// Tools) syncs everywhere; a restricted one syncs only to the listed
+// canonical Tool IDs.
+func (b Bucket) SyncsToTool(toolID string) bool {
+	if len(b.Tools) == 0 {
 		return true
 	}
-	for _, t := range b.LocalTools {
-		if t == target {
+	for _, t := range b.Tools {
+		if t == toolID {
 			return true
 		}
 	}
 	return false
 }
 
+// subagentTools lists the canonical Tool IDs that expose a native
+// subagent surface. Declared once so the agents bucket restriction and
+// TargetDestination's agent branch cannot drift apart; adding a
+// harness with subagents is a one-line change here plus its directory
+// mapping in the Tools registry.
+var subagentTools = []string{"claude", "cursor", "opencode"}
+
 var Buckets = []Bucket{
 	{Dir: "rules", Artifact: ArtifactRule, InInit: true, NewTemplate: templates.Rule},
 	{Dir: "skills", Artifact: ArtifactSkill, DirPerArtifact: true, InInit: true, NewTemplate: templates.Skill},
 	{Dir: "workflows", Artifact: ArtifactWorkflow, InInit: true, NewTemplate: templates.Workflow},
-	// Subagent definitions (SPEC-004 Part B). Claude-only: no other
-	// registered tool has a subagent surface, and the bucket is not
-	// created by init — it activates when `add agent` (or the user)
-	// creates the directory.
-	{Dir: "agents", Artifact: ArtifactAgent, NewTemplate: templates.Agent, LocalTools: []string{"claude"}},
+	// Subagent definitions (SPEC-004 Part B, widened by SPEC-011
+	// Part A). Restricted to the tools that have a native subagent
+	// surface reading markdown + YAML frontmatter of the same shape:
+	// Claude (.claude/agents/), Cursor (.cursor/agents/, since Cursor
+	// 2.4), and opencode (.opencode/agents/, ~/.config/opencode/agents/
+	// at user scope). Windsurf, Copilot, and Codex have no subagent
+	// concept and consume agents only through the AGENTS.md index.
+	//
+	// Frontmatter is NOT translated between harness dialects — Claude's
+	// `tools:`/`model:` and Cursor's `readonly:`/`is_background:` pass
+	// through verbatim and each tool ignores what it does not know
+	// (SPEC-004 Part E). The bucket is not created by init; it
+	// activates when `add agent` (or the user) creates the directory.
+	{Dir: "agents", Artifact: ArtifactAgent, NewTemplate: templates.Agent, Tools: subagentTools},
 	// Reference-doc buckets (SPEC-004 Part D). plans = per-effort
 	// how/when working documents; specs = durable what/why design
 	// docs. Same plumbing, different lifecycle. Claude-only local
 	// symlinks (@-mentionable); other tools consume them via the
 	// AGENTS.md index. Not created by init.
-	{Dir: "plans", Artifact: ArtifactPlan, NewTemplate: templates.Plan, LocalTools: []string{"claude"}},
-	{Dir: "specs", Artifact: ArtifactSpec, NewTemplate: templates.Spec, LocalTools: []string{"claude"}},
+	{Dir: "plans", Artifact: ArtifactPlan, NewTemplate: templates.Plan, Tools: []string{"claude"}},
+	{Dir: "specs", Artifact: ArtifactSpec, NewTemplate: templates.Spec, Tools: []string{"claude"}},
 	// Claude hook fragments (SPEC-004 Part C). Flat JSON files
 	// merged into .claude/settings.json rather than symlinked;
 	// routing handled separately in hooks.go. Not created by init.
-	{Dir: "hooks", Artifact: ArtifactHook, NewTemplate: templates.Hook, LocalTools: []string{"claude"}, Ext: ".json"},
+	{Dir: "hooks", Artifact: ArtifactHook, NewTemplate: templates.Hook, Tools: []string{"claude"}, Ext: ".json"},
 	// Architecture Decision Records (SPEC-004 Part F). Status is
 	// encoded by subdirectory: proposed/, accepted/, denied/. Only
 	// accepted + proposed are indexed in AGENTS.md; denied ADRs are
 	// kept (and pointed at from the index) so past rejections aren't
 	// re-proposed. `add adr` scaffolds into proposed/; the `adr`
 	// command moves records between statuses.
-	{Dir: "adrs", Artifact: ArtifactADR, NewTemplate: templates.ADR, LocalTools: []string{"claude"}, NewSubdir: "proposed"},
+	{Dir: "adrs", Artifact: ArtifactADR, NewTemplate: templates.ADR, Tools: []string{"claude"}, NewSubdir: "proposed"},
 }
 
 // BucketDirs returns the directory names of all registered buckets,

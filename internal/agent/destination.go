@@ -93,22 +93,37 @@ func TargetDestination(
 	artifactSourcePath string,
 	globalRootParent string,
 ) Destination {
-	// Agents (subagent definitions) route independently of semantic:
-	// Claude is the only registered tool with a subagent surface
-	// (~/.claude/agents/), so every other tool skips. Routing them
-	// through the per-tool semantic tables would mislabel them as
-	// commands (Claude), workflows (Windsurf), or concat fodder
-	// (Copilot/Codex).
+	// Agents (subagent definitions) route independently of semantic,
+	// into each tool's native subagent directory. Routing them through
+	// the per-tool semantic tables would mislabel them as commands
+	// (Claude), always-on rules (Cursor), workflows (Windsurf), or
+	// concat fodder (Copilot/Codex) — an agent body inlined into an
+	// always-on instructions file is the worst of those outcomes.
+	//
+	// Which tools qualify is the agents bucket's Tools restriction
+	// (SPEC-011 Part A), so this branch and local sync can never
+	// disagree about who has a subagent surface. The directory name is
+	// the bucket's own ("agents"), which all three qualifying tools
+	// happen to share; a harness that named it differently would need
+	// a per-tool override here.
 	if typ == ArtifactAgent {
-		if tool.ID == "claude" {
+		bucket, _ := BucketForArtifact(typ)
+		if bucket.SyncsToTool(tool.ID) {
+			toolDir := tool.DirForScope(ScopeGlobal, globalRootParent)
+			if toolDir == "" {
+				return Destination{
+					Strategy:   StrategySkip,
+					SkipReason: fmt.Sprintf("%s has no global scope", tool.ID),
+				}
+			}
 			return Destination{
 				Strategy: StrategySymlink,
-				Path:     filepath.Join(globalRootParent, ".claude", "agents", name+".md"),
+				Path:     filepath.Join(toolDir, bucket.Dir, name+".md"),
 			}
 		}
 		return Destination{
 			Strategy:   StrategySkip,
-			SkipReason: fmt.Sprintf("%s has no subagent surface", tool.ID),
+			SkipReason: fmt.Sprintf("%s has no subagent surface; agents reach it via the AGENTS.md index", tool.ID),
 		}
 	}
 
@@ -153,6 +168,8 @@ func TargetDestination(
 		return copilotDestination(globalRootParent)
 	case "codex":
 		return codexDestination(globalRootParent)
+	case "opencode":
+		return opencodeDestination(typ, name, globalRootParent)
 	default:
 		return Destination{
 			Strategy:   StrategySkip,
@@ -284,6 +301,31 @@ func codexDestination(parent string) Destination {
 	return Destination{
 		Strategy: StrategyConcat,
 		Path:     filepath.Join(parent, ".codex", "instructions.md"),
+	}
+}
+
+// opencodeDestination implements the opencode row (SPEC-011 Part B).
+//
+// opencode's only surface this project has verified is its subagent
+// directory, and agents never reach here — TargetDestination's agent
+// branch handles them before the per-tool switch. Everything else
+// skips.
+//
+// This is deliberately conservative rather than a guess. opencode
+// reads AGENTS.md natively, so passive rules are already delivered by
+// the index rather than by a concat file, and its user-scope command
+// surface has not been verified against an installed build. Routing
+// artifacts into an unverified path would write files into a tree the
+// user hand-manages, which is exactly the failure the skip avoids. A
+// contributor who confirms the layout should replace this with real
+// destinations and drop the skip.
+func opencodeDestination(typ ArtifactType, name, parent string) Destination {
+	return Destination{
+		Strategy: StrategySkip,
+		SkipReason: fmt.Sprintf(
+			"opencode routing covers subagents only; %s %q reaches opencode through AGENTS.md",
+			typ, name,
+		),
 	}
 }
 
