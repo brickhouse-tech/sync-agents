@@ -268,17 +268,21 @@ func (a *App) resolveSyncTools(targets []string) ([]Tool, error) {
 }
 
 // applySymlinkDestination creates or repairs the symlink at dest.Path
-// pointing at the artifact's content source. Handles three cases:
+// pointing at the artifact's content source. Handles four cases:
 //
 //   - Nothing at dest: create the symlink (after ensuring its parent
 //     dir exists).
 //   - Symlink already at dest: if it points at the right target,
 //     no-op (logged once at a higher level for brevity). Otherwise
 //     replace.
-//   - Non-symlink at dest: skip with warning unless App.Force is
-//     set, in which case the existing file is renamed to a
-//     `.replaced-by-sync-agents-<timestamp>` sibling and the symlink
-//     is placed.
+//   - Non-symlink at dest that already resolves to target through a
+//     folded ancestor symlink (SPEC-010, e.g. ~/.claude/rules ->
+//     ~/.agents/rules): already correct, no-op. Force does not
+//     override this — see issue #90.
+//   - Any other non-symlink at dest: skip with warning unless
+//     App.Force is set, in which case the existing file is renamed
+//     to a `.replaced-by-sync-agents-<timestamp>` sibling and the
+//     symlink is placed.
 //
 // Symlinks are absolute paths (SPEC-002 §Global sync — symlink
 // semantics). Relative would be brittle because the global tree's
@@ -293,6 +297,19 @@ func (a *App) applySymlinkDestination(toolID string, art Artifact, dest Destinat
 
 	existing, lerr := os.Lstat(dest.Path)
 	if lerr == nil {
+		// Not a symlink itself, but Lstat follows intermediate path
+		// components — an ancestor dir symlink (SPEC-010 fold, e.g.
+		// ~/.claude/rules -> ~/.agents/rules) can route dest.Path to
+		// the very file target points at. That's already correct, not
+		// a conflict: renaming it away (even under --force) would
+		// move the canonical source out from under itself and then
+		// symlink dest.Path to itself, the "too many levels of
+		// symbolic links" bug from issue #90. Skip unconditionally,
+		// Force included.
+		if existing.Mode()&os.ModeSymlink == 0 && foldedResolves(dest.Path, target) {
+			a.Info(fmt.Sprintf("[%s] %s already resolves to %s via a folded ancestor symlink; skipping", toolID, dest.Path, target))
+			return nil
+		}
 		if existing.Mode()&os.ModeSymlink != 0 {
 			// Existing symlink. Check whether it points at the
 			// right target; if so, no-op.
