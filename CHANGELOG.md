@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.6.7](https://github.com/brickhouse-tech/sync-agents/compare/v1.6.6...v1.6.7) (2026-09-21)
+
+### Bug Fixes
+
+* **global:** skip folded artifacts in global sync --force ([#90](https://github.com/brickhouse-tech/sync-agents/issues/90)) ([c3fdc98](https://github.com/brickhouse-tech/sync-agents/commit/c3fdc98cc0b126d78584c2e07d29b26440c67ccc))
+
 ## [1.6.6](https://github.com/brickhouse-tech/sync-agents/compare/v1.6.5...v1.6.6) (2026-09-18)
 
 ## [1.6.5](https://github.com/brickhouse-tech/sync-agents/compare/v1.6.4...v1.6.5) (2026-09-05)

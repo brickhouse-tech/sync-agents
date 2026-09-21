@@ -507,6 +507,68 @@ func readlinkOrFail(t *testing.T, path string) string {
 	return got
 }
 
+// TestCmdGlobalSync_ForceSkipsFoldedAncestor is the issue #90
+// regression: when a tool's per-artifact dir is itself a symlink into
+// ~/.agents/ (a "fold"), the destination path resolves through that
+// ancestor symlink straight to the canonical source file. Force must
+// not treat that as a conflicting non-symlink and rename it away —
+// doing so moves the real file to a `.replaced-by-sync-agents`
+// backup and then symlinks the (now-empty) original path to itself,
+// producing "too many levels of symbolic links".
+func TestCmdGlobalSync_ForceSkipsFoldedAncestor(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	a.Force = true
+	seedRule(t, a.ResolveGlobalRoot(), "state", "be careful\n")
+
+	// The fold: ~/.claude/rules -> ~/.agents/rules, so
+	// ~/.claude/rules/state.md resolves to the same file a fresh sync
+	// would otherwise symlink individually.
+	rulesDir := filepath.Join(root, ".claude")
+	if err := os.MkdirAll(rulesDir, 0o755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	src := filepath.Join(a.ResolveGlobalRoot(), "rules")
+	if err := os.Symlink(src, filepath.Join(rulesDir, "rules")); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	// The canonical source must still be a real, readable file — not
+	// a symlink pointing at itself.
+	sourcePath := filepath.Join(a.ResolveGlobalRoot(), "rules", "state.md")
+	info, err := os.Lstat(sourcePath)
+	if err != nil {
+		t.Fatalf("source file gone: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("source file was replaced with a symlink: %s", sourcePath)
+	}
+	content, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatalf("source file unreadable: %v", err)
+	}
+	if string(content) != "be careful\n" {
+		t.Errorf("source content = %q, want %q", content, "be careful\n")
+	}
+
+	// No backup should have been created anywhere under root.
+	err = filepath.Walk(root, func(path string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if strings.Contains(fi.Name(), ".replaced-by-sync-agents") {
+			t.Errorf("unexpected backup file: %s", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+}
+
 // TestCmdGlobalSync_NoGlobalRootErrors verifies that a missing
 // global root yields a clear error message pointing at `global init`.
 func TestCmdGlobalSync_NoGlobalRootErrors(t *testing.T) {
