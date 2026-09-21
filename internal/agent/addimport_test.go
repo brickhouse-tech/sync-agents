@@ -306,6 +306,65 @@ func TestCmdAdd_ImportRefusesExistingWithoutForce(t *testing.T) {
 	}
 }
 
+// TestCmdAdd_LinkRejectsMissingDescription: link mode cannot add a
+// description the source lacks, and an agent with no description is
+// silently unreachable, so the import is refused rather than propagated.
+func TestCmdAdd_LinkRejectsMissingDescription(t *testing.T) {
+	a, root, _ := newAddTestApp(t)
+	src := writeSrc(t, filepath.Join(root, "personas"), "tars.md",
+		"---\nname: tars\n---\n\nNo description here.\n")
+
+	err := a.CmdAdd("agent", "tars", AddOpts{From: src, Link: true})
+	if err == nil {
+		t.Fatal("expected a missing description to be rejected under --link")
+	}
+	if !strings.Contains(err.Error(), "description") {
+		t.Errorf("error must name the missing field; got: %v", err)
+	}
+	if _, statErr := os.Lstat(filepath.Join(root, ".agents", "agents", "tars.md")); !os.IsNotExist(statErr) {
+		t.Error("a rejected link must not leave anything behind")
+	}
+}
+
+// TestCmdAdd_LinkSkillRejectsNameMismatch: for a dir-per-artifact
+// bucket the identity lives in SKILL.md, so link mode must reject a
+// name mismatch there the same way it does for a single-file artifact.
+func TestCmdAdd_LinkSkillRejectsNameMismatch(t *testing.T) {
+	a, root, _ := newAddTestApp(t)
+	srcDir := filepath.Join(root, "outside", "helper")
+	writeSrc(t, srcDir, "SKILL.md", "---\nname: old\ndescription: Does a thing.\n---\n\nBody.\n")
+
+	err := a.CmdAdd("skill", "helper", AddOpts{From: srcDir, Link: true})
+	if err == nil {
+		t.Fatal("expected a SKILL.md name mismatch to be rejected under --link")
+	}
+	if !strings.Contains(err.Error(), "--link") || !strings.Contains(err.Error(), "old") {
+		t.Errorf("error must name the conflict and the way out; got: %v", err)
+	}
+	if _, statErr := os.Lstat(filepath.Join(root, ".agents", "skills", "helper")); !os.IsNotExist(statErr) {
+		t.Error("a rejected link must not leave anything behind")
+	}
+}
+
+// TestCmdAdd_LinkSkillMatchingNameSucceeds is the positive companion:
+// a SKILL.md whose name already matches links cleanly.
+func TestCmdAdd_LinkSkillMatchingNameSucceeds(t *testing.T) {
+	a, root, _ := newAddTestApp(t)
+	srcDir := filepath.Join(root, "outside", "helper")
+	writeSrc(t, srcDir, "SKILL.md", "---\nname: helper\ndescription: Does a thing.\n---\n\nBody.\n")
+
+	if err := a.CmdAdd("skill", "helper", AddOpts{From: srcDir, Link: true}); err != nil {
+		t.Fatalf("add skill --link: %v", err)
+	}
+	fi, err := os.Lstat(filepath.Join(root, ".agents", "skills", "helper"))
+	if err != nil {
+		t.Fatalf("lstat: %v", err)
+	}
+	if fi.Mode()&os.ModeSymlink == 0 {
+		t.Error("--link must produce a symlink at the skill directory")
+	}
+}
+
 // templatesAgentForTest mirrors the bucket's template accessor so the
 // no-regression test compares against the real scaffold rather than a
 // copy that could drift.

@@ -36,7 +36,11 @@ type AddOpts struct {
 // pulling third-party content safe (SPEC-005). The error points at
 // the supported route rather than failing with "no such file".
 func (a *App) resolveAddSource(ref string) (string, error) {
-	if i := strings.IndexByte(ref, ':'); i > 0 && !strings.ContainsAny(ref[:i], `/\`) {
+	// A single character before the colon is a Windows drive letter
+	// (`C:\foo`), not a source name — require at least two so
+	// `<source>:<path>` still matches while drive-lettered absolute
+	// paths fall through to normal path handling.
+	if i := strings.IndexByte(ref, ':'); i > 1 && !strings.ContainsAny(ref[:i], `/\`) {
 		return "", fmt.Errorf(
 			"%q looks like a source reference; registered sources deliver artifacts through `sync-agents source add %s` + `sync-agents pull`, which applies the quarantine gate that --from cannot",
 			ref, ref[:i])
@@ -101,6 +105,34 @@ func (a *App) normalizeImportedFrontmatter(content, name string, typ ArtifactTyp
 		block.set("name", name)
 	}
 	return block.render(), nil
+}
+
+// validateLinkedFrontmatter applies the same frontmatter invariants as
+// normalizeImportedFrontmatter, but read-only: link mode does not own
+// the source and cannot rewrite it, so any discrepancy that copy mode
+// would silently fix becomes a hard error here. An artifact linked in
+// violation of these rules is silently unreachable in at least one
+// harness (agents key delegation on name+description), which is worse
+// than refusing the import.
+func validateLinkedFrontmatter(content, name string, typ ArtifactType, srcLabel string) error {
+	block, err := parseFMBlock(content)
+	if err != nil {
+		return fmt.Errorf("%s: %w", srcLabel, err)
+	}
+	if !block.present {
+		return fmt.Errorf("%s: no YAML frontmatter; a %s needs at least name: and description:", srcLabel, typ)
+	}
+	if typ == ArtifactAgent {
+		if desc, _ := block.get("description"); strings.TrimSpace(desc) == "" {
+			return fmt.Errorf("%s: frontmatter has no description:; every harness keys subagent delegation on it, and --link cannot add one — re-run without --link to import a normalized copy", srcLabel)
+		}
+	}
+	if existing, _ := block.get("name"); existing != "" && existing != name {
+		return fmt.Errorf(
+			"%s declares name: %q but is being added as %q; --link cannot rewrite the source — re-run without --link to import a normalized copy, or add it as %q",
+			srcLabel, existing, name, existing)
+	}
+	return nil
 }
 
 // importByCopy reads the source artifact, normalizes its frontmatter,
@@ -211,6 +243,19 @@ func (a *App) importByLink(srcPath, destPath, name string, bucket Bucket) error 
 			return fmt.Errorf("--from %s is a directory, but a %s is a single file", srcPath, bucket.Artifact)
 		}
 		linkAt = filepath.Dir(destPath)
+
+		// The artifact is the directory, but its identity lives in the
+		// SKILL.md entrypoint. Copy mode normalizes that file; link
+		// mode must reject a mismatch the same way it does for a
+		// single-file artifact.
+		entry := filepath.Join(srcPath, "SKILL.md")
+		raw, err := os.ReadFile(entry)
+		if err != nil {
+			return fmt.Errorf("--from %s: %w", srcPath, err)
+		}
+		if err := validateLinkedFrontmatter(string(raw), name, bucket.Artifact, entry); err != nil {
+			return err
+		}
 	}
 
 	if bucket.FileExt() == ".md" && !fi.IsDir() {
@@ -218,14 +263,8 @@ func (a *App) importByLink(srcPath, destPath, name string, bucket Bucket) error 
 		if err != nil {
 			return err
 		}
-		block, err := parseFMBlock(string(raw))
-		if err != nil {
-			return fmt.Errorf("%s: %w", srcPath, err)
-		}
-		if existing, _ := block.get("name"); existing != "" && existing != name {
-			return fmt.Errorf(
-				"%s declares name: %q but is being added as %q; --link cannot rewrite the source — re-run without --link to import a normalized copy, or add it as %q",
-				srcPath, existing, name, existing)
+		if err := validateLinkedFrontmatter(string(raw), name, bucket.Artifact, srcPath); err != nil {
+			return err
 		}
 	}
 
