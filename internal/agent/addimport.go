@@ -150,6 +150,13 @@ func (a *App) importByCopy(srcPath, destPath, name string, bucket Bucket) error 
 		if !bucket.DirPerArtifact {
 			return fmt.Errorf("--from %s is a directory, but a %s is a single file", srcPath, bucket.Artifact)
 		}
+		// The artifact's identity lives in its SKILL.md entrypoint.
+		// Link mode rejects a directory without one; copy mode must
+		// too, or it would produce an entrypoint-less artifact.
+		entry := filepath.Join(srcPath, "SKILL.md")
+		if _, err := os.Stat(entry); err != nil {
+			return fmt.Errorf("--from %s: %w", srcPath, err)
+		}
 		return a.importDirByCopy(srcPath, filepath.Dir(destPath), name, bucket)
 	}
 

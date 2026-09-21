@@ -274,6 +274,20 @@ func TestCmdAdd_ImportSkillDirectory(t *testing.T) {
 	}
 }
 
+// TestCmdAdd_ImportSkillDirectoryWithoutEntrypointRejected: copy mode
+// must refuse a skill directory that lacks its SKILL.md entrypoint,
+// the same way link mode does — otherwise it would produce an
+// entrypoint-less, undeliverable artifact.
+func TestCmdAdd_ImportSkillDirectoryWithoutEntrypointRejected(t *testing.T) {
+	a, root, _ := newAddTestApp(t)
+	srcDir := filepath.Join(root, "outside", "helper")
+	writeSrc(t, srcDir, "reference.md", "supporting material\n")
+
+	if err := a.CmdAdd("skill", "helper", AddOpts{From: srcDir}); err == nil {
+		t.Fatal("expected a skill dir without SKILL.md to be rejected under copy mode")
+	}
+}
+
 // TestCmdAdd_ImportDirectoryIntoFlatBucketRejected: a rule is one
 // file; handing it a directory is a mistake worth naming.
 func TestCmdAdd_ImportDirectoryIntoFlatBucketRejected(t *testing.T) {

@@ -366,8 +366,18 @@ func (a *App) applySymlinkDestination(toolID string, art Artifact, dest Destinat
 			}
 			// With --force, rename the conflicting entry to a
 			// timestamped side path so it is always recoverable and
-			// a second conflict never clobbers the first backup.
-			backup := fmt.Sprintf("%s.replaced-by-sync-agents-%s", dest.Path, time.Now().UTC().Format("20060102T150405Z"))
+			// a second conflict never clobbers the first backup. The
+			// timestamp is second-granular, so probe for a free name
+			// to stay collision-proof even within the same second.
+			stamp := time.Now().UTC().Format("20060102T150405Z")
+			base := fmt.Sprintf("%s.replaced-by-sync-agents-%s", dest.Path, stamp)
+			backup := base
+			for i := 1; ; i++ {
+				if _, err := os.Lstat(backup); os.IsNotExist(err) {
+					break
+				}
+				backup = fmt.Sprintf("%s-%d", base, i)
+			}
 			if err := os.Rename(dest.Path, backup); err != nil {
 				return err
 			}
@@ -402,6 +412,12 @@ func (a *App) applySymlinkDestination(toolID string, art Artifact, dest Destinat
 // cleaning: a genuine symlink chain out of the tree would defeat
 // EvalSymlinks anyway, and erring toward "not ours" is the safe
 // direction — the worst outcome is a warning asking for --force.
+//
+// The global root itself is compared lexically, not through
+// EvalSymlinks: if ResolveGlobalRoot is reached via a symlink, a link
+// pointing at the real tree can read as foreign. That only downgrades
+// a repair to a --force prompt, never destroys anything, so the safe
+// lexical form is kept deliberately.
 func (a *App) pointsIntoGlobalTree(linkPath, linkTarget string) bool {
 	if linkTarget == "" {
 		return false
