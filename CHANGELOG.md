@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.6.8](https://github.com/brickhouse-tech/sync-agents/compare/v1.6.7...v1.6.8) (2026-09-22)
+
+### Bug Fixes
+
+* **index:** treat missing optional directories as empty, not a warning ([f6b6c7b](https://github.com/brickhouse-tech/sync-agents/commit/f6b6c7b6c83e1472bb34e617269e3af2643f3d2b))
+
 ## [1.6.7](https://github.com/brickhouse-tech/sync-agents/compare/v1.6.6...v1.6.7) (2026-09-21)
 
 ### Bug Fixes
