@@ -1737,6 +1737,13 @@ func listMDFiles(dir string) []string {
 func listMDFilesRecursive(dir string) ([]string, []string) {
 	var names []string
 	var warns []string
+	// An absent directory is an empty, optional section — not a fault.
+	// The reference buckets (plans/specs) and every ADR status
+	// subdirectory (accepted/proposed/denied) are all optional, so a
+	// missing one must index as empty and stay silent rather than warn.
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return nil, nil
+	}
 	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			warns = append(warns, fmt.Sprintf("%s: %v", path, err))
