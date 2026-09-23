@@ -104,7 +104,8 @@ func main() {
 	rootCmd.PersistentFlags().StringVarP(&customDir, "dir", "d", "", "Set project root directory")
 	rootCmd.PersistentFlags().StringVar(&customTargets, "targets", "", "Comma-separated targets")
 	rootCmd.PersistentFlags().BoolVar(&app.DryRun, "dry-run", false, "Show what would be done")
-	rootCmd.PersistentFlags().BoolVar(&app.Force, "force", false, "Overwrite existing files")
+	rootCmd.PersistentFlags().BoolVar(&app.Force, "force", false, "Proceed past a safety check (add, approve, promote, pull, global sync); deprecated for sync/fix, use --overwrite")
+	rootCmd.PersistentFlags().BoolVar(&app.Overwrite, "overwrite", false, "Move a conflicting real file or directory aside to <path>.replaced-by-sync-agents and place the symlink (never deletes)")
 	// --global-root overrides the user's global .agents/ tree
 	// location. Wins over $SYNC_AGENTS_GLOBAL_ROOT and the default
 	// $HOME/.agents per SPEC-002 §Configurable global root.
@@ -154,7 +155,7 @@ func main() {
 	// sync
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "sync",
-		Short: "Sync .agents/ to agent directories",
+		Short: "Sync .agents/ to agent directories (merges into real tool dirs; --overwrite moves conflicts aside)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return app.CmdSync()
 		},
@@ -495,7 +496,7 @@ func main() {
 	var noClobber bool
 	fixCmd := &cobra.Command{
 		Use:   "fix [type]",
-		Short: "Migrate legacy dirs + repair broken symlinks",
+		Short: "Migrate legacy dirs + repair broken symlinks (--overwrite moves conflicts aside)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fixType := "all"
 			if len(args) > 0 {

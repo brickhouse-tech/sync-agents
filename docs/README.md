@@ -67,6 +67,9 @@ form that's easier to read end-to-end than scattered code comments.
 - [`sync-agents lint`](./commands/lint.md) — SKILL.md compliance
   checks against Claude's authoring rules, with the full finding
   table.
+- [`sync-agents sync`](./commands/sync.md). Per-bucket fold or
+  drill into tool directories, the never-delete guarantee,
+  `--overwrite`, and the conflict exit code.
 - [`sync-agents fix`](./commands/fix.md) — legacy-layout migration,
   flat-skill conversion, and symlink repair.
 - [`sync-agents promote`](./commands/promote.md) — copy a project
@@ -101,6 +104,9 @@ durable content lives), so IDs stay resolvable after the file is gone.
 - [SPEC-006](../specs/SPEC-006-os-scoped-routing.md) — OS-scoped
   routing: core shipped; AGENTS.md OS badge and concat OS headers
   open.
+- [SPEC-010](../specs/SPEC-010-conformance-audit-unified-sync.md) (conformance audit and fold/drill sync). Fold/drill shipped for
+  local `sync` and `fix`. Global sync unification, adoption, and the
+  audit are open.
 
 ## Conventions
 
