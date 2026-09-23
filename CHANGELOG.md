@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.8.0](https://github.com/brickhouse-tech/sync-agents/compare/v1.7.0...v1.8.0) (2026-09-23)
+
+### Features
+
+* **agents:** SPEC-011 Parts A–C — agent bucket routing, foreign-symlink safety, add --from ([4cdfc97](https://github.com/brickhouse-tech/sync-agents/commit/4cdfc97f598afd731c374102d59f6e4d59e2139b))
+
+### Bug Fixes
+
+* **agents:** close post-merge review findings (SPEC-011) ([e835698](https://github.com/brickhouse-tech/sync-agents/commit/e8356982cf65f6da67e6261947d77376cea6e1f4)), references [#92](https://github.com/brickhouse-tech/sync-agents/issues/92)
+* **agents:** enforce link-mode frontmatter invariants (SPEC-011 review) ([3b21051](https://github.com/brickhouse-tech/sync-agents/commit/3b21051241b6206f897e17cf3765dff0fef49583)), references [#92](https://github.com/brickhouse-tech/sync-agents/issues/92)
+
 ## [1.7.0](https://github.com/brickhouse-tech/sync-agents/compare/v1.6.8...v1.7.0) (2026-09-23)
 
 ### Features
