@@ -718,6 +718,11 @@ $SA global clean --global-root "$QA_GLOBAL" --dry-run          # no writes
 
 ### `--force` overwrites
 
+> Superseded. `--force` on `sync` is deprecated and behaves as
+> `--overwrite`, which renames the conflicting entry to
+> `*.replaced-by-sync-agents` instead of deleting it. See
+> [`sync-agents sync`](./commands/sync.md).
+
 ```bash
 # Create a real file at a symlink target, then force-sync
 mkdir -p .claude2
