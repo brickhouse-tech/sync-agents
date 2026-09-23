@@ -1,10 +1,10 @@
 ---
 id: SPEC-010
 title: "Conformance audit + unified fold/drill sync — bring order to per-tool dirs"
-status: Draft — Phase 1 (audit) in flight; Phases 2–3 open for discussion
+status: Partially shipped. Phase 3 fold/drill shipped for local sync and fix; Phase 1 (audit) in flight; Phase 2 and global sync unification open
 owner: nmccready
 created: 2026-07-28
-updated: 2026-07-28
+updated: 2026-09-23
 related: SPEC-002, SPEC-003, SPEC-007
 ---
 
@@ -17,8 +17,9 @@ artifacts from many writers: `sync-agents`, the tools themselves
 (plugin/skill installers), and humans. Today `sync-agents` can only see
 the artifacts *it* expects to manage — it has no view of what else
 occupies the trees it fans out into, and its collision behavior differs
-between scopes (local `sync` whole-bucket skip-or-`RemoveAll`; global
-`sync` per-artifact skip-or-backup).
+between scopes (local `sync` per-bucket fold/drill with `--overwrite`
+backup-rename; global `sync` per-artifact skip-or-backup with
+`--force`).
 
 This spec brings **conformance and tracking** to the per-tool dirs,
 sourced from the canonical `.agents/` tree + `sources.yaml`/lock, under
@@ -45,7 +46,7 @@ Every entry in a managed subdir of a per-tool dir is exactly one of:
 | `folded` | expected path *resolves* to the canonical artifact via an ancestor symlink (e.g. `.claude/skills/foo -> ../../.agents/skills/foo`, so `foo/SKILL.md` resolves correctly) | none — conformant at a coarser granularity |
 | `drifted` | symlink exists but points elsewhere | `sync` repairs |
 | `missing` | nothing at the expected path | `sync` creates |
-| `conflict` (`not-a-symlink`) | real file/dir shadows an artifact `.agents/` claims | warn + skip; resolve only via explicit `--force` (backup-rename, never delete) or adoption |
+| `conflict` (`not-a-symlink`) | real file/dir shadows an artifact `.agents/` claims | warn + skip; resolve only via explicit `--overwrite` on local `sync`/`fix` or `--force` on `global sync` (backup-rename, never delete) or adoption |
 | `orphaned` | symlink pointing *into* the `.agents/` tree, but no current artifact claims it (artifact removed/renamed) | prune candidate (`clean` / `fix`) |
 | `foreign` | anything else — not claimed by `.agents/`, not pointing into it | **hands off**; adoption candidate |
 
@@ -107,37 +108,44 @@ backup convention. Open questions:
 - Bulk mode (`--all-foreign`) with mandatory `--dry-run`-first UX for
   large cleanups.
 - Conflict resolution: per-artifact `--ours`/`--theirs` instead of the
-  run-wide `--force` blunderbuss.
+  run-wide `--overwrite` (local) / `--force` (global) blunderbuss.
 
-## Phase 3 — Unified fold/drill materializer (open, discussion)
+## Phase 3 — Unified fold/drill materializer (partially shipped)
 
-Local `sync` and `global sync` converge on one algorithm (GNU Stow's
-tree-folding model):
+### Shipped: local `sync` and `fix`
 
-- Destination absent → one symlink at the highest safe level
-  (**fold**), maximally `<tool>/<bucket>`.
-- Destination is a real dir → descend and link per-child (**drill**),
-  recursing; foreign siblings coexist untouched.
-- Destination is a real file conflicting with a claimed artifact →
-  conflict per the taxonomy above.
+Local `sync` and `fix` now fold or drill per bucket. An empty
+`<tool>/<bucket>` gets one bucket symlink (fold). A real directory
+there is kept and each artifact is linked inside it (drill). Foreign
+entries are untouched. Conflicts are warned, left byte-identical, and
+make `sync` exit non-zero. `--overwrite` renames a conflicting entry
+to `*.replaced-by-sync-agents`; nothing is deleted. `--force` on these
+two commands is deprecated and behaves as `--overwrite`. Fold depth
+starts at the bucket level, so the tool root is never folded. Behavior
+and trade-offs are documented in
+[`docs/commands/sync.md`](../docs/commands/sync.md).
 
-Notes and hazards to resolve before implementation:
+### Open
 
-- **Never fold the tool root.** `~/.claude -> ~/.agents` would route
-  the tool's own state writes (credentials, sessions) into the
-  source-of-truth tree. Fold depth starts at the bucket level.
-- **Fold capture semantics:** through a folded bucket link, a tool
+- **Unify `global sync` onto the same fold/drill helper.** It still
+  links per artifact with its own conflict path.
+- **Rename `global sync --force` to `--overwrite`.** Local and global
+  sync currently spell the same backup-rename behavior differently.
+  `global sync --force` keeps its meaning until this lands.
+- **Fold capture semantics.** Through a folded bucket link, a tool
   that later installs into e.g. `.claude/skills/` writes *into*
-  `.agents/skills/` — silent auto-adoption. Drilled links keep future
-  foreign writes foreign. Decide default (likely: drill once any
-  foreign content exists; fold only pristine buckets) and document.
-- Local `CmdSync` today ignores the semantic router entirely
-  (whole-bucket links, flat target list, no Codex). Unification means
-  deciding whether project scope adopts semantic routing (skills →
-  `.claude/commands/` etc.) or the router grows a "mirror" mode for
-  local scope. This is the largest open decision.
-- Migration: existing whole-bucket symlinks are valid folds under the
-  new model; drilling happens lazily only when coexistence is needed.
+  `.agents/skills/` (silent auto-adoption). Local sync folds only
+  empty bucket paths and drills existing directories. Whether to
+  drill proactively once foreign writes are expected is undecided.
+- **Semantic routing for project scope.** Local `CmdSync` still
+  ignores the semantic router (whole-bucket links, flat target list,
+  no Codex). Unification means deciding whether project scope adopts
+  semantic routing (skills → `.claude/commands/` etc.) or the router
+  grows a "mirror" mode for local scope. This is the largest open
+  decision.
+- **Orphan cleanup in drilled dirs.** A renamed or removed artifact
+  leaves an orphan entry symlink until `clean` runs. Pruning it in
+  `sync` itself is open.
 
 ## Non-goals
 

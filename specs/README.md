@@ -35,7 +35,7 @@ treat retired spec content as current intent.
 | SPEC-007 | linked sources | ✅ shipped v1.4.0 | `6c53595` | [linked-sources](../docs/linked-sources.md) |
 | SPEC-008 | full-context integrity lock (`agents.lock` + `agents.sum`) | 📝 draft | — (active) | — |
 | SPEC-009 | spec lifecycle tooling (`lint` spec checks + `spec retire`) | 📝 draft | — (active) | — |
-| SPEC-010 | conformance audit + unified fold/drill sync | 📝 draft — Phase 1 (audit) in flight | — (active) | — |
+| SPEC-010 | conformance audit + unified fold/drill sync | 🟡 Phase 3 fold/drill shipped for local `sync`/`fix`; **audit, adoption, global sync unification open** | — (active) | [sync](../docs/commands/sync.md) |
 | SPEC-011 | `add agent` import + selective load + multi-tool subagent routing | 🟡 Parts A–C shipped; **Part D open** | — (active) | [add](../docs/commands/add.md), [topology](../docs/topology.md), [scope-and-targets](../docs/architecture/scope-and-targets.md) |
 
 Next spec ID: **SPEC-012**.

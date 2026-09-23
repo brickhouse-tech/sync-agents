@@ -52,6 +52,9 @@
 //   - agent.go      — the App struct and the existing project-level
 //     commands (init, sync, index, fix, ...). Pre-dates the scope
 //     model; will be progressively refactored to use it.
+//   - bucketlink.go — the fold-or-drill materializer shared by sync
+//     and fix (SPEC-010 §Phase 3), ErrConflict, and the never-delete
+//     link primitive behind CreateSymlink.
 //   - scope.go      — the Scope type and ParseScope.
 //   - tool.go       — the Tool type, the Tools registry, ResolveTool,
 //     and helpers.

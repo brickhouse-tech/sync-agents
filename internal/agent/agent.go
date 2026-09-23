@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -50,9 +51,20 @@ type App struct {
 	// but does not modify the filesystem.
 	DryRun bool
 
-	// Force, when true, allows commands to overwrite existing files or
-	// symlinks that would otherwise be left alone.
+	// Force, when true, lets commands proceed past a safety check
+	// that would otherwise stop them: add overwrites an existing
+	// artifact, promote/approve accept critical scan findings, global
+	// sync moves a conflicting file aside. For the project-scope link
+	// commands (sync, fix) it is a deprecated alias of Overwrite — see
+	// deprecateForce in bucketlink.go — and never deletes anything.
 	Force bool
+
+	// Overwrite, when true, lets sync and fix move a real file or
+	// directory that shadows a claimed artifact aside to
+	// <path>.replaced-by-sync-agents before placing the symlink.
+	// Nothing is ever deleted (SPEC-010 §Phase 3). Without it, such a
+	// path is reported as a conflict and left in place.
+	Overwrite bool
 
 	// ActiveTargets is the list of tool IDs the current command should
 	// touch. Populated from .agents/config and overridden by the
@@ -163,42 +175,18 @@ func copyTargets(t []string) []string {
 	return r
 }
 
+// CreateSymlink places the symlink target -> source, creating parent
+// directories as needed. A symlink already at target is a no-op when
+// it resolves to source and is replaced otherwise. A real file or
+// directory at target is never deleted: without App.Overwrite the
+// call returns ErrConflict and leaves it alone; with App.Overwrite it
+// is renamed to a BackupSuffix sibling first. Under dryRun the call
+// prints "would link"/"would move aside" and writes nothing (but
+// still returns ErrConflict so dry-run reports the same conflicts a
+// real run would).
 func (a *App) CreateSymlink(source, target string, dryRun bool) error {
-	if dryRun {
-		fmt.Fprintf(a.Stdout, "  would link: %s -> %s\n", target, source)
-		return nil
-	}
-
-	os.MkdirAll(filepath.Dir(target), 0755)
-
-	fi, err := os.Lstat(target)
-	if err == nil {
-		if fi.Mode()&os.ModeSymlink != 0 {
-			existing, _ := os.Readlink(target)
-			if existing == source {
-				return nil
-			}
-			if a.Force {
-				os.Remove(target)
-			} else {
-				a.Warn(fmt.Sprintf("Symlink already exists: %s -> %s (use --force to overwrite)", target, existing))
-				return fmt.Errorf("exists")
-			}
-		} else {
-			if a.Force {
-				os.RemoveAll(target)
-			} else {
-				a.Warn(fmt.Sprintf("File already exists: %s (use --force to overwrite)", target))
-				return fmt.Errorf("exists")
-			}
-		}
-	}
-
-	if err := os.Symlink(source, target); err != nil {
-		return err
-	}
-	a.Info(fmt.Sprintf("Linked: %s -> %s", target, source))
-	return nil
+	_, err := a.placeLink(source, target, dryRun)
+	return err
 }
 
 func (a *App) PrintTree(dir, prefix string) {
@@ -379,11 +367,11 @@ func (a *App) CmdSync() error {
 		return err
 	}
 
-	agentsAbs, _ := filepath.Abs(filepath.Join(a.ProjectRoot, ".agents"))
-	_ = agentsAbs
+	a.deprecateForce()
 
 	a.Info("Syncing .agents/ to agent directories...")
 
+	conflicts := 0
 	for _, target := range a.ActiveTargets {
 		targetDir := ResolveTargetDir(target, a.ProjectRoot)
 		agentsRel := ResolveAgentsRel(target)
@@ -400,16 +388,20 @@ func (a *App) CmdSync() error {
 			}
 			subdirPath := filepath.Join(a.ProjectRoot, ".agents", b.Dir)
 			if fi, err := os.Stat(subdirPath); err == nil && fi.IsDir() {
-				sourceRel := agentsRel + "/" + b.Dir
-				a.CreateSymlink(sourceRel, filepath.Join(targetDir, b.Dir), a.DryRun)
+				conflicts += a.linkBucket(targetDir, agentsRel, b).Conflicts
 			}
 		}
 	}
 
-	// CLAUDE.md -> AGENTS.md
+	// A hand-written CLAUDE.md is warned about but kept out of the
+	// exit status: it is common and harmless, and failing every such
+	// project would teach users to ignore the conflict exit.
 	agentsMD := filepath.Join(a.ProjectRoot, "AGENTS.md")
 	if _, err := os.Stat(agentsMD); err == nil {
-		a.CreateSymlink("AGENTS.md", filepath.Join(a.ProjectRoot, "CLAUDE.md"), a.DryRun)
+		claudeMD := filepath.Join(a.ProjectRoot, "CLAUDE.md")
+		if err := a.CreateSymlink("AGENTS.md", claudeMD, a.DryRun); errors.Is(err, ErrConflict) {
+			a.Warn(fmt.Sprintf("conflict: %s is a real file shadowing AGENTS.md; leaving it in place (resync with --overwrite to move it aside)", claudeMD))
+		}
 	}
 
 	// Hooks (SPEC-004 Part C): merge .agents/hooks/*.json fragments
@@ -435,6 +427,10 @@ func (a *App) CmdSync() error {
 
 	a.updateGitignore()
 
+	if conflicts > 0 {
+		a.Warn(fmt.Sprintf("Sync finished with %d conflict(s); nothing was deleted", conflicts))
+		return fmt.Errorf("%d conflict(s)", conflicts)
+	}
 	a.Info("Sync complete.")
 	return nil
 }
@@ -473,7 +469,7 @@ func (a *App) CmdStatus() error {
 
 	fmt.Fprintln(a.Stdout)
 
-	for _, target := range AllTargets {
+	for _, target := range a.statusTargets() {
 		targetDir := ResolveTargetDir(target, a.ProjectRoot)
 		displayDir := targetDir
 		if strings.HasPrefix(targetDir, a.ProjectRoot+"/") {
@@ -501,7 +497,16 @@ func (a *App) CmdStatus() error {
 					lt, _ := os.Readlink(sub)
 					fmt.Fprintf(a.Stdout, "  [synced] %s -> %s\n", b.Dir, lt)
 				} else if serr == nil && sfi.IsDir() {
-					fmt.Fprintf(a.Stdout, "  [local] %s (not symlinked)\n", b.Dir)
+					stats := bucketMergeStats(sub, filepath.Join(a.ProjectRoot, ".agents", b.Dir))
+					conflictNote := ""
+					if stats.Conflicts > 0 {
+						conflictNote = fmt.Sprintf(", %d conflict(s)", stats.Conflicts)
+					}
+					if stats.Linked >= 1 {
+						fmt.Fprintf(a.Stdout, "  [merged] %s (%d/%d linked%s)\n", b.Dir, stats.Linked, stats.Total, conflictNote)
+					} else {
+						fmt.Fprintf(a.Stdout, "  [local] %s (not symlinked%s)\n", b.Dir, conflictNote)
+					}
 				} else if b.InInit {
 					// Optional buckets (agents/…) are only reported
 					// when something exists for them; the classic
@@ -516,6 +521,26 @@ func (a *App) CmdStatus() error {
 		}
 	}
 	return nil
+}
+
+// statusTargets is AllTargets plus any configured extra target (such
+// as wave), so a directory sync merges into is never missing from
+// status.
+func (a *App) statusTargets() []string {
+	targets := copyTargets(AllTargets)
+	for _, t := range a.ActiveTargets {
+		known := false
+		for _, k := range targets {
+			if k == t {
+				known = true
+				break
+			}
+		}
+		if !known {
+			targets = append(targets, t)
+		}
+	}
+	return targets
 }
 
 func (a *App) CmdIndex() error {
@@ -894,6 +919,7 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 	if err := a.EnsureAgentsDir(); err != nil {
 		return err
 	}
+	a.deprecateForce()
 
 	var subdirs []string
 	if fixType == "all" || fixType == "" {
@@ -1084,55 +1110,26 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 
 	// Phase 2: Repair broken/missing symlinks
 	repaired := 0
+	conflicts := 0
 	for _, target := range a.ActiveTargets {
 		targetDir := ResolveTargetDir(target, a.ProjectRoot)
 		agentsRel := ResolveAgentsRel(target)
 
 		for _, subdir := range subdirs {
-			if _, err := os.Stat(filepath.Join(agentsAbs, subdir)); err != nil {
+			b, ok := BucketForDir(subdir)
+			if !ok || !b.SyncsToTool(target) {
 				continue
 			}
-			expectedLink := filepath.Join(targetDir, subdir)
-			expectedSource := agentsRel + "/" + subdir
-
-			fi, err := os.Lstat(expectedLink)
-			if err == nil && fi.Mode()&os.ModeSymlink != 0 {
-				currentTarget, _ := os.Readlink(expectedLink)
-				if currentTarget == expectedSource {
-					continue
-				}
-				if a.DryRun {
-					fmt.Fprintf(a.Stdout, "  would relink: %s -> %s (was %s)\n", expectedLink, expectedSource, currentTarget)
-				} else {
-					os.Remove(expectedLink)
-					a.CreateSymlink(expectedSource, expectedLink, false)
-					a.Info(fmt.Sprintf("Repaired: %s -> %s (was %s)", expectedLink, expectedSource, currentTarget))
-				}
-				repaired++
-			} else if err == nil {
-				if a.Force {
-					if a.DryRun {
-						fmt.Fprintf(a.Stdout, "  would replace: %s with symlink -> %s\n", expectedLink, expectedSource)
-					} else {
-						os.RemoveAll(expectedLink)
-						a.CreateSymlink(expectedSource, expectedLink, false)
-						a.Info(fmt.Sprintf("Repaired: replaced %s with symlink -> %s", expectedLink, expectedSource))
-					}
-					repaired++
-				} else {
-					a.Warn(fmt.Sprintf("%s exists but is not a symlink (use --force to replace)", expectedLink))
-				}
-			} else {
-				if a.DryRun {
-					fmt.Fprintf(a.Stdout, "  would create: %s -> %s\n", expectedLink, expectedSource)
-				} else {
-					a.CreateSymlink(expectedSource, expectedLink, false)
-				}
+			if fi, err := os.Stat(filepath.Join(agentsAbs, subdir)); err != nil || !fi.IsDir() {
+				continue
+			}
+			res := a.linkBucket(targetDir, agentsRel, b)
+			conflicts += res.Conflicts
+			if res.changed() {
 				repaired++
 			}
 		}
 	}
-
 	// Repair CLAUDE.md symlink
 	agentsMDPath := filepath.Join(a.ProjectRoot, "AGENTS.md")
 	claudeMDPath := filepath.Join(a.ProjectRoot, "CLAUDE.md")
@@ -1182,7 +1179,7 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 	}
 
 	// Summary
-	if fixed == 0 && skipped == 0 && repaired == 0 && stateMigrated == 0 {
+	if fixed == 0 && skipped == 0 && repaired == 0 && stateMigrated == 0 && conflicts == 0 {
 		a.Info("Nothing to fix — all directories and symlinks are correct.")
 	} else {
 		if fixed > 0 {
@@ -1203,6 +1200,10 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 		if fixed > 0 {
 			a.Info("Run 'sync-agents sync' to update agent target symlinks.")
 		}
+	}
+	if conflicts > 0 {
+		a.Warn(fmt.Sprintf("Fix finished with %d conflict(s); nothing was deleted", conflicts))
+		return fmt.Errorf("%d conflict(s)", conflicts)
 	}
 	return nil
 }
@@ -1780,6 +1781,13 @@ func listMDFiles(dir string) []string {
 func listMDFilesRecursive(dir string) ([]string, []string) {
 	var names []string
 	var warns []string
+	// An absent directory is an empty, optional section — not a fault.
+	// The reference buckets (plans/specs) and every ADR status
+	// subdirectory (accepted/proposed/denied) are all optional, so a
+	// missing one must index as empty and stay silent rather than warn.
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return nil, nil
+	}
 	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			warns = append(warns, fmt.Sprintf("%s: %v", path, err))

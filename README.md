@@ -10,7 +10,7 @@ If you use more than one AI coding tool — or more than one repo — you alread
 
 `sync-agents` fixes all three:
 
-- **Zero drift.** `.agents/` is the single source of truth; tool directories are symlinks into it. Edit once, every tool sees it instantly.
+- **Zero drift.** `.agents/` is the single source of truth; tool directories are symlinks into it. Edit once, every tool sees it instantly. If a tool already created its own directory (say `.wave/skills/`), sync links each artifact into it and leaves the tool's entries alone. Existing tool directories are merged, never deleted. [Sync →](docs/commands/sync.md)
 - **Real distribution.** Declare upstream rules/skills/whole trees in `sources.yaml`, get SHA-pinned, lockfile-verified installs — a package manager, not a copy-paste culture.
 - **Supply-chain safety by default.** Everything fetched remotely is statically scanned and quarantined until you approve it. Your agent's instructions are an attack surface; treat them like one.
 
@@ -63,6 +63,8 @@ sync-agents approve code-review # promote it into .agents/
 # 5. Check that everything is wired up
 sync-agents status
 ```
+
+If `sync` finds a real file or directory where one of your artifacts belongs, it warns, leaves it untouched, and exits non-zero. Rerun with `--overwrite` to move it aside as `<path>.replaced-by-sync-agents`.
 
 That's it — every supported tool now reads the same rules, and `AGENTS.md` (symlinked to `CLAUDE.md`) indexes it all automatically.
 

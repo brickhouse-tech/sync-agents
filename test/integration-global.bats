@@ -529,7 +529,7 @@ EOF
   # The link now points back into the managed tree...
   [[ "$(readlink "$CLAUDE_DIR/rules/take-rule.md")" == *"/rules/take-rule.md" ]]
   # ...and the displaced foreign link is preserved, never deleted.
-  ls "$CLAUDE_DIR/rules/"take-rule.md.replaced-by-sync-agents-* >/dev/null 2>&1
+  ls "$CLAUDE_DIR/rules/"take-rule.md.replaced-by-sync-agents* >/dev/null 2>&1
 }
 
 @test "global sync fails when global root does not exist" {

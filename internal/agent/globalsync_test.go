@@ -456,7 +456,7 @@ func TestCmdGlobalSync_ForeignSymlinkForcedIsRecoverable(t *testing.T) {
 	}
 	var backups int
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), "x.md.replaced-by-sync-agents-") {
+		if strings.HasPrefix(e.Name(), "x.md"+BackupSuffix) {
 			backups++
 			if got := readlinkOrFail(t, filepath.Join(filepath.Dir(claudeRule), e.Name())); got != foreignTarget {
 				t.Errorf("backup points at %q, want the original %q", got, foreignTarget)

@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"time"
 )
 
 // GlobalSyncOpts holds the per-call options for CmdGlobalSync. The
@@ -308,8 +307,8 @@ func (a *App) resolveSyncTools(targets []string) ([]Tool, error) {
 //     override this — see issue #90.
 //   - Any other non-symlink at dest: skip with a warning unless
 //     App.Force is set, in which case the existing file is renamed
-//     to a `.replaced-by-sync-agents-<timestamp>` sibling and the
-//     symlink is placed.
+//     to a BackupSuffix sibling (see backupPath) and the symlink is
+//     placed.
 //
 // Symlinks are absolute paths (SPEC-002 §Global sync — symlink
 // semantics). Relative would be brittle because the global tree's
@@ -364,20 +363,9 @@ func (a *App) applySymlinkDestination(toolID string, art Artifact, dest Destinat
 			if !a.Force {
 				return fmt.Errorf("unmanaged entry at %s; pass --force to replace it (the original is renamed, not deleted)", dest.Path)
 			}
-			// With --force, rename the conflicting entry to a
-			// timestamped side path so it is always recoverable and
-			// a second conflict never clobbers the first backup. The
-			// timestamp is second-granular, so probe for a free name
-			// to stay collision-proof even within the same second.
-			stamp := time.Now().UTC().Format("20060102T150405Z")
-			base := fmt.Sprintf("%s.replaced-by-sync-agents-%s", dest.Path, stamp)
-			backup := base
-			for i := 1; ; i++ {
-				if _, err := os.Lstat(backup); os.IsNotExist(err) {
-					break
-				}
-				backup = fmt.Sprintf("%s-%d", base, i)
-			}
+			// With --force, rename the conflicting file/dir to a
+			// side path so it's recoverable.
+			backup := backupPath(dest.Path)
 			if err := os.Rename(dest.Path, backup); err != nil {
 				return err
 			}

@@ -378,17 +378,24 @@ teardown() {
   [[ "$output" == *"already exists"* ]]
 }
 
-@test "--force overwrites existing symlinks during sync" {
+@test "--force on sync is a deprecated alias that never deletes a real tool dir" {
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" sync
-  # Create a conflicting regular directory where a symlink would go
+  # A real (tool-owned) directory where the bucket symlink would go
   "$SCRIPT" -d "$TEST_DIR" clean
   mkdir -p "$TEST_DIR/.claude/rules"
   echo "conflict" > "$TEST_DIR/.claude/rules/something.txt"
 
   run "$SCRIPT" -d "$TEST_DIR" --force sync
   [ "$status" -eq 0 ]
-  [ -L "$TEST_DIR/.claude/rules" ]
+  [[ "$output" == *"deprecated"* ]]
+  # SPEC-010 Phase 3: the real dir is kept and drilled, not replaced
+  [ -d "$TEST_DIR/.claude/rules" ]
+  [ ! -L "$TEST_DIR/.claude/rules" ]
+  # the tool's own file survives
+  [ "$(cat "$TEST_DIR/.claude/rules/something.txt")" = "conflict" ]
+  # the claimed artifact is linked individually inside it
+  [ -L "$TEST_DIR/.claude/rules/state.md" ]
 }
 
 # --------------------------------------------------------------------------

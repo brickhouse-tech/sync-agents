@@ -366,6 +366,20 @@ func TestListMDFilesRecursive_Nested(t *testing.T) {
 	}
 }
 
+func TestListMDFilesRecursive_MissingDirIsSilent(t *testing.T) {
+	// Optional sections (plans/specs, adrs/{accepted,proposed,denied})
+	// are commonly absent. A missing directory must index as empty
+	// without emitting a warning.
+	missing := filepath.Join(t.TempDir(), "adrs", "accepted")
+	names, warns := listMDFilesRecursive(missing)
+	if len(warns) != 0 {
+		t.Errorf("a missing optional directory must not warn; got: %v", warns)
+	}
+	if len(names) != 0 {
+		t.Errorf("a missing directory must index as empty; got: %v", names)
+	}
+}
+
 func TestCreateSymlink_Repair(t *testing.T) {
 	dir := t.TempDir()
 	var buf strings.Builder

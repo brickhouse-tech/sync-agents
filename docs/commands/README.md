@@ -7,7 +7,7 @@ Every `sync-agents` command and global option, with links to the deep-dive doc w
 | Command | Description |
 |---|---|
 | `init` | Initialize the `.agents/` directory structure with `rules/`, `skills/`, `workflows/`, `STATE.md`, and generate `AGENTS.md` |
-| `sync` | Create symlinks from `.agents/` into all target directories, and symlink `AGENTS.md` to `CLAUDE.md` |
+| `sync [--overwrite]` | Create symlinks from `.agents/` into all target directories, and symlink `AGENTS.md` to `CLAUDE.md`. Merges into existing tool directories and never deletes. Exits non-zero on conflicts ([sync](./sync.md)) |
 | `watch` | Watch `.agents/` for changes and auto-regenerate `AGENTS.md` |
 | `import <url>` | Import a rule/skill/workflow from a URL |
 | `pull [--dry-run\|--offline\|--force\|--only NAME\|--global]` | Fetch every `sources.yaml` entry, verify integrity, install into the matching buckets ([sources](../sources.md)) |
@@ -25,7 +25,7 @@ Every `sync-agents` command and global option, with links to the deep-dive doc w
 | `inherit <label> <path>` | Add an inheritance link to AGENTS.md ([inheritance](../inheritance.md)) |
 | `inherit --list` | List current inheritance links |
 | `inherit --remove <label>` | Remove an inheritance link by label |
-| `status` | Show the current sync status of all targets and symlinks |
+| `status` | Show the current sync status of all targets and symlinks (`[synced]`, `[merged]`, `[local]`, `[missing]`) |
 | [`add <type> <name>`](./add.md) | Add a new artifact from a template (type is `rule`, `skill`, `workflow`, `agent`, `plan`, `spec`, `hook`, or `adr`) |
 | [`add <type> <name> --from <path>`](./add.md) | Import an existing artifact instead of scaffolding one; frontmatter `name:` is normalized, everything else preserved |
 | [`add <type> <name> --from <path> --link`](./add.md) | Symlink the source instead of copying it — the source stays authoritative |
@@ -33,7 +33,7 @@ Every `sync-agents` command and global option, with links to the deep-dive doc w
 | `adr <accept\|deny\|propose> <name>` | Move an ADR between status directories, update its `status:` frontmatter, and reindex ([ADRs](../adrs.md)) |
 | `lint [skills] [--fix]` | Validate SKILL.md frontmatter against [Claude's skill authoring rules](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices); `--fix` amends fixable findings in place ([lint](./lint.md)) |
 | `clean` | Remove all synced symlinks and empty target directories (does not remove `.agents/`) |
-| `fix [type]` | Migrate legacy dirs into `.agents/`, convert flat skill files to directory layout, and repair broken symlinks. Type: any bucket dir, or `all` (default) ([fix](./fix.md)) |
+| `fix [type] [--overwrite]` | Migrate legacy dirs into `.agents/`, convert flat skill files to directory layout, and repair broken symlinks. Type: any bucket dir, or `all` (default) ([fix](./fix.md)) |
 | `promote <type> <name>` | Copy an artifact from the project's `.agents/` to the user-level global store (`~/.agents/`) ([promote](./promote.md)) |
 | `global init` | Initialize the global `~/.agents/` store ([global init](./global-init.md)) |
 | `global sync` | Fan the global store out to each tool's user-level config dir with semantic-aware routing ([global sync](./global-sync.md)) |
@@ -49,7 +49,8 @@ Every `sync-agents` command and global option, with links to the deep-dive doc w
 | `-d`, `--dir <path>` | Set project root directory (default: current directory) |
 | `--targets <list>` | Comma-separated list of sync targets (default: `claude,windsurf,cursor,copilot`) |
 | `--dry-run` | Show what would be done without making changes |
-| `--force` | Overwrite existing files and symlinks |
+| `--overwrite` | (sync, fix) Rename a conflicting real entry to `<path>.replaced-by-sync-agents` and link in its place. Never deletes |
+| `--force` | Per command: `approve` accepts critical findings; `add` overwrites an existing artifact file; `promote` replaces an existing destination; `pull`, `update`, and `source add` overwrite locally edited artifacts; `global sync` renames conflicts to `*.replaced-by-sync-agents`. **Deprecated on `sync` and `fix`**, where it warns and behaves as `--overwrite` |
 | `--no-clobber` | (fix only) Skip items that already exist in `.agents/` instead of merging |
 | `--fix` | (lint only) Amend fixable frontmatter findings in place |
 | `--no-fix` | (index only) Skip the skill frontmatter backfill |
@@ -86,8 +87,8 @@ sync-agents sync --targets claude
 # Preview sync without making changes
 sync-agents sync --dry-run
 
-# Force overwrite existing symlinks
-sync-agents sync --force
+# Move conflicting real entries aside (backed up, never deleted)
+sync-agents sync --overwrite
 
 # Check sync status
 sync-agents status
