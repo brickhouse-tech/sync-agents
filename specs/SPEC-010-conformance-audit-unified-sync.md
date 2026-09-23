@@ -110,7 +110,7 @@ backup convention. Open questions:
 - Conflict resolution: per-artifact `--ours`/`--theirs` instead of the
   run-wide `--overwrite` (local) / `--force` (global) blunderbuss.
 
-## Phase 3: Unified fold/drill materializer (partially shipped)
+## Phase 3 — Unified fold/drill materializer (partially shipped)
 
 ### Shipped: local `sync` and `fix`
 

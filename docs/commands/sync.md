@@ -90,6 +90,13 @@ All five are persistent flags inherited from the root command.
 | non-zero | At least one conflict. Sync still processes every other bucket and target, merges hooks, and updates `.gitignore`. Last line is `Sync finished with N conflict(s); nothing was deleted`. |
 | non-zero | `.agents/` does not exist. |
 
+`--dry-run` reports the same conflicts a real run would and exits
+non-zero on them, so a dry run predicts the real run's exit code.
+
+A hand-written `CLAUDE.md` at the project root is reported with the
+same conflict warning but does not affect the exit code. It has always
+been a warn-and-continue case and is not a bucket conflict.
+
 CI jobs and scripted installs can treat a non-zero exit as "a tool
 directory needs attention", then rerun with `--overwrite` or resolve by
 hand.
@@ -146,7 +153,7 @@ sync-agents sync --targets wave; echo "exit=$?"
 ```text
 [info] Linked: .wave/skills/code-review -> ../../.agents/skills/code-review
 [warn] conflict: .wave/skills/debugging ... resync with --overwrite to move it aside
-[info] Sync finished with 1 conflict(s); nothing was deleted
+[warn] Sync finished with 1 conflict(s); nothing was deleted
 exit=1
 ```
 

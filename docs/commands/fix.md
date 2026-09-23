@@ -35,6 +35,10 @@ conflicting entry, pass `--overwrite`. It renames the entry to
 and then links. Recover by moving the backup back, as described in
 [Recovering a backup](./sync.md#recovering-a-backup).
 
+A conflict left in place makes `fix` exit non-zero after it finishes
+every other repair. The last line is
+`Fix finished with N conflict(s); nothing was deleted`.
+
 ## Flags
 
 | Flag | Default | Effect |
