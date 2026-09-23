@@ -106,6 +106,11 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 	// context. See SPEC-002 §Claude rule loading (issue #46).
 	var claudeRouted []ClaudeRoutedArtifact
 
+	// unmanaged collects destinations sync refused to overwrite
+	// because sync-agents did not create them, for the end-of-run
+	// summary below.
+	var unmanaged []string
+
 	a.Info(fmt.Sprintf("syncing %d artifact(s) to %d tool(s)", len(artifacts), len(tools)))
 
 	for _, art := range artifacts {
@@ -135,6 +140,7 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 				}
 				if err := a.applySymlinkDestination(tool.ID, art, dest); err != nil {
 					a.Warn(fmt.Sprintf("[%s] %s %q: %v", tool.ID, art.Type, art.Name, err))
+					unmanaged = append(unmanaged, dest.Path)
 				}
 
 			case StrategyConcat:
@@ -144,6 +150,18 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 				})
 			}
 		}
+	}
+
+	// Conflicts are per-artifact warnings so one bad path never aborts
+	// a whole sync — but a warning 300 lines up is a warning nobody
+	// reads. Collect them and restate the list at the end, where the
+	// user is actually looking (SPEC-011 Part A §Hazard).
+	if len(unmanaged) > 0 {
+		a.Warn(fmt.Sprintf("%d destination(s) left untouched because sync-agents did not create them:", len(unmanaged)))
+		for _, p := range unmanaged {
+			a.Warn(fmt.Sprintf("  %s", p))
+		}
+		a.Warn("Re-run with --force to take these paths; each original is renamed to a timestamped sibling, never deleted.")
 	}
 
 	// After the per-artifact pass — and after concat regen below —
@@ -272,14 +290,22 @@ func (a *App) resolveSyncTools(targets []string) ([]Tool, error) {
 //
 //   - Nothing at dest: create the symlink (after ensuring its parent
 //     dir exists).
-//   - Symlink already at dest: if it points at the right target,
-//     no-op (logged once at a higher level for brevity). Otherwise
-//     replace.
+//   - Symlink already at dest pointing INTO the canonical tree: ours
+//     to manage. If it points at the right target, no-op (logged once
+//     at a higher level for brevity). Otherwise it has drifted —
+//     remove and relink.
+//   - Symlink already at dest pointing OUTSIDE the canonical tree:
+//     foreign wiring somebody else established (a personas directory
+//     hand-linked into ~/.claude/agents/, say). Treated exactly like
+//     a non-symlink: skip with a warning unless App.Force, then
+//     backup-rename. See SPEC-011 Part A §Hazard — before that, this
+//     case fell into the drift branch and the user's link was
+//     deleted with no backup and no --force gate.
 //   - Non-symlink at dest that already resolves to target through a
 //     folded ancestor symlink (SPEC-010, e.g. ~/.claude/rules ->
 //     ~/.agents/rules): already correct, no-op. Force does not
 //     override this — see issue #90.
-//   - Any other non-symlink at dest: skip with warning unless
+//   - Any other non-symlink at dest: skip with a warning unless
 //     App.Force is set, in which case the existing file is renamed
 //     to a BackupSuffix sibling (see backupPath) and the symlink is
 //     placed.
@@ -297,6 +323,7 @@ func (a *App) applySymlinkDestination(toolID string, art Artifact, dest Destinat
 
 	existing, lerr := os.Lstat(dest.Path)
 	if lerr == nil {
+		ours := false
 		// Not a symlink itself, but Lstat follows intermediate path
 		// components — an ancestor dir symlink (SPEC-010 fold, e.g.
 		// ~/.claude/rules -> ~/.agents/rules) can route dest.Path to
@@ -311,21 +338,30 @@ func (a *App) applySymlinkDestination(toolID string, art Artifact, dest Destinat
 			return nil
 		}
 		if existing.Mode()&os.ModeSymlink != 0 {
-			// Existing symlink. Check whether it points at the
-			// right target; if so, no-op.
 			current, _ := os.Readlink(dest.Path)
 			if current == target {
+				// Already correct — nothing to do.
 				return nil
 			}
-			// Drifted symlink — repair.
+			ours = a.pointsIntoGlobalTree(dest.Path, current)
+			if !ours {
+				a.Warn(fmt.Sprintf(
+					"[%s] %s is a symlink to %s, outside the sync-agents tree — not ours to repair",
+					toolID, dest.Path, current))
+			}
+		}
+
+		if ours {
+			// Drifted link we own — repair in place.
 			if err := os.Remove(dest.Path); err != nil {
 				return err
 			}
 			a.Info(fmt.Sprintf("[%s] repair: %s now -> %s", toolID, dest.Path, target))
 		} else {
-			// Non-symlink in the way. Without --force, refuse.
+			// Foreign symlink, or a real file/dir. Without --force,
+			// refuse rather than destroy something we did not create.
 			if !a.Force {
-				return fmt.Errorf("non-symlink at %s; pass --force to overwrite", dest.Path)
+				return fmt.Errorf("unmanaged entry at %s; pass --force to replace it (the original is renamed, not deleted)", dest.Path)
 			}
 			// With --force, rename the conflicting file/dir to a
 			// side path so it's recoverable.
@@ -346,6 +382,45 @@ func (a *App) applySymlinkDestination(toolID string, art Artifact, dest Destinat
 		return err
 	}
 	return nil
+}
+
+// pointsIntoGlobalTree reports whether an existing symlink at
+// linkPath, whose raw target is linkTarget, resolves to somewhere
+// inside the canonical global .agents/ tree.
+//
+// This is the ownership test that separates a *drifted* link (ours,
+// pointing at the wrong artifact after a rename — safe to remove and
+// recreate) from a *foreign* one (somebody else's wiring that happens
+// to occupy a path we want — never removed without --force). It is
+// the SPEC-010 taxonomy applied at the one place that previously
+// conflated the two.
+//
+// Relative targets are resolved against the link's own directory, the
+// way the kernel resolves them. The comparison is lexical after
+// cleaning: a genuine symlink chain out of the tree would defeat
+// EvalSymlinks anyway, and erring toward "not ours" is the safe
+// direction — the worst outcome is a warning asking for --force.
+//
+// The global root itself is compared lexically, not through
+// EvalSymlinks: if ResolveGlobalRoot is reached via a symlink, a link
+// pointing at the real tree can read as foreign. That only downgrades
+// a repair to a --force prompt, never destroys anything, so the safe
+// lexical form is kept deliberately.
+func (a *App) pointsIntoGlobalTree(linkPath, linkTarget string) bool {
+	if linkTarget == "" {
+		return false
+	}
+	resolved := linkTarget
+	if !filepath.IsAbs(resolved) {
+		resolved = filepath.Join(filepath.Dir(linkPath), resolved)
+	}
+	resolved = filepath.Clean(resolved)
+
+	root := filepath.Clean(a.ResolveGlobalRoot())
+	if resolved == root {
+		return true
+	}
+	return strings.HasPrefix(resolved, root+string(filepath.Separator))
 }
 
 // symlinkTarget returns the path a tool's per-artifact symlink

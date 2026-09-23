@@ -252,12 +252,26 @@ func resolveLinkSource(target, source string) string {
 	return filepath.Join(filepath.Dir(target), source)
 }
 
+// backupPath returns a free sibling name to move a conflicting path
+// to. The first backup is <path>.replaced-by-sync-agents; if that is
+// taken, <path>.replaced-by-sync-agents.<unix-seconds> (the documented
+// format), and a -<n> counter is appended until a name is free. It
+// must never return an existing path: os.Rename onto an existing file
+// silently replaces it, which would destroy an earlier backup and
+// break the never-delete guarantee.
 func backupPath(path string) string {
 	backup := path + BackupSuffix
-	if _, err := os.Lstat(backup); err == nil {
-		backup = fmt.Sprintf("%s.%d", backup, time.Now().Unix())
+	if _, err := os.Lstat(backup); os.IsNotExist(err) {
+		return backup
 	}
-	return backup
+	base := fmt.Sprintf("%s.%d", backup, time.Now().Unix())
+	backup = base
+	for i := 1; ; i++ {
+		if _, err := os.Lstat(backup); os.IsNotExist(err) {
+			return backup
+		}
+		backup = fmt.Sprintf("%s-%d", base, i)
+	}
 }
 
 // BucketMergeStats describes how far a real (drilled) bucket

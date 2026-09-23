@@ -339,22 +339,22 @@ func TestCmdGlobalSync_DryRun(t *testing.T) {
 }
 
 // TestCmdGlobalSync_DriftedSymlinkRepaired covers the repair case: a
-// previously-created symlink that points at a stale target gets
-// silently re-pointed to the current artifact.
+// symlink we own — it points into the canonical tree, just at the
+// wrong artifact after a rename — gets silently re-pointed. No
+// --force needed, because nothing outside the tree is at risk.
 func TestCmdGlobalSync_DriftedSymlinkRepaired(t *testing.T) {
 	a, root, _ := newGlobalSyncTestApp(t)
-	seedRule(t, a.ResolveGlobalRoot(), "x", "body\n")
+	gr := a.ResolveGlobalRoot()
+	seedRule(t, gr, "x", "body\n")
+	seedRule(t, gr, "old-name", "stale\n")
 
-	// Manually create a drifted symlink before running sync.
-	driftedTarget := filepath.Join(root, "elsewhere.md")
-	if err := os.WriteFile(driftedTarget, []byte("stale"), 0o644); err != nil {
-		t.Fatalf("setup drift: %v", err)
-	}
+	// A stale link into our own tree: the artifact was renamed
+	// old-name -> x, leaving .claude/rules/x.md aimed at the old file.
 	claudeRule := filepath.Join(root, ".claude", "rules", "x.md")
 	if err := os.MkdirAll(filepath.Dir(claudeRule), 0o755); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	if err := os.Symlink(driftedTarget, claudeRule); err != nil {
+	if err := os.Symlink(filepath.Join(gr, "rules", "old-name.md"), claudeRule); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 
@@ -362,15 +362,149 @@ func TestCmdGlobalSync_DriftedSymlinkRepaired(t *testing.T) {
 		t.Fatalf("sync: %v", err)
 	}
 
-	// The symlink should now point at the canonical artifact.
 	got, err := os.Readlink(claudeRule)
 	if err != nil {
 		t.Fatalf("readlink: %v", err)
 	}
-	want := filepath.Join(a.ResolveGlobalRoot(), "rules", "x.md")
+	want := filepath.Join(gr, "rules", "x.md")
 	if got != want {
 		t.Errorf("symlink target = %q, want %q", got, want)
 	}
+}
+
+// TestCmdGlobalSync_ForeignSymlinkPreserved is the SPEC-011 Part A
+// hazard regression: a symlink pointing OUTSIDE the canonical tree is
+// somebody else's wiring (the motivating case is a personas directory
+// hand-linked into ~/.claude/agents/). Before the ownership check,
+// this fell into the drift branch and was deleted outright — no
+// backup, no --force gate, no way to tell it had happened.
+func TestCmdGlobalSync_ForeignSymlinkPreserved(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	seedRule(t, a.ResolveGlobalRoot(), "x", "body\n")
+
+	foreignTarget := filepath.Join(root, "elsewhere.md")
+	if err := os.WriteFile(foreignTarget, []byte("hand-managed"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	claudeRule := filepath.Join(root, ".claude", "rules", "x.md")
+	if err := os.MkdirAll(filepath.Dir(claudeRule), 0o755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.Symlink(foreignTarget, claudeRule); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	// Sync keeps going — one conflict must not abort a whole run — but
+	// it has to say so, both inline and in the end-of-run summary.
+	_, _, out := a, root, a.Stdout.(*bytes.Buffer)
+	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
+		t.Fatalf("sync should warn and continue, not fail: %v", err)
+	}
+	log := out.String()
+	if !strings.Contains(log, "outside the sync-agents tree") {
+		t.Errorf("expected an inline warning naming the foreign link; got:\n%s", log)
+	}
+	if !strings.Contains(log, "left untouched because sync-agents did not create them") {
+		t.Errorf("expected the end-of-run conflict summary; got:\n%s", log)
+	}
+
+	// The user's link is exactly as they left it.
+	got, err := os.Readlink(claudeRule)
+	if err != nil {
+		t.Fatalf("readlink: %v", err)
+	}
+	if got != foreignTarget {
+		t.Errorf("foreign symlink was modified: target = %q, want %q", got, foreignTarget)
+	}
+	if _, err := os.Stat(foreignTarget); err != nil {
+		t.Errorf("foreign symlink's target must survive: %v", err)
+	}
+}
+
+// TestCmdGlobalSync_ForeignSymlinkForcedIsRecoverable: --force may
+// take the path, but never by deletion. The displaced link is renamed
+// to a timestamped sibling so the user can put it back.
+func TestCmdGlobalSync_ForeignSymlinkForcedIsRecoverable(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	gr := a.ResolveGlobalRoot()
+	seedRule(t, gr, "x", "body\n")
+
+	foreignTarget := filepath.Join(root, "elsewhere.md")
+	if err := os.WriteFile(foreignTarget, []byte("hand-managed"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	claudeRule := filepath.Join(root, ".claude", "rules", "x.md")
+	if err := os.MkdirAll(filepath.Dir(claudeRule), 0o755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.Symlink(foreignTarget, claudeRule); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	a.Force = true
+	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
+		t.Fatalf("forced sync: %v", err)
+	}
+
+	if got, want := readlinkOrFail(t, claudeRule), filepath.Join(gr, "rules", "x.md"); got != want {
+		t.Errorf("symlink target = %q, want %q", got, want)
+	}
+
+	entries, err := os.ReadDir(filepath.Dir(claudeRule))
+	if err != nil {
+		t.Fatalf("readdir: %v", err)
+	}
+	var backups int
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "x.md"+BackupSuffix) {
+			backups++
+			if got := readlinkOrFail(t, filepath.Join(filepath.Dir(claudeRule), e.Name())); got != foreignTarget {
+				t.Errorf("backup points at %q, want the original %q", got, foreignTarget)
+			}
+		}
+	}
+	if backups != 1 {
+		t.Errorf("found %d backups, want exactly 1", backups)
+	}
+}
+
+// TestPointsIntoGlobalTree covers the ownership predicate directly,
+// including the relative-target form the kernel resolves against the
+// link's own directory, and the prefix-collision case where a
+// sibling path merely starts with the root's characters.
+func TestPointsIntoGlobalTree(t *testing.T) {
+	a := &App{GlobalRoot: "/home/u/.agents"}
+	cases := []struct {
+		name     string
+		linkPath string
+		target   string
+		want     bool
+	}{
+		{"absolute inside", "/home/u/.claude/rules/x.md", "/home/u/.agents/rules/x.md", true},
+		{"the root itself", "/home/u/.claude/rules", "/home/u/.agents", true},
+		{"absolute outside", "/home/u/.claude/agents/tars.md", "/home/u/personas/tars.md", false},
+		{"relative into tree", "/home/u/.claude/rules/x.md", "../../.agents/rules/x.md", true},
+		{"relative outside", "/home/u/.claude/rules/x.md", "../../personas/x.md", false},
+		{"prefix collision", "/home/u/.claude/rules/x.md", "/home/u/.agents-backup/rules/x.md", false},
+		{"empty target", "/home/u/.claude/rules/x.md", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := a.pointsIntoGlobalTree(tc.linkPath, tc.target); got != tc.want {
+				t.Errorf("pointsIntoGlobalTree(%q, %q) = %v, want %v", tc.linkPath, tc.target, got, tc.want)
+			}
+		})
+	}
+}
+
+// readlinkOrFail reads a symlink or fails the test.
+func readlinkOrFail(t *testing.T, path string) string {
+	t.Helper()
+	got, err := os.Readlink(path)
+	if err != nil {
+		t.Fatalf("readlink %s: %v", path, err)
+	}
+	return got
 }
 
 // TestCmdGlobalSync_ForceSkipsFoldedAncestor is the issue #90

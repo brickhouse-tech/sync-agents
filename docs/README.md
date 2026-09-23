@@ -62,6 +62,9 @@ form that's easier to read end-to-end than scattered code comments.
 
 ### Command deep-dives
 
+- [`sync-agents add`](./commands/add.md) — create an artifact from a
+  template, or import one that already exists by copy (`--from`) or by
+  symlink (`--from --link`).
 - [`sync-agents index`](./commands/index.md) — AGENTS.md regeneration,
   section-by-section, including the skill frontmatter backfill.
 - [`sync-agents lint`](./commands/lint.md) — SKILL.md compliance
@@ -107,6 +110,9 @@ durable content lives), so IDs stay resolvable after the file is gone.
 - [SPEC-010](../specs/SPEC-010-conformance-audit-unified-sync.md) (conformance audit and fold/drill sync). Fold/drill shipped for
   local `sync` and `fix`. Global sync unification, adoption, and the
   audit are open.
+- [SPEC-011](../specs/SPEC-011-agent-bucket-import-routing.md) — agent
+  bucket: import (`add --from`) and multi-tool subagent routing
+  shipped; per-agent selective load (Part D) open.
 
 ## Conventions
 

@@ -222,17 +222,77 @@ func TestTargetDestination_AgentClaude(t *testing.T) {
 	}
 }
 
-// TestTargetDestination_AgentOtherToolsSkip: no other registered tool
-// has a subagent surface — every non-Claude tool must skip, never
-// concat or mislabel the agent as a workflow/command.
+// TestTargetDestination_AgentSubagentTools routes agents into the
+// native subagent dir of every tool that has one (SPEC-011 Part A).
+// The per-tool parent differs — opencode's is an XDG path — so this
+// asserts the full path, not just the trailing segment.
+func TestTargetDestination_AgentSubagentTools(t *testing.T) {
+	cases := map[string]string{
+		"claude":   filepath.Join("/home/u", ".claude", "agents", "reviewer.md"),
+		"cursor":   filepath.Join("/home/u", ".cursor", "agents", "reviewer.md"),
+		"opencode": filepath.Join("/home/u", ".config", "opencode", "agents", "reviewer.md"),
+	}
+	for id, want := range cases {
+		for _, sem := range []Semantic{Invocable, Passive, Reference} {
+			d := TargetDestination(asTool(t, id), ArtifactAgent, "reviewer", sem, "", "/home/u")
+			if d.Strategy != StrategySymlink {
+				t.Errorf("[%s sem=%s] strategy = %v, want StrategySymlink", id, sem, d.Strategy)
+			}
+			if d.Path != want {
+				t.Errorf("[%s sem=%s] path = %q, want %q", id, sem, d.Path, want)
+			}
+		}
+	}
+}
+
+// TestTargetDestination_AgentOtherToolsSkip: tools with no subagent
+// surface must skip, never concat or mislabel the agent as a
+// workflow/command. Concat is the one that actually hurts — it would
+// inline a whole subagent body into an always-on instructions file.
 func TestTargetDestination_AgentOtherToolsSkip(t *testing.T) {
-	for _, id := range []string{"codeium", "cursor", "copilot", "codex"} {
+	for _, id := range []string{"codeium", "copilot", "codex"} {
 		d := TargetDestination(asTool(t, id), ArtifactAgent, "reviewer", Invocable, "", "/home/u")
 		if d.Strategy != StrategySkip {
 			t.Errorf("[%s] strategy = %v, want StrategySkip", id, d.Strategy)
 		}
 		if d.SkipReason == "" {
 			t.Errorf("[%s] SkipReason must be set", id)
+		}
+	}
+}
+
+// TestTargetDestination_AgentRoutingMatchesBucket is the anti-drift
+// guard between the two places that decide who has a subagent
+// surface: the agents bucket's Tools restriction (used by local sync)
+// and this routing branch (used by global sync). They must agree for
+// every registered tool, or an agent appears at one scope and
+// vanishes at the other.
+func TestTargetDestination_AgentRoutingMatchesBucket(t *testing.T) {
+	bucket, ok := BucketForArtifact(ArtifactAgent)
+	if !ok {
+		t.Fatal("agents bucket must be registered")
+	}
+	for _, tool := range Tools {
+		d := TargetDestination(tool, ArtifactAgent, "reviewer", Invocable, "", "/home/u")
+		linked := d.Strategy == StrategySymlink
+		if linked != bucket.SyncsToTool(tool.ID) {
+			t.Errorf("[%s] global routing links=%v but bucket.SyncsToTool=%v", tool.ID, linked, bucket.SyncsToTool(tool.ID))
+		}
+	}
+}
+
+// TestTargetDestination_OpencodeNonAgentSkips pins the conservative
+// half of SPEC-011 Part B: only opencode's subagent surface is
+// verified, so every other bucket skips with a reason rather than
+// guessing a path inside a tree the user hand-manages.
+func TestTargetDestination_OpencodeNonAgentSkips(t *testing.T) {
+	for _, typ := range []ArtifactType{ArtifactRule, ArtifactSkill, ArtifactWorkflow} {
+		d := TargetDestination(asTool(t, "opencode"), typ, "x", Invocable, "", "/home/u")
+		if d.Strategy != StrategySkip {
+			t.Errorf("[%s] strategy = %v, want StrategySkip", typ, d.Strategy)
+		}
+		if d.SkipReason == "" {
+			t.Errorf("[%s] SkipReason must be set", typ)
 		}
 	}
 }

@@ -172,6 +172,30 @@ var Tools = []Tool{
 			ScopeGlobal: ".codex",
 		},
 	},
+	{
+		// opencode (SPEC-011 Part B). Its user-scope tree follows the
+		// XDG convention under ~/.config rather than a dotdir at
+		// $HOME, so the global segment nests the same way Copilot's
+		// ".github/copilot" does — filepath.Join handles the
+		// separator on every platform and DirForScope needs no
+		// special case.
+		//
+		// opencode reads AGENTS.md natively, so it needs no concat
+		// destination of its own. Its subagent dir is "agents"
+		// (plural) at both scopes, matching Bucket.Dir, so the agents
+		// bucket routes there without a per-tool name override.
+		//
+		// Deliberately absent from the default `targets =` line that
+		// `init` writes (SPEC-011 Open Question 1): registering a
+		// tool must not cause the next sync to walk into an
+		// .opencode/ directory the user hand-manages. Opting in is a
+		// config edit or --targets flag.
+		ID: "opencode",
+		DirByScope: map[Scope]string{
+			ScopeLocal:  ".opencode",
+			ScopeGlobal: filepath.Join(".config", "opencode"),
+		},
+	},
 }
 
 // ResolveTool returns the Tool whose ID or alias matches the given

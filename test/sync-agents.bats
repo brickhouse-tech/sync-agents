@@ -1379,15 +1379,21 @@ CONF
   grep -q "name: reviewer" "$TEST_DIR/.agents/agents/reviewer.md"
 }
 
-@test "sync links agents bucket into .claude only" {
+@test "sync links agents bucket into claude and cursor" {
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" add agent reviewer
   run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
+  # SPEC-011 Part A: the agents bucket routes to every tool with a
+  # native subagent surface — claude + cursor. Tools without one
+  # (windsurf, copilot) never receive it.
   [ -L "$TEST_DIR/.claude/agents" ]
-  [ ! -e "$TEST_DIR/.cursor/agents" ]
+  [ -L "$TEST_DIR/.cursor/agents" ]
   [ ! -e "$TEST_DIR/.windsurf/agents" ]
   [ ! -e "$TEST_DIR/.github/copilot/agents" ]
+  # opencode also has a subagent surface but is opt-in — absent from
+  # the default target set, so a plain sync never touches it.
+  [ ! -e "$TEST_DIR/.opencode/agent" ]
 }
 
 @test "sync without agents dir creates no agents links (backwards compat)" {

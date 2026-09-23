@@ -48,10 +48,10 @@ func TestDiscoverArtifacts_OSScoped(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	mk("rules/security.md")     // always
-	mk("rules/macos/brew.md")   // darwin only
-	mk("rules/linux/apt.md")    // linux only
-	mk("rules/unix/posix.md")   // darwin + linux
+	mk("rules/security.md")   // always
+	mk("rules/macos/brew.md") // darwin only
+	mk("rules/linux/apt.md")  // linux only
+	mk("rules/unix/posix.md") // darwin + linux
 
 	tests := []struct {
 		goos string

@@ -2,7 +2,7 @@
 
 **One `.agents/` directory. Every AI coding assistant. Always in sync.**
 
-`sync-agents` is a package manager and sync engine for AI-agent context — the rules, skills, workflows, subagents, plans, specs, and ADRs you feed to Claude, Cursor, Windsurf, and Copilot. Write everything once in `.agents/`, and `sync-agents` fans it out to every tool via symlinks, keeps an `AGENTS.md` index current, and lets you pull shared context from other repos as safely and reproducibly as you'd install an npm package.
+`sync-agents` is a package manager and sync engine for AI-agent context — the rules, skills, workflows, subagents, plans, specs, and ADRs you feed to Claude, Cursor, Windsurf, Copilot, Codex, and opencode. Write everything once in `.agents/`, and `sync-agents` fans it out to every tool via symlinks, keeps an `AGENTS.md` index current, and lets you pull shared context from other repos as safely and reproducibly as you'd install an npm package.
 
 ## Why you want this
 
@@ -72,6 +72,9 @@ That's it — every supported tool now reads the same rules, and `AGENTS.md` (sy
 
 ### 📦 Seven buckets, one tree
 Rules, skills, workflows, subagents, plans, specs, and ADRs each get a first-class home under `.agents/`, routed to the right place per tool (ADRs even track proposed/accepted/denied status by directory). [Topology →](docs/topology.md)
+
+### 🤖 Subagents, written once — *new in 1.5.0*
+Define a subagent once in `.agents/agents/` and it lands in `.claude/agents/`, `.cursor/agents/`, and `.opencode/agents/` — the three harnesses with a native subagent surface. Already have one? `add agent <name> --from <path>` imports it, or `--link` leaves the original authoritative. [add →](docs/commands/add.md)
 
 ### 🔒 Declarative sources with a lockfile
 `sources.yaml` + `sources.lock`: every upstream artifact resolves to a commit SHA, downloads are content-hashed, and a tampered tarball aborts before anything touches disk. `pull`, `update`, `source list` — reproducible like a real package manager. [Sources →](docs/sources.md)

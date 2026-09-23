@@ -26,7 +26,9 @@ Every `sync-agents` command and global option, with links to the deep-dive doc w
 | `inherit --list` | List current inheritance links |
 | `inherit --remove <label>` | Remove an inheritance link by label |
 | `status` | Show the current sync status of all targets and symlinks (`[synced]`, `[merged]`, `[local]`, `[missing]`) |
-| `add <type> <name>` | Add a new artifact from a template (type is `rule`, `skill`, `workflow`, `agent`, `plan`, `spec`, `hook`, or `adr`) |
+| [`add <type> <name>`](./add.md) | Add a new artifact from a template (type is `rule`, `skill`, `workflow`, `agent`, `plan`, `spec`, `hook`, or `adr`) |
+| [`add <type> <name> --from <path>`](./add.md) | Import an existing artifact instead of scaffolding one; frontmatter `name:` is normalized, everything else preserved |
+| [`add <type> <name> --from <path> --link`](./add.md) | Symlink the source instead of copying it — the source stays authoritative |
 | `index [--no-fix]` | Regenerate `AGENTS.md` by scanning `.agents/`. Backfills fixable skill frontmatter first (`--no-fix` skips the backfill) ([index](./index.md)) |
 | `adr <accept\|deny\|propose> <name>` | Move an ADR between status directories, update its `status:` frontmatter, and reindex ([ADRs](../adrs.md)) |
 | `lint [skills] [--fix]` | Validate SKILL.md frontmatter against [Claude's skill authoring rules](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices); `--fix` amends fixable findings in place ([lint](./lint.md)) |
@@ -67,6 +69,8 @@ sync-agents add workflow deploy
 
 # Add a Claude subagent / a plan / a spec (creates the bucket on demand)
 sync-agents add agent reviewer
+sync-agents add agent reviewer --from ~/agents/reviewer.md
+sync-agents add agent tars --from ~/personas/tars.md --link
 sync-agents add plan q3-roadmap
 sync-agents add spec sso-login
 
