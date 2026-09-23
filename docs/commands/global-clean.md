@@ -85,7 +85,7 @@ sync-agents global clean && sync-agents global sync
 `clean` followed by `sync` is a way to **force-rebuild** every
 destination from scratch — useful after big refactors of
 `~/.agents/` (renaming a skill, deleting rules) or when a previous
-sync's `--force` left behind `.replaced-by-sync-agents` backup files
+`global sync --force` left behind `.replaced-by-sync-agents` backup files
 you want gone.
 
 ```bash
@@ -93,7 +93,7 @@ sync-agents global clean
 sync-agents global sync
 ```
 
-This is safer than running `sync --force` blind, because clean
+This is safer than running `global sync --force` blind, because clean
 preserves user-owned content (the safety contract above) while
 clearing everything sync wrote.
 
