@@ -8,19 +8,6 @@ import (
 	"testing"
 )
 
-// The tests in this file pin the "fold or drill" contract of project-mode
-// `sync` and `fix`: a bucket path that is free (or a symlink) is folded
-// into a single directory symlink, while a bucket path that is a real
-// directory is drilled into, linking each .agents/ entry individually
-// and never moving, renaming, or deleting the directory itself.
-
-// backupSuffix is the rename suffix --overwrite uses when it moves a
-// real file or directory out of the way of a symlink.
-const backupSuffix = ".replaced-by-sync-agents"
-
-// newSyncApp builds an App rooted at a fresh temp dir with .agents/
-// seeded with one skill (skills/foo/SKILL.md) and one rule (rules/r.md),
-// syncing only to the given targets.
 func newSyncApp(t *testing.T, targets ...string) (*App, string, *bytes.Buffer) {
 	t.Helper()
 	root := t.TempDir()
@@ -36,9 +23,8 @@ func newSyncApp(t *testing.T, targets ...string) (*App, string, *bytes.Buffer) {
 	return app, root, &buf
 }
 
-// assertResolvesTo fails unless link is a symlink whose fully resolved
-// path equals the resolved path of want. Both sides go through
-// EvalSymlinks because macOS temp dirs live under the /var symlink.
+// Both sides go through EvalSymlinks because macOS temp dirs live
+// under the /var symlink.
 func assertResolvesTo(t *testing.T, link, want string) {
 	t.Helper()
 	fi, err := os.Lstat(link)
@@ -61,7 +47,6 @@ func assertResolvesTo(t *testing.T, link, want string) {
 	}
 }
 
-// assertRealDir fails unless p is a directory and not a symlink.
 func assertRealDir(t *testing.T, p string) {
 	t.Helper()
 	fi, err := os.Lstat(p)
@@ -73,7 +58,6 @@ func assertRealDir(t *testing.T, p string) {
 	}
 }
 
-// assertContent fails unless the regular file at p holds want.
 func assertContent(t *testing.T, p, want string) {
 	t.Helper()
 	fi, err := os.Lstat(p)
@@ -92,7 +76,6 @@ func assertContent(t *testing.T, p, want string) {
 	}
 }
 
-// assertAbsent fails if anything (including a dangling symlink) is at p.
 func assertAbsent(t *testing.T, p string) {
 	t.Helper()
 	if _, err := os.Lstat(p); err == nil {
@@ -100,8 +83,6 @@ func assertAbsent(t *testing.T, p string) {
 	}
 }
 
-// seedWaveSkillsDir creates .wave/skills as a real directory holding a
-// tool-native skill that .agents/ does not claim.
 func seedWaveSkillsDir(t *testing.T, root string) string {
 	t.Helper()
 	native := filepath.Join(root, ".wave", "skills", "wave-native", "SKILL.md")
@@ -109,8 +90,6 @@ func seedWaveSkillsDir(t *testing.T, root string) string {
 	return native
 }
 
-// seedShadowingSkill creates .wave/skills/foo/SKILL.md as a real file
-// that collides with .agents/skills/foo.
 func seedShadowingSkill(t *testing.T, root string) string {
 	t.Helper()
 	mine := filepath.Join(root, ".wave", "skills", "foo", "SKILL.md")
@@ -164,7 +143,7 @@ func TestCmdSync_OverwriteMovesConflictAside(t *testing.T) {
 	}
 
 	assertResolvesTo(t, filepath.Join(root, ".wave", "skills", "foo"), filepath.Join(root, ".agents", "skills", "foo"))
-	assertContent(t, filepath.Join(root, ".wave", "skills", "foo"+backupSuffix, "SKILL.md"), "mine")
+	assertContent(t, filepath.Join(root, ".wave", "skills", "foo"+BackupSuffix, "SKILL.md"), "mine")
 	if !strings.Contains(buf.String(), "moved existing") {
 		t.Errorf("output missing %q:\n%s", "moved existing", buf)
 	}
@@ -173,7 +152,7 @@ func TestCmdSync_OverwriteMovesConflictAside(t *testing.T) {
 func TestCmdSync_OverwriteBackupNameDoesNotClobberExistingBackup(t *testing.T) {
 	app, root, buf := newSyncApp(t, "wave")
 	seedShadowingSkill(t, root)
-	oldBackup := filepath.Join(root, ".wave", "skills", "foo"+backupSuffix, "SKILL.md")
+	oldBackup := filepath.Join(root, ".wave", "skills", "foo"+BackupSuffix, "SKILL.md")
 	writeFile(t, oldBackup, "old backup")
 	app.Overwrite = true
 
@@ -182,7 +161,7 @@ func TestCmdSync_OverwriteBackupNameDoesNotClobberExistingBackup(t *testing.T) {
 	}
 
 	assertContent(t, oldBackup, "old backup")
-	matches, _ := filepath.Glob(filepath.Join(root, ".wave", "skills", "foo"+backupSuffix+".*"))
+	matches, _ := filepath.Glob(filepath.Join(root, ".wave", "skills", "foo"+BackupSuffix+".*"))
 	if len(matches) != 1 {
 		t.Fatalf("want exactly one timestamped backup, got %v", matches)
 	}
@@ -203,7 +182,7 @@ func TestCmdSync_ForceIsDeprecatedAliasForOverwrite(t *testing.T) {
 		t.Errorf("output missing deprecation warning:\n%s", buf)
 	}
 	assertResolvesTo(t, filepath.Join(root, ".wave", "skills", "foo"), filepath.Join(root, ".agents", "skills", "foo"))
-	assertContent(t, filepath.Join(root, ".wave", "skills", "foo"+backupSuffix, "SKILL.md"), "mine")
+	assertContent(t, filepath.Join(root, ".wave", "skills", "foo"+BackupSuffix, "SKILL.md"), "mine")
 	assertContent(t, native, "native")
 }
 
@@ -288,7 +267,7 @@ func TestCmdSync_OverwriteMovesRealFileAtBucketPathAside(t *testing.T) {
 		t.Fatalf("CmdSync: %v\n%s", err, buf)
 	}
 
-	assertContent(t, blocker+backupSuffix, "blocker")
+	assertContent(t, blocker+BackupSuffix, "blocker")
 	assertResolvesTo(t, blocker, filepath.Join(root, ".agents", "rules"))
 }
 
@@ -314,7 +293,7 @@ func TestCmdSync_DryRunDoesNotMoveConflict(t *testing.T) {
 	_ = app.CmdSync()
 
 	assertContent(t, mine, "mine")
-	assertAbsent(t, filepath.Join(root, ".wave", "skills", "foo"+backupSuffix))
+	assertAbsent(t, filepath.Join(root, ".wave", "skills", "foo"+BackupSuffix))
 }
 
 func TestCmdSync_CopilotDrillRelativePathResolves(t *testing.T) {
@@ -409,7 +388,7 @@ func TestCmdFix_RealDirIsDrilledNotReplaced(t *testing.T) {
 	assertRealDir(t, filepath.Join(root, ".wave", "skills"))
 	assertContent(t, native, "native")
 	assertResolvesTo(t, filepath.Join(root, ".wave", "skills", "foo"), filepath.Join(root, ".agents", "skills", "foo"))
-	backups, _ := filepath.Glob(filepath.Join(root, ".wave", "skills", "*"+backupSuffix+"*"))
+	backups, _ := filepath.Glob(filepath.Join(root, ".wave", "skills", "*"+BackupSuffix+"*"))
 	if len(backups) != 0 {
 		t.Errorf("fix without --overwrite must not rename anything, found %v", backups)
 	}
@@ -428,5 +407,20 @@ func TestCmdFix_ForceNeverDeletesRealDir(t *testing.T) {
 	assertContent(t, native, "native")
 	if !strings.Contains(buf.String(), "deprecated") {
 		t.Errorf("output missing deprecation warning:\n%s", buf)
+	}
+}
+
+func TestCmdFix_ConflictExitsNonZeroAndKeepsContent(t *testing.T) {
+	app, root, buf := newSyncApp(t, "wave")
+	mine := seedShadowingSkill(t, root)
+
+	err := app.CmdFix("all", false)
+
+	if err == nil {
+		t.Fatalf("CmdFix should fail on a conflict\n%s", buf)
+	}
+	assertContent(t, mine, "mine")
+	if !strings.Contains(buf.String(), "nothing was deleted") {
+		t.Errorf("output missing conflict summary:\n%s", buf)
 	}
 }

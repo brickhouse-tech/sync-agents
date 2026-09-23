@@ -281,8 +281,8 @@ func (a *App) resolveSyncTools(targets []string) ([]Tool, error) {
 //     override this — see issue #90.
 //   - Any other non-symlink at dest: skip with warning unless
 //     App.Force is set, in which case the existing file is renamed
-//     to a `.replaced-by-sync-agents-<timestamp>` sibling and the
-//     symlink is placed.
+//     to a BackupSuffix sibling (see backupPath) and the symlink is
+//     placed.
 //
 // Symlinks are absolute paths (SPEC-002 §Global sync — symlink
 // semantics). Relative would be brittle because the global tree's
@@ -329,7 +329,7 @@ func (a *App) applySymlinkDestination(toolID string, art Artifact, dest Destinat
 			}
 			// With --force, rename the conflicting file/dir to a
 			// side path so it's recoverable.
-			backup := fmt.Sprintf("%s.replaced-by-sync-agents", dest.Path)
+			backup := backupPath(dest.Path)
 			if err := os.Rename(dest.Path, backup); err != nil {
 				return err
 			}

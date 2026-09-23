@@ -105,10 +105,6 @@ func main() {
 	rootCmd.PersistentFlags().StringVar(&customTargets, "targets", "", "Comma-separated targets")
 	rootCmd.PersistentFlags().BoolVar(&app.DryRun, "dry-run", false, "Show what would be done")
 	rootCmd.PersistentFlags().BoolVar(&app.Force, "force", false, "Proceed past a safety check (add, approve, promote, pull, global sync); deprecated for sync/fix, use --overwrite")
-	// --overwrite is the only flag that lets sync/fix touch a real
-	// file or directory in a tool dir, and even then it renames the
-	// obstruction to a recoverable sibling (SPEC-010 §Phase 3). The
-	// old --force RemoveAll path is gone.
 	rootCmd.PersistentFlags().BoolVar(&app.Overwrite, "overwrite", false, "Move a conflicting real file or directory aside to <path>.replaced-by-sync-agents and place the symlink (never deletes)")
 	// --global-root overrides the user's global .agents/ tree
 	// location. Wins over $SYNC_AGENTS_GLOBAL_ROOT and the default

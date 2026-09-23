@@ -350,9 +350,9 @@ func (a *App) CmdSync() error {
 		}
 	}
 
-	// CLAUDE.md -> AGENTS.md. A hand-written CLAUDE.md is reported
-	// but does not count toward the exit status: it has always been a
-	// warn-and-continue case and is not a bucket conflict.
+	// A hand-written CLAUDE.md is warned about but kept out of the
+	// exit status: it is common and harmless, and failing every such
+	// project would teach users to ignore the conflict exit.
 	agentsMD := filepath.Join(a.ProjectRoot, "AGENTS.md")
 	if _, err := os.Stat(agentsMD); err == nil {
 		claudeMD := filepath.Join(a.ProjectRoot, "CLAUDE.md")
@@ -454,10 +454,6 @@ func (a *App) CmdStatus() error {
 					lt, _ := os.Readlink(sub)
 					fmt.Fprintf(a.Stdout, "  [synced] %s -> %s\n", b.Dir, lt)
 				} else if serr == nil && sfi.IsDir() {
-					// A real directory the tool owns. Report how far
-					// sync has drilled into it rather than a flat
-					// "not symlinked", which read as an error even when
-					// every artifact was already linked inside.
 					stats := bucketMergeStats(sub, filepath.Join(a.ProjectRoot, ".agents", b.Dir))
 					conflictNote := ""
 					if stats.Conflicts > 0 {
@@ -484,11 +480,9 @@ func (a *App) CmdStatus() error {
 	return nil
 }
 
-// statusTargets returns the tool IDs CmdStatus reports on: the
-// built-in AllTargets in their usual order, followed by any extra
-// target configured in .agents/config (e.g. "wave") that sync links
-// into but the built-in list does not know. Without this, status
-// would stay silent about a directory sync just merged into.
+// statusTargets is AllTargets plus any configured extra target (such
+// as wave), so a directory sync merges into is never missing from
+// status.
 func (a *App) statusTargets() []string {
 	targets := copyTargets(AllTargets)
 	for _, t := range a.ActiveTargets {
@@ -1071,9 +1065,7 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 		}
 	}
 
-	// Phase 2: Repair broken/missing symlinks. Same fold-or-drill
-	// helper as CmdSync so fix cannot consider a layout broken that
-	// sync considers conformant (or vice versa).
+	// Phase 2: Repair broken/missing symlinks
 	repaired := 0
 	conflicts := 0
 	for _, target := range a.ActiveTargets {
@@ -1095,10 +1087,6 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 			}
 		}
 	}
-	if conflicts > 0 {
-		a.Warn(fmt.Sprintf("Fix finished with %d conflict(s); nothing was deleted", conflicts))
-	}
-
 	// Repair CLAUDE.md symlink
 	agentsMDPath := filepath.Join(a.ProjectRoot, "AGENTS.md")
 	claudeMDPath := filepath.Join(a.ProjectRoot, "CLAUDE.md")
@@ -1169,6 +1157,10 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 		if fixed > 0 {
 			a.Info("Run 'sync-agents sync' to update agent target symlinks.")
 		}
+	}
+	if conflicts > 0 {
+		a.Warn(fmt.Sprintf("Fix finished with %d conflict(s); nothing was deleted", conflicts))
+		return fmt.Errorf("%d conflict(s)", conflicts)
 	}
 	return nil
 }

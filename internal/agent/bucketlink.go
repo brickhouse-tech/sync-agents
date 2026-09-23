@@ -20,20 +20,12 @@ var ErrConflict = errors.New("conflict: real file or directory in the way (resyn
 // learn one recovery location for both scopes.
 const BackupSuffix = ".replaced-by-sync-agents"
 
-// linkOutcome reports what placeLink actually did, so callers can
-// keep accurate "fixed N item(s)" tallies without re-inspecting the
-// filesystem.
 type linkOutcome int
 
 const (
-	// linkNoop means the link already pointed at the right place.
 	linkNoop linkOutcome = iota
-	// linkCreated means nothing was at the path and a link was made.
 	linkCreated
-	// linkRepaired means a drifted symlink was replaced.
 	linkRepaired
-	// linkMovedAside means a real file/dir was renamed to a backup
-	// sibling and the link placed in its stead (Overwrite only).
 	linkMovedAside
 )
 
@@ -52,8 +44,6 @@ type BucketLinkResult struct {
 	Conflicts int
 }
 
-// changed reports whether the call altered the filesystem (or would
-// have, under dry-run).
 func (r BucketLinkResult) changed() bool {
 	return r.Linked+r.Repaired+r.Moved > 0
 }
@@ -115,13 +105,11 @@ func (a *App) linkBucket(targetDir, agentsRel string, b Bucket) BucketLinkResult
 	return r
 }
 
-// drillBucket links each artifact of .agents/<bucket>/ into the real
-// directory dest one entry at a time. Dotfiles in the source are
-// skipped (editor state, .DS_Store). Entries are linked as a whole:
-// a skill directory becomes <dest>/<name> -> ../../.agents/skills/<name>,
-// not a link to its SKILL.md, so supporting files inside the skill
-// resolve too. The relative target is computed with filepath.Rel so
-// the same code serves .claude/ and the deeper .github/copilot/.
+// drillBucket links each entry of .agents/<bucket>/ as a whole
+// (<dest>/<name> -> ../../.agents/skills/<name>), not its SKILL.md as
+// global sync does, so a skill's supporting files resolve through the
+// link too. filepath.Rel keeps the link text correct at any depth,
+// including .github/copilot/.
 func (a *App) drillBucket(dest, srcAbs string, b Bucket, r *BucketLinkResult) {
 	entries, err := os.ReadDir(srcAbs)
 	if err != nil {
@@ -142,15 +130,12 @@ func (a *App) drillBucket(dest, srcAbs string, b Bucket, r *BucketLinkResult) {
 	}
 }
 
-// placeClaimed places one symlink for an artifact .agents/ claims and
-// folds the outcome into r. claimed is the display path used in the
-// conflict warning ("skills/foo" rather than the absolute link path).
-func (a *App) placeClaimed(source, target, claimed string, r *BucketLinkResult) {
+func (a *App) placeClaimed(source, target, claimedLabel string, r *BucketLinkResult) {
 	outcome, err := a.placeLink(source, target, a.DryRun)
 	if errors.Is(err, ErrConflict) {
 		r.Conflicts++
 		a.Warn(fmt.Sprintf("conflict: %s is a real %s shadowing %s; leaving it in place (resync with --overwrite to move it aside)",
-			target, realKind(target), claimed))
+			target, realKind(target), claimedLabel))
 		return
 	}
 	if err != nil {
@@ -167,8 +152,6 @@ func (a *App) placeClaimed(source, target, claimed string, r *BucketLinkResult) 
 	}
 }
 
-// realKind names the obstruction at path for conflict messages:
-// "directory" or "file".
 func realKind(path string) string {
 	if fi, err := os.Lstat(path); err == nil && fi.IsDir() {
 		return "directory"
@@ -176,16 +159,12 @@ func realKind(path string) string {
 	return "file"
 }
 
-// placeLink is the primitive behind CreateSymlink. source is the link
-// text (usually relative to the link's own directory) and target is
-// the link path. It reports what it did so bucket-level callers can
-// tally changes.
-//
-// The never-delete guarantee lives here: a real file or directory at
-// target is either left alone (ErrConflict) or renamed to a
-// BackupSuffix sibling when App.Overwrite is set. os.RemoveAll is
-// deliberately absent; the previous --force implementation used it
-// and wiped a user's real ~/.wave/skills directory.
+// placeLink is the primitive behind CreateSymlink and the only place
+// that touches what is already at target. The never-delete guarantee
+// (SPEC-010 §Phase 3) lives here: a real file or directory is either
+// left alone (ErrConflict) or renamed to a BackupSuffix sibling under
+// App.Overwrite. Nothing in this package may call os.RemoveAll on a
+// tool directory.
 //
 // A real path that already resolves to the same file as source (via
 // an ancestor symlink, or because .agents/<x> itself links to it) is
@@ -252,10 +231,9 @@ func (a *App) placeLink(source, target string, dryRun bool) (linkOutcome, error)
 	return outcome, nil
 }
 
-// linkSatisfied reports whether the symlink at target already points
-// at source: either its link text is identical, or it resolves to
-// the same file (an absolute link a user placed by hand is not
-// "drifted" just because sync would have written a relative one).
+// linkSatisfied treats a symlink that resolves to source as correct
+// even when its text differs, so an absolute link a user placed by
+// hand is not "repaired" into a relative one on every run.
 func linkSatisfied(target, source string) bool {
 	existing, err := os.Readlink(target)
 	if err != nil {
@@ -267,9 +245,6 @@ func linkSatisfied(target, source string) bool {
 	return foldedResolves(target, resolveLinkSource(target, source))
 }
 
-// resolveLinkSource turns a symlink's text into a path that can be
-// stat'ed: relative link text is interpreted from the link's own
-// directory, as the kernel does.
 func resolveLinkSource(target, source string) string {
 	if filepath.IsAbs(source) {
 		return source
@@ -277,10 +252,6 @@ func resolveLinkSource(target, source string) string {
 	return filepath.Join(filepath.Dir(target), source)
 }
 
-// backupPath returns the sibling a conflicting path is renamed to
-// under --overwrite: <path>.replaced-by-sync-agents, or with a unix
-// timestamp appended when that name is already taken by an earlier
-// move.
 func backupPath(path string) string {
 	backup := path + BackupSuffix
 	if _, err := os.Lstat(backup); err == nil {
@@ -303,9 +274,6 @@ type BucketMergeStats struct {
 	Conflicts int
 }
 
-// bucketMergeStats inspects a real directory dest against the
-// artifacts in srcAbs using the same conformance predicate sync uses
-// (linkSatisfied), so status and sync agree on what counts as linked.
 func bucketMergeStats(dest, srcAbs string) BucketMergeStats {
 	var s BucketMergeStats
 	entries, err := os.ReadDir(srcAbs)
