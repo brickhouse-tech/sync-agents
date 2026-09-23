@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.7.0](https://github.com/brickhouse-tech/sync-agents/compare/v1.6.8...v1.7.0) (2026-09-23)
+
+### Features
+
+* **fix:** exit non-zero on conflicts; share backup naming with global sync ([aafb303](https://github.com/brickhouse-tech/sync-agents/commit/aafb303c76bfda22ec98c76b405245a0a952a072))
+* **sync:** merge into real tool dirs by default; --overwrite replaces --force ([5c35f48](https://github.com/brickhouse-tech/sync-agents/commit/5c35f4841e8c4919df7ab41f692cbd7c1003073e))
+
 ## [1.6.8](https://github.com/brickhouse-tech/sync-agents/compare/v1.6.7...v1.6.8) (2026-09-22)
 
 ### Bug Fixes
