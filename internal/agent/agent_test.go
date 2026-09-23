@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -233,10 +234,10 @@ func TestAddDefaultGitignoreEntries_ExistingGitignore(t *testing.T) {
 	}
 }
 
-func TestCreateSymlink_ReplaceFile(t *testing.T) {
+func TestCreateSymlink_OverwriteMovesFileAside(t *testing.T) {
 	dir := t.TempDir()
 	var buf strings.Builder
-	app := &App{ProjectRoot: dir, Stdout: &buf, Stderr: &buf, Force: true}
+	app := &App{ProjectRoot: dir, Stdout: &buf, Stderr: &buf, Overwrite: true}
 
 	os.MkdirAll(filepath.Join(dir, ".agents", "rules"), 0o755)
 	os.WriteFile(filepath.Join(dir, ".agents", "rules", "test.md"), []byte("content"), 0o644)
@@ -245,11 +246,77 @@ func TestCreateSymlink_ReplaceFile(t *testing.T) {
 	target := filepath.Join(dir, ".claude", "rules", "test.md")
 	// Place a regular file where the symlink should go.
 	os.WriteFile(target, []byte("blocker"), 0o644)
+	source := "../../.agents/rules/test.md"
 
-	app.CreateSymlink(".agents/rules/test.md", target, false)
+	if err := app.CreateSymlink(source, target, false); err != nil {
+		t.Fatalf("CreateSymlink: %v\n%s", err, buf.String())
+	}
 
-	fi, _ := os.Lstat(target)
-	if fi.Mode()&os.ModeSymlink == 0 {
-		t.Error("expected symlink after force replace")
+	if link, err := os.Readlink(target); err != nil || link != source {
+		t.Fatalf("target should be a symlink to %q, got %q (%v)", source, link, err)
+	}
+	backup, err := os.ReadFile(target + ".replaced-by-sync-agents")
+	if err != nil {
+		t.Fatalf("backup missing: %v", err)
+	}
+	if string(backup) != "blocker" {
+		t.Errorf("backup = %q, want %q", backup, "blocker")
+	}
+}
+
+func TestCreateSymlink_RealFileReturnsErrConflict(t *testing.T) {
+	dir := t.TempDir()
+	var buf strings.Builder
+	app := &App{ProjectRoot: dir, Stdout: &buf, Stderr: &buf}
+
+	target := filepath.Join(dir, ".claude", "rules", "test.md")
+	os.MkdirAll(filepath.Dir(target), 0o755)
+	os.WriteFile(target, []byte("blocker"), 0o644)
+
+	err := app.CreateSymlink("../../.agents/rules/test.md", target, false)
+
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("err = %v, want ErrConflict", err)
+	}
+	if got, _ := os.ReadFile(target); string(got) != "blocker" {
+		t.Errorf("conflicting file changed: %q", got)
+	}
+}
+
+func TestCreateSymlink_RealDirReturnsErrConflictAndIsKept(t *testing.T) {
+	dir := t.TempDir()
+	var buf strings.Builder
+	app := &App{ProjectRoot: dir, Stdout: &buf, Stderr: &buf}
+
+	target := filepath.Join(dir, ".claude", "skills")
+	keep := filepath.Join(target, "native", "SKILL.md")
+	os.MkdirAll(filepath.Dir(keep), 0o755)
+	os.WriteFile(keep, []byte("native"), 0o644)
+
+	err := app.CreateSymlink("../.agents/skills", target, false)
+
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("err = %v, want ErrConflict", err)
+	}
+	if got, _ := os.ReadFile(keep); string(got) != "native" {
+		t.Errorf("real directory content lost: %q", got)
+	}
+}
+
+func TestCreateSymlink_DriftedSymlinkRepairedWithoutForce(t *testing.T) {
+	dir := t.TempDir()
+	var buf strings.Builder
+	app := &App{ProjectRoot: dir, Stdout: &buf, Stderr: &buf}
+
+	target := filepath.Join(dir, ".claude", "rules")
+	os.MkdirAll(filepath.Dir(target), 0o755)
+	os.Symlink("../elsewhere", target)
+
+	if err := app.CreateSymlink("../.agents/rules", target, false); err != nil {
+		t.Fatalf("CreateSymlink: %v\n%s", err, buf.String())
+	}
+
+	if link, _ := os.Readlink(target); link != "../.agents/rules" {
+		t.Errorf("drifted symlink = %q, want ../.agents/rules", link)
 	}
 }
