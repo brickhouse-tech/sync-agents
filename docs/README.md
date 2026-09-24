@@ -104,9 +104,6 @@ durable content lives), so IDs stay resolvable after the file is gone.
 - [SPEC-005](../specs/SPEC-005-sandboxing-quarantine.md) — supply-chain
   safety: Parts A+B (fetch hardening, quarantine + scan) shipped;
   Part C (sandboxed skill exec) open.
-- [SPEC-006](../specs/SPEC-006-os-scoped-routing.md) — OS-scoped
-  routing: core shipped; AGENTS.md OS badge and concat OS headers
-  open.
 - [SPEC-010](../specs/SPEC-010-conformance-audit-unified-sync.md) (conformance audit and fold/drill sync). Fold/drill shipped for
   local `sync` and `fix`. Global sync unification, adoption, and the
   audit are open.
