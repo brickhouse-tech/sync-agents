@@ -351,3 +351,30 @@ func TestWriteFileAtomic_Overwrite(t *testing.T) {
 		t.Errorf("got %q, want 'new'", read)
 	}
 }
+
+// TestLint_FoldedDescriptionIsAnalyzed: a folded (`>`) description is
+// resolved and checked like any other (#95) instead of being waved
+// through with a "not analyzed" warning. Findings are report-only —
+// --fix must never rewrite a block scalar.
+func TestLint_FoldedDescriptionIsAnalyzed(t *testing.T) {
+	a, skills := newLintApp(t)
+
+	longFolded := "---\nname: long-folded\ndescription: >\n  " + strings.Repeat("word ", 300) + "\n---\n"
+	p := writeSkill(t, skills, "long-folded", longFolded)
+	fs := lintOnce(t, a, "long-folded", p, true)
+	if !hasCode(fs, "E008") {
+		t.Fatalf("expected E008 on an overlong folded description, got %+v", fs)
+	}
+	if got := readFile(t, p); got != longFolded {
+		t.Fatalf("--fix must not rewrite a block scalar; file changed:\n%s", got)
+	}
+
+	ok := "---\nname: ok-folded\ndescription: >\n  Processes reports. Use when asked\n  for a summary.\n---\n"
+	p2 := writeSkill(t, skills, "ok-folded", ok)
+	fs = lintOnce(t, a, "ok-folded", p2, false)
+	for _, f := range fs {
+		if f.Code == "E007" || f.Code == "E008" || f.Code == "E009" || f.Code == "W102" {
+			t.Fatalf("clean folded description should not raise %s: %+v", f.Code, fs)
+		}
+	}
+}

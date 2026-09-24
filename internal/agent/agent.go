@@ -1818,9 +1818,11 @@ func listMDFilesRecursive(dir string) ([]string, []string) {
 // artifactDescription extracts the frontmatter `description` of the
 // markdown file at path for display in the AGENTS.md index. Returns
 // "" (no suffix rendered) when the file has no frontmatter, the
-// description is empty or a multi-line scalar, or it is an
-// unfinished scaffold stub (starts with "TODO"). Long descriptions
-// are truncated so one artifact can't dominate the index.
+// description is empty, or it is an unfinished scaffold stub (starts
+// with "TODO"). Folded (`>`) and literal (`|`) multi-line
+// descriptions are resolved to their text and collapsed onto one line
+// (#95). Long descriptions are truncated so one artifact can't
+// dominate the index.
 func artifactDescription(path string) string {
 	const maxIndexDescription = 140
 	raw, err := os.ReadFile(path)
@@ -1831,8 +1833,8 @@ func artifactDescription(path string) string {
 	if err != nil || !block.present {
 		return ""
 	}
-	desc, _ := block.get("description")
-	if desc == "" || strings.HasPrefix(desc, "|") || strings.HasPrefix(desc, ">") || strings.HasPrefix(desc, "TODO") {
+	desc := block.value("description")
+	if desc == "" || strings.HasPrefix(desc, "TODO") {
 		return ""
 	}
 	desc = strings.Join(strings.Fields(desc), " ")
