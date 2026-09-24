@@ -52,3 +52,4 @@ npm/*/bin/sync-agents
 npm/*/bin/sync-agents.exe
 
 vendor
+.agents/STATE*
