@@ -1471,9 +1471,14 @@ func (a *App) generateAgentsMD() {
 	b.WriteString("## Rules\n\n")
 	rulesDir := filepath.Join(agentsDir, "rules")
 	ruleFiles := listMDFiles(rulesDir)
-	if len(ruleFiles) > 0 {
+	scopedRules := osScopedMDFiles(rulesDir)
+	if len(ruleFiles) > 0 || len(scopedRules) > 0 {
 		for _, name := range ruleFiles {
 			b.WriteString(indexEntry(name, ".agents/rules/"+name+".md", filepath.Join(rulesDir, name+".md")))
+		}
+		for _, se := range scopedRules {
+			rel := se.OS + "/" + se.Name
+			b.WriteString(indexEntryBadge(se.Name, ".agents/rules/"+rel+".md", filepath.Join(rulesDir, se.OS, se.Name+".md"), se.OS))
 		}
 	} else {
 		b.WriteString("_No rules defined yet. Add one with `sync-agents add rule <name>`._\n")
@@ -1511,6 +1516,11 @@ func (a *App) generateAgentsMD() {
 			}
 		}
 	}
+	for _, se := range osScopedSkills(skillsDir) {
+		rel := se.OS + "/" + se.Name
+		b.WriteString(indexEntryBadge(se.Name, ".agents/skills/"+rel+"/SKILL.md", filepath.Join(skillsDir, se.OS, se.Name, "SKILL.md"), se.OS))
+		hasSkills = true
+	}
 	if !hasSkills {
 		b.WriteString("_No skills defined yet. Add one with `sync-agents add skill <name>`._\n")
 	}
@@ -1520,9 +1530,14 @@ func (a *App) generateAgentsMD() {
 	b.WriteString("## Workflows\n\n")
 	workflowsDir := filepath.Join(agentsDir, "workflows")
 	wfFiles := listMDFiles(workflowsDir)
-	if len(wfFiles) > 0 {
+	scopedWF := osScopedMDFiles(workflowsDir)
+	if len(wfFiles) > 0 || len(scopedWF) > 0 {
 		for _, name := range wfFiles {
 			b.WriteString(indexEntry(name, ".agents/workflows/"+name+".md", filepath.Join(workflowsDir, name+".md")))
+		}
+		for _, se := range scopedWF {
+			rel := se.OS + "/" + se.Name
+			b.WriteString(indexEntryBadge(se.Name, ".agents/workflows/"+rel+".md", filepath.Join(workflowsDir, se.OS, se.Name+".md"), se.OS))
 		}
 	} else {
 		b.WriteString("_No workflows defined yet. Add one with `sync-agents add workflow <name>`._\n")
@@ -1533,10 +1548,16 @@ func (a *App) generateAgentsMD() {
 	// when at least one definition exists (SPEC-004 backwards
 	// compatibility: index gains sections only for present buckets).
 	agentsBucketDir := filepath.Join(agentsDir, "agents")
-	if agentFiles := listMDFiles(agentsBucketDir); len(agentFiles) > 0 {
+	agentFiles := listMDFiles(agentsBucketDir)
+	scopedAgents := osScopedMDFiles(agentsBucketDir)
+	if len(agentFiles) > 0 || len(scopedAgents) > 0 {
 		b.WriteString("## Agents\n\n")
 		for _, name := range agentFiles {
 			b.WriteString(indexEntry(name, ".agents/agents/"+name+".md", filepath.Join(agentsBucketDir, name+".md")))
+		}
+		for _, se := range scopedAgents {
+			rel := se.OS + "/" + se.Name
+			b.WriteString(indexEntryBadge(se.Name, ".agents/agents/"+rel+".md", filepath.Join(agentsBucketDir, se.OS, se.Name+".md"), se.OS))
 		}
 		b.WriteString("\n")
 	}
@@ -1845,10 +1866,70 @@ func artifactDescription(path string) string {
 // indexEntry renders one AGENTS.md index line: `- [name](link)` with
 // an ` — description` suffix when the artifact declares one.
 func indexEntry(name, link, srcPath string) string {
-	if desc := artifactDescription(srcPath); desc != "" {
-		return fmt.Sprintf("- [%s](%s) — %s\n", name, link, desc)
+	return indexEntryBadge(name, link, srcPath, "")
+}
+
+// indexEntryBadge renders an index line with an optional OS badge
+// (SPEC-006): - [brew](.agents/rules/macos/brew.md) `[macos]` — desc
+func indexEntryBadge(name, link, srcPath, badge string) string {
+	line := fmt.Sprintf("- [%s](%s)", name, link)
+	if badge != "" {
+		line += " `[" + badge + "]`"
 	}
-	return fmt.Sprintf("- [%s](%s)\n", name, link)
+	if desc := artifactDescription(srcPath); desc != "" {
+		line += " — " + desc
+	}
+	return line + "\n"
+}
+
+// osScopeOrder is the display order for OS-scoped index entries.
+var osScopeOrder = []string{"macos", "linux", "unix", "windows"}
+
+// scopedEntry is one artifact inside an OS-scoped subdirectory.
+type scopedEntry struct {
+	OS   string // "macos", "linux", "unix", "windows"
+	Name string // artifact name without the OS prefix
+}
+
+// osScopedMDFiles lists the flat .md artifacts inside every OS-scoped
+// subdirectory of a bucket dir, for ALL platforms. Unlike sync, the
+// index is a static file checked into the repo, so a Linux reader
+// must still see the [macos] entries (they just won't apply to them).
+func osScopedMDFiles(dir string) []scopedEntry {
+	var out []scopedEntry
+	for _, scope := range osScopeOrder {
+		for _, name := range listMDFiles(filepath.Join(dir, scope)) {
+			out = append(out, scopedEntry{OS: scope, Name: name})
+		}
+	}
+	return out
+}
+
+// osScopedSkills lists the skills (dirs containing SKILL.md) inside
+// every OS-scoped subdirectory of skills/, for all platforms.
+func osScopedSkills(skillsDir string) []scopedEntry {
+	var out []scopedEntry
+	for _, scope := range osScopeOrder {
+		scopeDir := filepath.Join(skillsDir, scope)
+		entries, err := os.ReadDir(scopeDir)
+		if err != nil {
+			continue
+		}
+		var names []string
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), ".") || !entryIsDir(filepath.Join(scopeDir, e.Name()), e) {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(scopeDir, e.Name(), "SKILL.md")); err == nil {
+				names = append(names, e.Name())
+			}
+		}
+		sort.Strings(names)
+		for _, n := range names {
+			out = append(out, scopedEntry{OS: scope, Name: n})
+		}
+	}
+	return out
 }
 
 // stateSnapshotIsShared reports whether a STATE_*.md snapshot opts
