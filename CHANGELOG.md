@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.9.0](https://github.com/brickhouse-tech/sync-agents/compare/v1.8.1...v1.9.0) (2026-09-25)
+
+### Features
+
+* **index:** OS badges in AGENTS.md and OS headers in concat (SPEC-006) ([87d88d5](https://github.com/brickhouse-tech/sync-agents/commit/87d88d5f906ffa58ecc7821bd58cef0b2d449e9b))
+
 ## [1.8.1](https://github.com/brickhouse-tech/sync-agents/compare/v1.8.0...v1.8.1) (2026-09-24)
 
 ## [1.8.0](https://github.com/brickhouse-tech/sync-agents/compare/v1.7.0...v1.8.0) (2026-09-23)
