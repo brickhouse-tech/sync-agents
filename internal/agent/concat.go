@@ -82,6 +82,12 @@ func RegenerateConcat(concatPath string, entries []ConcatEntry) (bool, error) {
 		if err != nil {
 			return false, fmt.Errorf("read %s: %w", e.SourcePath, err)
 		}
+		// SPEC-006: an OS-scoped artifact ("macos/brew") gets a header
+		// comment so a reader of the flat concat knows which platform
+		// the block targets. Invisible when the tool renders Markdown.
+		if scope, _, ok := strings.Cut(e.Name, "/"); ok && isOSScopeDir(scope) {
+			fmt.Fprintf(&buf, "<!-- OS: %s -->\n", scope)
+		}
 		fmt.Fprintf(&buf, "## %s\n\n", e.Name)
 		buf.Write(body)
 		// Always end an entry on a blank line so the next heading
