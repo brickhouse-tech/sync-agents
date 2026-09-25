@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.9.1](https://github.com/brickhouse-tech/sync-agents/compare/v1.9.0...v1.9.1) (2026-09-25)
+
+### Bug Fixes
+
+* **index:** resolve folded/literal multi-line descriptions ([#95](https://github.com/brickhouse-tech/sync-agents/issues/95)) ([a182936](https://github.com/brickhouse-tech/sync-agents/commit/a18293677131c02930c115ae3292caa6ffab276f))
+
 ## [1.9.0](https://github.com/brickhouse-tech/sync-agents/compare/v1.8.1...v1.9.0) (2026-09-25)
 
 ### Features
