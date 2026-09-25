@@ -162,11 +162,62 @@ Body.`,
 			want: "",
 		},
 		{
-			name: "multi-line scalar skipped",
+			name: "literal block scalar resolved onto one line",
 			content: `---
 description: |
   This is a
   multi-line description
+---
+Body.`,
+			want: "This is a multi-line description",
+		},
+		{
+			// #95: the folded form rendered blank in AGENTS.md.
+			name: "folded block scalar resolved",
+			content: `---
+name: pr-review
+description: >
+  Perform adversarial pull request and code reviews
+  that hunt for real bugs.
+---
+Body.`,
+			want: "Perform adversarial pull request and code reviews that hunt for real bugs.",
+		},
+		{
+			name: "folded strip-chomp scalar resolved",
+			content: `---
+description: >-
+  Folded with strip chomping.
+---
+Body.`,
+			want: "Folded with strip chomping.",
+		},
+		{
+			name: "quoted multi-line scalar resolved",
+			content: `---
+description: "Quoted across
+  two lines"
+---
+Body.`,
+			want: "Quoted across two lines",
+		},
+		{
+			// Invalid YAML elsewhere in the block must not blank a
+			// readable folded description (line-based fallback).
+			name: "folded scalar resolved when block is not valid YAML",
+			content: `---
+bad: [unclosed
+description: >
+  Still readable via the fallback.
+---
+Body.`,
+			want: "Still readable via the fallback.",
+		},
+		{
+			name: "empty folded scalar renders nothing",
+			content: `---
+description: >
+name: x
 ---
 Body.`,
 			want: "",

@@ -3,6 +3,8 @@ package agent
 import (
 	"fmt"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // fmBlock is a line-based view of a file's YAML frontmatter. Unlike
@@ -88,6 +90,76 @@ func (b fmBlock) get(key string) (string, int) {
 		return stripQuotes(val), i
 	}
 	return "", -1
+}
+
+// isBlockScalarIndicator reports whether a raw `key: value` value is
+// a YAML block scalar header (`|`, `>`, optionally with a chomping
+// `+`/`-` and/or an indentation digit, e.g. `>-`, `|2`), meaning the
+// real text lives on the indented lines that follow.
+func isBlockScalarIndicator(val string) bool {
+	if val == "" || (val[0] != '|' && val[0] != '>') {
+		return false
+	}
+	for _, r := range val[1:] {
+		if r != '+' && r != '-' && (r < '1' || r > '9') {
+			return false
+		}
+	}
+	return true
+}
+
+// value returns the resolved scalar value of a top-level key, unlike
+// get, which returns the raw text after the colon. Folded (`>`),
+// literal (`|`) and quoted multi-line scalars all resolve to their
+// text, so `description: >` followed by an indented block yields the
+// block, not ">". Returns "" when the key is absent or not a scalar.
+//
+// The block is parsed as YAML when it is valid YAML. When it is not
+// (hand-edited frontmatter often isn't), it falls back to get() and,
+// for a block scalar header, consumes the indented lines that follow
+// — so a stray syntax error elsewhere in the block does not blank a
+// description that is itself perfectly readable.
+func (b fmBlock) value(key string) string {
+	if !b.present {
+		return ""
+	}
+	var m map[string]any
+	if err := yaml.Unmarshal([]byte(strings.Join(b.lines, "\n")), &m); err == nil {
+		v, ok := m[key]
+		if !ok || v == nil {
+			return ""
+		}
+		switch t := v.(type) {
+		case string:
+			return strings.TrimSpace(t)
+		case map[string]any, []any:
+			return ""
+		default:
+			return fmt.Sprint(t)
+		}
+	}
+
+	raw, idx := b.get(key)
+	if idx == -1 || !isBlockScalarIndicator(raw) {
+		return raw
+	}
+	var parts []string
+	for _, line := range b.lines[idx+1:] {
+		line = strings.TrimRight(line, "\r")
+		if strings.TrimSpace(line) == "" {
+			parts = append(parts, "")
+			continue
+		}
+		if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
+			break
+		}
+		parts = append(parts, strings.TrimSpace(line))
+	}
+	sep := "\n"
+	if raw[0] == '>' {
+		sep = " "
+	}
+	return strings.TrimSpace(strings.Join(parts, sep))
 }
 
 // set replaces the key's line in place, or appends a new line to the

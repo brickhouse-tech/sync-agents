@@ -203,12 +203,23 @@ func (a *App) lintSkill(dirName, skillPath string, fix bool) ([]LintFinding, err
 
 	// --- description ---
 	desc, descIdx := block.get("description")
-	multiline := strings.HasPrefix(desc, "|") || strings.HasPrefix(desc, ">")
+	multiline := isBlockScalarIndicator(desc)
 	switch {
 	case multiline:
-		// Block scalars hold the real text on following lines; this
-		// line-based linter can't analyze or safely rewrite them.
-		add("W102", "warn", "multi-line description not analyzed; verify limits manually", false)
+		// Block scalars hold the real text on following lines. Resolve
+		// and analyze it like any other description, but report only:
+		// the line-based rewriter can't safely edit a block scalar.
+		desc = strings.Join(strings.Fields(block.value("description")), " ")
+		if desc == "" {
+			add("E007", "error", "description missing (empty block scalar)", false)
+			break
+		}
+		if xmlTagRe.MatchString(desc) {
+			add("E009", "error", "description contains XML tags (multi-line; fix manually)", false)
+		}
+		if len(desc) > skillDescriptionMaxLen {
+			add("E008", "error", fmt.Sprintf("description is %d chars (max %d; multi-line, fix manually)", len(desc), skillDescriptionMaxLen), false)
+		}
 	case descIdx == -1 || desc == "":
 		derived, ok := deriveSkillDescription(block.body, dirSlug)
 		add("E007", "error", "description missing", fix)
@@ -238,7 +249,7 @@ func (a *App) lintSkill(dirName, skillPath string, fix bool) ([]LintFinding, err
 			}
 		}
 	}
-	if !multiline && desc != "" {
+	if desc != "" {
 		if firstPersonRe.MatchString(desc) {
 			add("W101", "warn", "description should be third person (\"Processes X…\", not \"I can…\"/\"You can…\")", false)
 		}

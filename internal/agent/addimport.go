@@ -93,7 +93,7 @@ func (a *App) normalizeImportedFrontmatter(content, name string, typ ArtifactTyp
 	}
 
 	if typ == ArtifactAgent {
-		if desc, _ := block.get("description"); strings.TrimSpace(desc) == "" {
+		if block.value("description") == "" {
 			return "", fmt.Errorf("%s: frontmatter has no description:; every harness keys subagent delegation on it", srcLabel)
 		}
 	}
@@ -123,7 +123,7 @@ func validateLinkedFrontmatter(content, name string, typ ArtifactType, srcLabel 
 		return fmt.Errorf("%s: no YAML frontmatter; a %s needs at least name: and description:", srcLabel, typ)
 	}
 	if typ == ArtifactAgent {
-		if desc, _ := block.get("description"); strings.TrimSpace(desc) == "" {
+		if block.value("description") == "" {
 			return fmt.Errorf("%s: frontmatter has no description:; every harness keys subagent delegation on it, and --link cannot add one — re-run without --link to import a normalized copy", srcLabel)
 		}
 	}

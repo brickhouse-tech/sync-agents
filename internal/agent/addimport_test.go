@@ -386,3 +386,25 @@ func templatesAgentForTest() string {
 	b, _ := BucketForArtifact(ArtifactAgent)
 	return b.NewTemplate()
 }
+
+// TestCmdAdd_LinkRejectsEmptyFoldedDescription: `description: >` with
+// no block after it is still a missing description, not the literal ">".
+func TestCmdAdd_LinkRejectsEmptyFoldedDescription(t *testing.T) {
+	a, root, _ := newAddTestApp(t)
+	src := writeSrc(t, filepath.Join(root, "personas"), "tars.md",
+		"---\nname: tars\ndescription: >\n---\n\nBody.\n")
+	if err := a.CmdAdd("agent", "tars", AddOpts{From: src, Link: true}); err == nil {
+		t.Fatal("expected an empty folded description to be rejected")
+	}
+}
+
+// TestCmdAdd_LinkAcceptsFoldedDescription: a real folded description
+// satisfies the required-description check.
+func TestCmdAdd_LinkAcceptsFoldedDescription(t *testing.T) {
+	a, root, _ := newAddTestApp(t)
+	src := writeSrc(t, filepath.Join(root, "personas"), "tars.md",
+		"---\nname: tars\ndescription: >\n  Chief of staff\n  for Nick.\n---\n\nBody.\n")
+	if err := a.CmdAdd("agent", "tars", AddOpts{From: src, Link: true}); err != nil {
+		t.Fatalf("folded description should be accepted: %v", err)
+	}
+}
