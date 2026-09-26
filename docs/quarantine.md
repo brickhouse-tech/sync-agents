@@ -35,8 +35,21 @@ sync-agents reject sketchy-rule   # delete without installing
 Local authoring (`add`, `promote`) never quarantines — the gate applies
 to remote content only.
 
+## Scope: placement, not execution
+
+sync-agents never runs a skill. Its job ends at putting each artifact in
+the right place for each harness. The safety work therefore sits at the
+one point sync-agents controls, **install time**: fetch hardening plus
+the quarantine gate above.
+
+Running a skill's scripts safely belongs to the harness that executes
+them. Claude Code, for example, has its own sandbox and tool
+permissions. For untrusted third-party skills, isolate the harness
+itself (run it in a container or VM) rather than expecting sync-agents
+to wrap execution. A sync-agents exec sandbox (SPEC-005 Part C) was
+considered and deliberately dropped for this reason.
+
 ## See also
 
 - [Source manifest, lockfile & provenance](./sources.md)
-- [SPEC-005](../specs/SPEC-005-sandboxing-quarantine.md) — the design
-  spec, including the open Part C (sandboxed skill exec)
+- SPEC-005 (retired) — see the [spec ledger](../specs/README.md)
