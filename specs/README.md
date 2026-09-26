@@ -30,7 +30,7 @@ treat retired spec content as current intent.
 | SPEC-002 | promote + global sync (semantic routing) | ✅ shipped v1.4.0 | `6c53595` (siblings merged in `9de9326`) | [promote](../docs/commands/promote.md), [global-sync](../docs/commands/global-sync.md), [semantic-routing](../docs/architecture/semantic-routing.md) |
 | SPEC-003 | source manifest pull (`sources.lock`) | ✅ shipped v1.4.0 | `6c53595` | [sources](../docs/sources.md) |
 | SPEC-004 | new asset buckets (agents/plans/specs/hooks) + lint | ✅ shipped v1.4.0 | `6c53595` | [topology](../docs/topology.md), [lint](../docs/commands/lint.md) |
-| SPEC-005 | sandboxing + quarantine | 🟡 Parts A+B shipped v1.1.0–v1.2.0; **Part C open** | — (active) | [quarantine](../docs/quarantine.md) |
+| SPEC-005 | sandboxing + quarantine | ✅ Parts A+B shipped v1.1.0–v1.2.0; Part C (exec sandbox) dropped — out of scope, harnesses own execution | `e7c660e` | [quarantine](../docs/quarantine.md) |
 | SPEC-006 | OS-scoped routing | ✅ shipped (core v1.3.0; index badges + concat headers `87d88d5`) | `87d88d5` | [os-scoped-routing](../docs/os-scoped-routing.md) |
 | SPEC-007 | linked sources | ✅ shipped v1.4.0 | `6c53595` | [linked-sources](../docs/linked-sources.md) |
 | SPEC-008 | full-context integrity lock (`agents.lock` + `agents.sum`) | 📝 draft | — (active) | — |
