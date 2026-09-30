@@ -18,6 +18,10 @@ PACKAGE_VERSION="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$_REPO_ROOT/pack
 # ---------------------------------------------------------------------------
 
 setup() {
+  # OpenClaw's workspace follows these vars; exported ones would point
+  # the openclaw target at a live workspace instead of $TEST_DIR.
+  unset OPENCLAW_HOME OPENCLAW_STATE_DIR OPENCLAW_CONFIG_PATH OPENCLAW_WORKSPACE_DIR OPENCLAW_PROFILE
+
   TEST_DIR="$(mktemp -d)"
   GLOBAL_ROOT="$TEST_DIR/.agents"   # per-tool dirs live under $TEST_DIR
 

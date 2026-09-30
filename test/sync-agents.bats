@@ -13,6 +13,8 @@ setup() {
   # Initialize a git repo so find_project_root works
   git init --quiet "$TEST_DIR"
   export HOME="$TEST_DIR"
+  # OpenClaw's workspace follows these vars even with HOME redirected.
+  unset OPENCLAW_HOME OPENCLAW_STATE_DIR OPENCLAW_CONFIG_PATH OPENCLAW_WORKSPACE_DIR OPENCLAW_PROFILE
 }
 
 teardown() {

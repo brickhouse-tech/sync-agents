@@ -76,12 +76,19 @@ type App struct {
 	// the real stdio.
 	Stdout io.Writer
 	Stderr io.Writer
+
+	// ToolEnv is what tool resolvers (OpenClaw's workspace lookup)
+	// read. NewApp installs the real environment; the zero value sees
+	// no environment variables, so test literals stay inside their temp
+	// global root.
+	ToolEnv ToolEnv
 }
 
 func NewApp() *App {
 	return &App{
-		Stdout: os.Stdout,
-		Stderr: os.Stderr,
+		Stdout:  os.Stdout,
+		Stderr:  os.Stderr,
+		ToolEnv: OSToolEnv(),
 	}
 }
 
@@ -130,6 +137,23 @@ func ResolveTargetDir(target, root string) string {
 		return filepath.Join(root, ".github", "copilot")
 	}
 	return filepath.Join(root, "."+target)
+}
+
+// dropGlobalOnlyTargets removes every registered tool with no project
+// scope (openclaw) from ActiveTargets, warning once per tool. Local
+// commands build the target dir as <project>/.<target>, so without
+// this a `--targets openclaw` would create .openclaw/ inside the repo.
+// Unregistered names (wave, ...) pass through untouched.
+func (a *App) dropGlobalOnlyTargets() {
+	var kept []string
+	for _, t := range a.ActiveTargets {
+		if tool, ok := ResolveTool(t); ok && !tool.HasScope(ScopeLocal) {
+			a.Warn(fmt.Sprintf("target %q is global-only; skipping for project scope (use `sync-agents global sync --targets %s`)", t, tool.ID))
+			continue
+		}
+		kept = append(kept, t)
+	}
+	a.ActiveTargets = kept
 }
 
 func ResolveAgentsRel(target string) string {
@@ -366,6 +390,7 @@ func (a *App) CmdSync() error {
 	if err := a.EnsureAgentsDir(); err != nil {
 		return err
 	}
+	a.dropGlobalOnlyTargets()
 
 	a.deprecateForce()
 
@@ -436,6 +461,7 @@ func (a *App) CmdSync() error {
 }
 
 func (a *App) CmdStatus() error {
+	a.dropGlobalOnlyTargets()
 	fmt.Fprintf(a.Stdout, "sync-agents v%s\n", version.Version)
 	fmt.Fprintln(a.Stdout)
 
@@ -553,6 +579,7 @@ func (a *App) CmdIndex() error {
 }
 
 func (a *App) CmdClean() error {
+	a.dropGlobalOnlyTargets()
 	a.Info("Removing synced symlinks...")
 
 	for _, target := range a.ActiveTargets {
@@ -919,6 +946,7 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 	if err := a.EnsureAgentsDir(); err != nil {
 		return err
 	}
+	a.dropGlobalOnlyTargets()
 	a.deprecateForce()
 
 	var subdirs []string

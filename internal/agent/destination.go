@@ -33,6 +33,13 @@ const (
 	// Windsurf, etc.). The sync loop logs the reason and continues
 	// to other tools.
 	StrategySkip
+
+	// StrategyRegion: the artifact contributes to one managed region
+	// inside a file another program owns (OpenClaw's workspace
+	// AGENTS.md). Like concat, the orchestration layer regenerates the
+	// region once per path; unlike concat, everything outside the
+	// region's markers is left alone and the file is never created.
+	StrategyRegion
 )
 
 // Destination is the resolved location for one (tool, artifact,
@@ -51,8 +58,13 @@ type Destination struct {
 	//     contributes to. The orchestration layer collects all
 	//     artifacts pointing at the same concat Path and regenerates
 	//     it as a single file.
+	//   - StrategyRegion: the host file whose Region is regenerated.
 	//   - StrategySkip: empty.
 	Path string
+
+	// Region is the managed region Path carries; set only when
+	// Strategy == StrategyRegion.
+	Region ManagedRegion
 
 	// SkipReason is set only when Strategy == StrategySkip. Used by
 	// the orchestration layer to print a per-skip warning.
@@ -170,6 +182,8 @@ func TargetDestination(
 		return codexDestination(globalRootParent)
 	case "opencode":
 		return opencodeDestination(typ, name, globalRootParent)
+	case "openclaw":
+		return openclawDestination(tool, typ, name, sem, globalRootParent)
 	default:
 		return Destination{
 			Strategy:   StrategySkip,
@@ -326,6 +340,34 @@ func opencodeDestination(typ ArtifactType, name, parent string) Destination {
 			"opencode routing covers subagents only; %s %q reaches opencode through AGENTS.md",
 			typ, name,
 		),
+	}
+}
+
+// openclawDestination implements the OpenClaw row (SPEC-012):
+//
+//   - Passive rule/workflow: its body goes into the OpenClaw-rules
+//     region of <workspace>/AGENTS.md.
+//   - Skill: skip. OpenClaw loads ~/.agents/skills itself; a copy in
+//     the workspace would duplicate or shadow it.
+//   - Invocable rule/workflow: skip. OpenClaw has no command surface
+//     this project has verified.
+func openclawDestination(tool Tool, typ ArtifactType, name string, sem Semantic, parent string) Destination {
+	if typ == ArtifactSkill {
+		return Destination{
+			Strategy:   StrategySkip,
+			SkipReason: "OpenClaw loads ~/.agents/skills natively",
+		}
+	}
+	if sem != Passive {
+		return Destination{
+			Strategy:   StrategySkip,
+			SkipReason: fmt.Sprintf("OpenClaw has no invocable-command surface; %s %q is not inlined", typ, name),
+		}
+	}
+	return Destination{
+		Strategy: StrategyRegion,
+		Path:     filepath.Join(tool.DirForScope(ScopeGlobal, parent), tool.RegionFile),
+		Region:   *tool.Region,
 	}
 }
 

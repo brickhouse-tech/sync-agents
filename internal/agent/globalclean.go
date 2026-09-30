@@ -64,6 +64,16 @@ func (a *App) CmdGlobalClean(opts GlobalCleanOpts) error {
 		if dir == "" {
 			continue
 		}
+		// A region tool's dir is another program's working tree:
+		// strip our region from the host file and never walk the dir.
+		if tool.Region != nil {
+			removed, err := a.stripToolRegion(tool, filepath.Join(dir, tool.RegionFile))
+			if err != nil {
+				a.Warn(fmt.Sprintf("[%s] %v", tool.ID, err))
+			}
+			totalRemoved += removed
+			continue
+		}
 		removed, err := a.cleanToolDir(tool.ID, dir, root)
 		if err != nil {
 			a.Warn(fmt.Sprintf("[%s] %v", tool.ID, err))
@@ -280,6 +290,33 @@ func (a *App) scrubClaudeManagedBlock(claudeMDPath string, dryRun bool) (int, bo
 		return 0, false, err
 	}
 	return 1, false, nil
+}
+
+// stripToolRegion removes a region tool's region from its host file
+// and keeps the file, even when nothing else is left in it: the file
+// belongs to the tool. Returns 1 when a region was (or, in dry-run,
+// would be) removed.
+func (a *App) stripToolRegion(tool Tool, host string) (int, error) {
+	data, err := os.ReadFile(host)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	remaining, found := stripRegion(string(data), *tool.Region)
+	if !found {
+		return 0, nil
+	}
+	if a.DryRun {
+		a.Info(fmt.Sprintf("[dry-run] [%s] would strip region %s from %s", tool.ID, tool.Region.Name, host))
+		return 1, nil
+	}
+	if _, err := writeIfChanged(host, []byte(remaining)); err != nil {
+		return 0, err
+	}
+	a.Info(fmt.Sprintf("[%s] stripped region %s from %s", tool.ID, tool.Region.Name, host))
+	return 1, nil
 }
 
 // pruneEmptyDirs walks the candidate parent paths from longest to
