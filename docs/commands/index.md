@@ -14,10 +14,21 @@ Regenerates `AGENTS.md` from the contents of `.agents/`.
   (`.agents/rules/state.md`). `STATE_*.md` snapshots are per-engineer
   working files and are **not** listed; a snapshot that represents a
   shared task opts into the index with `shared: true` frontmatter.
-- **Inherits** — preserved verbatim across regenerations.
+- **Inherits** — preserved verbatim across regenerations, right after
+  the header.
+- **Tools** — a `## Tools` section (heading matched case-insensitively,
+  the one OpenClaw's doctor adds) is preserved verbatim, after the
+  generated sections.
 - **Managed Claude import block** — `@`-imports for passive rules (and
   explicitly-passive workflows) so Claude actually loads them; fully
   regenerated each run, removed when no passive rules remain.
+- **Other sync-agents regions** — any other
+  `<!-- sync-agents:<name>:start -->` … `end -->` block (for example the
+  `openclaw-rules` region `global sync` writes into an OpenClaw
+  workspace) is kept verbatim, in order, at the end of the file.
+
+Everything else in an existing `AGENTS.md` is regenerated. If the
+result equals the file on disk, it is not rewritten.
 
 Every entry renders as `- [name](path) — <description>` when the
 artifact declares a frontmatter `description`. Scaffold TODO stubs and

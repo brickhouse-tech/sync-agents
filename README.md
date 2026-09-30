@@ -2,7 +2,7 @@
 
 **One `.agents/` directory. Every AI coding assistant. Always in sync.**
 
-`sync-agents` is a package manager and sync engine for AI-agent context — the rules, skills, workflows, subagents, plans, specs, and ADRs you feed to Claude, Cursor, Windsurf, Copilot, Codex, and opencode. Write everything once in `.agents/`, and `sync-agents` fans it out to every tool via symlinks, keeps an `AGENTS.md` index current, and lets you pull shared context from other repos as safely and reproducibly as you'd install an npm package.
+`sync-agents` is a package manager and sync engine for AI-agent context — the rules, skills, workflows, subagents, plans, specs, and ADRs you feed to Claude, Cursor, Windsurf, Copilot, Codex, opencode, and OpenClaw. Write everything once in `.agents/`, and `sync-agents` fans it out to every tool via symlinks, keeps an `AGENTS.md` index current, and lets you pull shared context from other repos as safely and reproducibly as you'd install an npm package.
 
 ## Why you want this
 

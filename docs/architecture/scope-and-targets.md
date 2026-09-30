@@ -48,6 +48,7 @@ known tools.
 | `copilot` | `.github/copilot/` | `~/.github/copilot/` |
 | `codex` | `.codex/` | `~/.codex/` |
 | `opencode` | `.opencode/` | `~/.config/opencode/` |
+| `openclaw` | none (global only) | resolved OpenClaw workspace, default `~/.openclaw/workspace/` |
 
 `opencode` is the third shape-changer, and the only one that differs
 by *convention* rather than by branding: it uses a plain `.opencode/`
@@ -62,6 +63,17 @@ directories may be hand-managed.
 
 `copilot` is the other shape-changer: it lives nested under `.github/`
 rather than as a top-level dot-dir.
+
+`openclaw` is global only and its directory is not a fixed segment.
+`Tool.ResolveGlobalDir` computes the workspace from OpenClaw's env vars
+and config each run, and the command layer pins the result into
+`DirByScope` as an absolute path before routing. A local `sync
+--targets openclaw` skips it with a warning rather than creating
+`.openclaw/` in the project. It is also the one **region** tool: it
+never owns a file, it splices one marker region into the workspace
+`AGENTS.md` OpenClaw created, and a plain `global sync` touches it only
+after an explicit `--targets openclaw` has put the markers there. See
+[global sync § OpenClaw](../commands/global-sync.md#openclaw).
 
 ## How callers compose scope + tool
 

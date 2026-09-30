@@ -65,6 +65,17 @@ state (credentials, sessions, caches) and is never enumerated.
 The report ends with a one-line summary counting every state, e.g.
 `audit: 4 synced, 1 folded, 2 foreign, 1 orphaned`.
 
+### Region states
+
+A region tool (`openclaw`) gets one row for its host file, e.g.
+`[region synced] ~/.openclaw/workspace/AGENTS.md  (region openclaw-rules, 12 entries)`.
+
+| State | Meaning |
+|---|---|
+| `[region synced]` | The region matches what `global sync` would write. |
+| `[region stale]` | The region exists but differs; `global sync` rewrites it. |
+| `[region missing]` | The host file has no region markers. |
+
 ### Special states
 
 | State | Meaning |

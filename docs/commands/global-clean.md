@@ -53,6 +53,9 @@ errs on the side of preservation, sync errs on the side of detection.
 - User-written files at concat destinations (no banner).
 - Directories that still contain user-owned content after the
   removal pass.
+- The OpenClaw workspace. For `openclaw`, clean strips only the
+  `openclaw-rules` region from `<workspace>/AGENTS.md` and keeps the
+  file; it never walks the workspace.
 
 ## Flags
 
