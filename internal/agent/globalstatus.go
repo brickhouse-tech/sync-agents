@@ -329,34 +329,14 @@ func classifyConcatTarget(path string, entries []ConcatEntry) ConcatState {
 	return ConcatStateStale
 }
 
-// buildConcatContent runs the regeneration build step *without*
-// touching the filesystem. Used by classifyConcatTarget to compare
-// against the existing concat file.
-//
-// This is a small duplication of the build step inside
-// RegenerateConcat; the alternative is to factor that step out and
-// have RegenerateConcat call it. Either works; the duplication is
-// trivially small and isolated by tests.
+// buildConcatContent returns the exact bytes RegenerateConcat would
+// write, without touching the filesystem.
 func buildConcatContent(entries []ConcatEntry) ([]byte, error) {
-	sorted := make([]ConcatEntry, len(entries))
-	copy(sorted, entries)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
-
-	var buf bytes.Buffer
-	buf.WriteString(ConcatBanner)
-	for _, e := range sorted {
-		body, err := readArtifactBody(e.SourcePath)
-		if err != nil {
-			return nil, err
-		}
-		fmt.Fprintf(&buf, "## %s\n\n", e.Name)
-		buf.Write(body)
-		if !bytes.HasSuffix(bytes.TrimRight(buf.Bytes(), " \t"), []byte("\n")) {
-			buf.WriteByte('\n')
-		}
-		buf.WriteByte('\n')
+	body, err := buildEntriesBody(entries)
+	if err != nil {
+		return nil, err
 	}
-	return buf.Bytes(), nil
+	return append([]byte(ConcatBanner), body...), nil
 }
 
 // printStatusEntry formats one StatusEntry as a single text line. The

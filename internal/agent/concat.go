@@ -65,42 +65,11 @@ type ConcatEntry struct {
 // The artifact body — what comes after the closing `---\n` — is
 // what gets appended.
 func RegenerateConcat(concatPath string, entries []ConcatEntry) (bool, error) {
-	// Sort by Name so the output is deterministic regardless of how
-	// the orchestration layer discovered the entries.
-	sorted := make([]ConcatEntry, len(entries))
-	copy(sorted, entries)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Name < sorted[j].Name
-	})
-
-	// Build the new content in memory. Concat files are small (a
-	// handful of rules at most), so this is fine.
-	var buf bytes.Buffer
-	buf.WriteString(ConcatBanner)
-	for _, e := range sorted {
-		body, err := readArtifactBody(e.SourcePath)
-		if err != nil {
-			return false, fmt.Errorf("read %s: %w", e.SourcePath, err)
-		}
-		// SPEC-006: an OS-scoped artifact ("macos/brew") gets a header
-		// comment so a reader of the flat concat knows which platform
-		// the block targets. Invisible when the tool renders Markdown.
-		if scope, _, ok := strings.Cut(e.Name, "/"); ok && isOSScopeDir(scope) {
-			fmt.Fprintf(&buf, "<!-- OS: %s -->\n", scope)
-		}
-		fmt.Fprintf(&buf, "## %s\n\n", e.Name)
-		buf.Write(body)
-		// Always end an entry on a blank line so the next heading
-		// starts cleanly. We trim the body's trailing whitespace
-		// first to avoid stacking blank lines if the source already
-		// ended with one.
-		if !bytes.HasSuffix(bytes.TrimRight(buf.Bytes(), " \t"), []byte("\n")) {
-			buf.WriteByte('\n')
-		}
-		buf.WriteByte('\n')
+	body, err := buildEntriesBody(entries)
+	if err != nil {
+		return false, err
 	}
-
-	newContent := buf.Bytes()
+	newContent := append([]byte(ConcatBanner), body...)
 
 	// If existing content matches new content, skip the write to
 	// preserve mtime.
@@ -146,6 +115,46 @@ func RegenerateConcat(concatPath string, entries []ConcatEntry) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// buildEntriesBody renders entries as `## <name>` sections sorted by
+// name, each followed by the artifact body with frontmatter stripped.
+// It is the single builder behind every concat-shaped output (whole
+// concat files, spliced regions, and the status comparisons of both),
+// so what status expects can never drift from what sync writes.
+func buildEntriesBody(entries []ConcatEntry) ([]byte, error) {
+	// Sort by Name so the output is deterministic regardless of how
+	// the orchestration layer discovered the entries.
+	sorted := make([]ConcatEntry, len(entries))
+	copy(sorted, entries)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Name < sorted[j].Name
+	})
+
+	var buf bytes.Buffer
+	for _, e := range sorted {
+		body, err := readArtifactBody(e.SourcePath)
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", e.SourcePath, err)
+		}
+		// SPEC-006: an OS-scoped artifact ("macos/brew") gets a header
+		// comment so a reader of the flat concat knows which platform
+		// the block targets. Invisible when the tool renders Markdown.
+		if scope, _, ok := strings.Cut(e.Name, "/"); ok && isOSScopeDir(scope) {
+			fmt.Fprintf(&buf, "<!-- OS: %s -->\n", scope)
+		}
+		fmt.Fprintf(&buf, "## %s\n\n", e.Name)
+		buf.Write(body)
+		// Always end an entry on a blank line so the next heading
+		// starts cleanly. We trim the body's trailing whitespace
+		// first to avoid stacking blank lines if the source already
+		// ended with one.
+		if !bytes.HasSuffix(bytes.TrimRight(buf.Bytes(), " \t"), []byte("\n")) {
+			buf.WriteByte('\n')
+		}
+		buf.WriteByte('\n')
+	}
+	return buf.Bytes(), nil
 }
 
 // readArtifactBody returns the body of an artifact file with any

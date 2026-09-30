@@ -248,3 +248,29 @@ func TestCmdGlobalStatus_TargetsFilter(t *testing.T) {
 		}
 	}
 }
+
+// TestCmdGlobalStatus_OSScopedConcatReadsOK pins that status builds
+// the concat body with the same bytes sync writes. An OS-scoped rule
+// gets an `<!-- OS: x -->` header in the concat; a status builder
+// that omits it reports a freshly synced file as stale forever.
+func TestCmdGlobalStatus_OSScopedConcatReadsOK(t *testing.T) {
+	app, _, _ := newStatusTestApp(t)
+	writeArtifact(t, app.GlobalRoot, "config", "os = linux\n")
+	writeArtifact(t, app.GlobalRoot, filepath.Join("rules", "linux", "apt.md"), "Use apt.\n")
+
+	if err := app.CmdGlobalSync(GlobalSyncOpts{Targets: []string{"copilot"}}); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	artifacts, err := DiscoverArtifacts(app.GlobalRoot)
+	if err != nil {
+		t.Fatalf("discover: %v", err)
+	}
+	copilot, _ := ResolveTool("copilot")
+	_, concatRows, _ := computeStatus(artifacts, []Tool{copilot}, app.ResolveGlobalRootParent())
+	if len(concatRows) != 1 {
+		t.Fatalf("want 1 concat row, got %d", len(concatRows))
+	}
+	if concatRows[0].State != string(ConcatStateOK) {
+		t.Errorf("freshly synced OS-scoped concat reads %q, want %q", concatRows[0].State, ConcatStateOK)
+	}
+}
