@@ -62,6 +62,28 @@ type Tool struct {
 	// Callers iterating Tools for a global operation should skip any
 	// Tool where LocalOnly is true.
 	LocalOnly bool
+
+	// ResolveGlobalDir computes the global directory for a tool whose
+	// root is not <parent>/<segment> (OpenClaw's workspace moves with
+	// env vars and its own config). Nil for every other tool. It does
+	// IO through env, so only the command shell calls it (see
+	// App.bindTool), which then pins the result into DirByScope as an
+	// absolute path.
+	ResolveGlobalDir func(parent string, env ToolEnv) (string, error)
+
+	// Region, when set, marks a tool delivered by splicing one managed
+	// region into RegionFile, a file another program owns and creates.
+	// It drives StrategyRegion routing, a clean that strips only the
+	// region, a region row in status, and consent: a plain `global
+	// sync` includes the tool only once the markers already exist.
+	Region *ManagedRegion
+
+	// RegionFile is the host file's name inside the global dir.
+	RegionFile string
+
+	// RegionCharCap, when set, reports the size above which the tool
+	// truncates RegionFile, so sync can warn before content is lost.
+	RegionCharCap func(parent string, env ToolEnv) (int, error)
 }
 
 // DirForScope returns the absolute directory path for this tool at the
@@ -78,10 +100,16 @@ type Tool struct {
 // happen for any registered tool), DirForScope returns the empty
 // string. Callers that need scope-completeness can pre-check with
 // HasScope.
+//
+// An absolute entry is a directory ResolveGlobalDir already bound and
+// is returned as-is.
 func (t Tool) DirForScope(scope Scope, parentRoot string) string {
 	seg, ok := t.DirByScope[scope]
 	if !ok || seg == "" {
 		return ""
+	}
+	if filepath.IsAbs(seg) {
+		return seg
 	}
 	return filepath.Join(parentRoot, seg)
 }
@@ -123,6 +151,10 @@ func (t Tool) Matches(name string) bool {
 //     (grep for the string).
 //  3. A doc table update in docs/architecture/scope-and-targets.md
 //     and the spec table in SPEC-002 §Filesystem conventions.
+//  4. For a tool whose root moves (env vars, its own config), a
+//     ResolveGlobalDir resolver. For a tool that only reads a file it
+//     owns, Region + RegionFile instead of a concat destination, so
+//     sync splices one region and never takes the file over.
 //
 // The order of Tools should not be relied on for semantic behavior —
 // only for stable user-facing output ordering.
@@ -195,6 +227,25 @@ var Tools = []Tool{
 			ScopeLocal:  ".opencode",
 			ScopeGlobal: filepath.Join(".config", "opencode"),
 		},
+	},
+	{
+		// OpenClaw gateway agents (SPEC-012). Global only: a gateway
+		// workspace is per user, and there is no project-scope surface,
+		// so local sync skips it rather than creating .openclaw/ in a
+		// repo. The DirByScope segment is the default layout;
+		// resolveOpenClawWorkspace replaces it with the real workspace.
+		//
+		// Passive rules are inlined into the OpenClaw-rules region of
+		// <workspace>/AGENTS.md. Skills are skipped because OpenClaw
+		// already loads ~/.agents/skills natively.
+		ID: "openclaw",
+		DirByScope: map[Scope]string{
+			ScopeGlobal: filepath.Join(".openclaw", "workspace"),
+		},
+		ResolveGlobalDir: resolveOpenClawWorkspace,
+		Region:           &OpenClawRulesRegion,
+		RegionFile:       "AGENTS.md",
+		RegionCharCap:    openClawRegionCharCap,
 	},
 }
 

@@ -83,12 +83,27 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 		}
 	}
 
+	// regionBatches starts with every active region host, empty, so a
+	// region whose last passive rule was deleted is still regenerated
+	// (to markers and banner only) instead of keeping stale text.
+	regionBatches := map[string][]ConcatEntry{}
+	regionTools := map[string]Tool{}
+	for _, t := range tools {
+		if t.Region != nil {
+			host := filepath.Join(t.DirForScope(ScopeGlobal, parent), t.RegionFile)
+			regionBatches[host] = []ConcatEntry{}
+			regionTools[host] = t
+		}
+	}
+
 	if len(artifacts) == 0 {
 		// Only bail when there are truly no artifacts AND no hooks.
 		// Hooks aren't discovered as Artifacts (they batch-merge
 		// into settings.json), so an empty artifact slice doesn't
 		// mean nothing to do when .agents/hooks/ has content.
-		if !hasClaudeTarget || !dirExists(filepath.Join(root, "hooks")) {
+		// Likewise an active region must still be emptied.
+		hooksPending := hasClaudeTarget && dirExists(filepath.Join(root, "hooks"))
+		if !hooksPending && len(regionBatches) == 0 {
 			a.Info("no artifacts under " + root + "; nothing to sync")
 			return nil
 		}
@@ -145,6 +160,12 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 
 			case StrategyConcat:
 				concatBatches[dest.Path] = append(concatBatches[dest.Path], ConcatEntry{
+					Name:       art.Name,
+					SourcePath: concatSourcePath(art),
+				})
+
+			case StrategyRegion:
+				regionBatches[dest.Path] = append(regionBatches[dest.Path], ConcatEntry{
 					Name:       art.Name,
 					SourcePath: concatSourcePath(art),
 				})
@@ -216,6 +237,8 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 		}
 	}
 
+	a.regenerateRegions(regionBatches, regionTools, parent)
+
 	// Merge .agents/hooks/ fragments into .claude/settings.json
 	// (SPEC-004 Part C). This runs after the per-artifact loop
 	// because hooks are batch-processed, not one-at-a-time.
@@ -248,13 +271,20 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 // Unknown names are reported as warnings; the function returns
 // successfully even when some targets are unknown, because partial
 // progress is more useful than failing the whole sync.
+//
+// Every returned tool is bound (see bindTool): a tool with a resolved
+// global dir carries it as an absolute DirByScope entry, and a region
+// tool is present only when its host file can take the region.
 func (a *App) resolveSyncTools(targets []string) ([]Tool, error) {
 	if len(targets) == 0 {
 		// Default: all tools with a global mapping.
 		var out []Tool
 		for _, t := range Tools {
-			if t.HasScope(ScopeGlobal) {
-				out = append(out, t)
+			if !t.HasScope(ScopeGlobal) {
+				continue
+			}
+			if bound, ok := a.bindTool(t, false); ok {
+				out = append(out, bound)
 			}
 		}
 		return out, nil
@@ -280,9 +310,96 @@ func (a *App) resolveSyncTools(targets []string) ([]Tool, error) {
 			continue
 		}
 		seen[tool.ID] = true
-		out = append(out, tool)
+		if bound, ok := a.bindTool(tool, true); ok {
+			out = append(out, bound)
+		}
 	}
 	return out, nil
+}
+
+// regenerateRegions rewrites each region host once, in path order, and
+// warns when a host grows past the size its tool truncates at.
+func (a *App) regenerateRegions(batches map[string][]ConcatEntry, tools map[string]Tool, parent string) {
+	paths := make([]string, 0, len(batches))
+	for p := range batches {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+
+	for _, p := range paths {
+		t, entries := tools[p], batches[p]
+		if a.DryRun {
+			a.Info(fmt.Sprintf("[dry-run] [%s] would regenerate region %s in %s with %d entries", t.ID, t.Region.Name, p, len(entries)))
+			continue
+		}
+		changed, chars, err := RegenerateRegion(p, *t.Region, entries)
+		if err != nil {
+			a.Warn(fmt.Sprintf("[%s] region regen failed for %s: %v", t.ID, p, err))
+			continue
+		}
+		if changed {
+			a.Info(fmt.Sprintf("[%s] regenerated region %s in %s (%d entries)", t.ID, t.Region.Name, p, len(entries)))
+		} else {
+			a.Info(fmt.Sprintf("[%s] region %s in %s already current (%d entries)", t.ID, t.Region.Name, p, len(entries)))
+		}
+		if t.RegionCharCap == nil {
+			continue
+		}
+		limit, err := t.RegionCharCap(parent, a.ToolEnv)
+		if err != nil {
+			a.Warn(fmt.Sprintf("[%s] cannot read size cap: %v", t.ID, err))
+			continue
+		}
+		if chars > limit {
+			a.Warn(fmt.Sprintf("[%s] %s is %d chars, over the %d-char bootstrap cap (agents.defaults.bootstrapMaxChars); %s truncates the middle of the file. Trim passive rules or raise the cap.", t.ID, p, chars, limit, t.ID))
+		}
+	}
+}
+
+// bindTool resolves a tool's global dir when it has a resolver and
+// applies the region consent rule. ok=false drops the tool from this
+// run.
+//
+// Consent: a region tool writes into a file another program owns, so
+// registering it must not make a plain `global sync` start editing
+// that file. Without --targets it is included only when the host file
+// already carries the region markers (a previous explicit run put them
+// there), and dropped silently otherwise, so users without the tool
+// see nothing. Naming it in --targets is the consent; the host file
+// must still exist, because sync-agents never creates it.
+func (a *App) bindTool(t Tool, explicit bool) (Tool, bool) {
+	if t.ResolveGlobalDir == nil {
+		return t, true
+	}
+	dir, err := t.ResolveGlobalDir(a.ResolveGlobalRootParent(), a.ToolEnv)
+	if err != nil {
+		a.Warn(fmt.Sprintf("[%s] cannot resolve global dir: %v; skipping", t.ID, err))
+		return Tool{}, false
+	}
+	bound := t
+	bound.DirByScope = map[Scope]string{}
+	for s, seg := range t.DirByScope {
+		bound.DirByScope[s] = seg
+	}
+	bound.DirByScope[ScopeGlobal] = dir
+	if t.Region == nil {
+		return bound, true
+	}
+
+	host := filepath.Join(dir, t.RegionFile)
+	data, err := os.ReadFile(host)
+	if err != nil {
+		if explicit {
+			a.Warn(fmt.Sprintf("[%s] no %s at %s; run %s once to create it (sync-agents never creates it); skipping", t.ID, t.RegionFile, host, t.ID))
+		}
+		return Tool{}, false
+	}
+	if !explicit {
+		if _, _, found := t.Region.locate(string(data)); !found {
+			return Tool{}, false
+		}
+	}
+	return bound, true
 }
 
 // applySymlinkDestination creates or repairs the symlink at dest.Path
