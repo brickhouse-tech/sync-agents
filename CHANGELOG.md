@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.10.0](https://github.com/brickhouse-tech/sync-agents/compare/v1.9.3...v1.10.0) (2026-09-30)
+
+### Features
+
+* **openclaw:** register openclaw global target ([d02fc38](https://github.com/brickhouse-tech/sync-agents/commit/d02fc38de8d59bac1bebfc218a41601aae57e5c0))
+
+### Bug Fixes
+
+* **index:** preserve foreign sync-agents regions and the ## Tools section ([22aec45](https://github.com/brickhouse-tech/sync-agents/commit/22aec458b1e255671df6a0911ce6c33b26502c95))
+* **status:** share concat body builder so OS-scoped rules stop reading stale ([fc29cf1](https://github.com/brickhouse-tech/sync-agents/commit/fc29cf1f54482757e28f28aebd90479d7b6549d8))
+
 ## [1.9.3](https://github.com/brickhouse-tech/sync-agents/compare/v1.9.2...v1.9.3) (2026-09-26)
 
 ## [1.9.2](https://github.com/brickhouse-tech/sync-agents/compare/v1.9.1...v1.9.2) (2026-09-26)
