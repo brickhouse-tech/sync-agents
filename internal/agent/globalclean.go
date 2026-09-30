@@ -246,18 +246,9 @@ func (a *App) scrubClaudeManagedBlock(claudeMDPath string, dryRun bool) (int, bo
 		return 0, false, err
 	}
 
-	content := string(data)
-	startIdx := strings.Index(content, ManagedImportBlockStart)
-	if startIdx < 0 {
+	remaining, found := stripRegion(string(data), ClaudeImportsRegion)
+	if !found {
 		return 0, false, nil
-	}
-	endIdx := strings.Index(content[startIdx:], ManagedImportBlockEnd)
-	if endIdx < 0 {
-		return 0, false, nil
-	}
-	endFull := startIdx + endIdx + len(ManagedImportBlockEnd)
-	if endFull < len(content) && content[endFull] == '\n' {
-		endFull++
 	}
 
 	if dryRun {
@@ -265,10 +256,8 @@ func (a *App) scrubClaudeManagedBlock(claudeMDPath string, dryRun bool) (int, bo
 		return 1, false, nil
 	}
 
-	// Splice out the managed block. Collapse any resulting
-	// double-blank-lines into a single one so the preserved
-	// regions don't carry awkward whitespace after scrub.
-	remaining := content[:startIdx] + content[endFull:]
+	// Collapse any resulting double-blank-lines into a single one so
+	// the preserved regions don't carry awkward whitespace after scrub.
 	for strings.Contains(remaining, "\n\n\n") {
 		remaining = strings.ReplaceAll(remaining, "\n\n\n", "\n\n")
 	}

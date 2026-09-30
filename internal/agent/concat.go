@@ -69,52 +69,12 @@ func RegenerateConcat(concatPath string, entries []ConcatEntry) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	newContent := append([]byte(ConcatBanner), body...)
-
-	// If existing content matches new content, skip the write to
-	// preserve mtime.
-	if existing, err := os.ReadFile(concatPath); err == nil {
-		if bytes.Equal(existing, newContent) {
-			return false, nil
-		}
-	}
-
-	// Ensure the destination directory exists. Concat files often
-	// live a few levels deep (e.g. ~/.codeium/windsurf/memories/).
+	// Concat files often live a few levels deep
+	// (e.g. ~/.codeium/windsurf/memories/).
 	if err := os.MkdirAll(filepath.Dir(concatPath), 0o755); err != nil {
 		return false, err
 	}
-
-	// Atomic write: tmp file in the same directory, then rename.
-	// Same directory is important so the rename stays on one
-	// filesystem (cross-filesystem rename falls back to copy+delete
-	// on some platforms and loses atomicity).
-	tmp, err := os.CreateTemp(filepath.Dir(concatPath), filepath.Base(concatPath)+".tmp-*")
-	if err != nil {
-		return false, err
-	}
-	tmpName := tmp.Name()
-	// Clean up the tmp file on any error path. If we successfully
-	// rename it, the deferred Remove is a no-op (file no longer
-	// exists at tmpName).
-	defer os.Remove(tmpName)
-
-	if _, err := tmp.Write(newContent); err != nil {
-		tmp.Close()
-		return false, err
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return false, err
-	}
-	if err := tmp.Close(); err != nil {
-		return false, err
-	}
-
-	if err := os.Rename(tmpName, concatPath); err != nil {
-		return false, err
-	}
-	return true, nil
+	return writeIfChanged(concatPath, append([]byte(ConcatBanner), body...))
 }
 
 // buildEntriesBody renders entries as `## <name>` sections sorted by

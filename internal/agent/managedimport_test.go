@@ -184,10 +184,10 @@ func TestExtractManagedImports(t *testing.T) {
 	}
 }
 
-// TestReplaceManagedBlock_NoMarkers verifies append-on-missing.
-func TestReplaceManagedBlock_NoMarkers(t *testing.T) {
+// TestSpliceRegion_NoMarkers verifies append-on-missing.
+func TestSpliceRegion_NoMarkers(t *testing.T) {
 	existing := "# My file\n\nSome content.\n"
-	got := replaceManagedBlock(existing, "NEWBLOCK\n")
+	got := spliceRegion(existing, ClaudeImportsRegion, "NEWBLOCK\n")
 	if !strings.Contains(got, "# My file") {
 		t.Errorf("existing content lost:\n%s", got)
 	}

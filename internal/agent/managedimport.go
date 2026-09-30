@@ -1,10 +1,8 @@
 package agent
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 )
@@ -16,12 +14,9 @@ import (
 // markers themselves are preserved. Everything outside the markers
 // is left verbatim, so users can keep their own frontmatter, prose,
 // or other sections safely alongside the managed imports.
-//
-// The naming scheme mirrors other preserved-section markers in this
-// project (e.g. the ## Inherits block in AGENTS.md).
-const (
-	ManagedImportBlockStart = "<!-- sync-agents:claude-imports:start -->"
-	ManagedImportBlockEnd   = "<!-- sync-agents:claude-imports:end -->"
+var (
+	ManagedImportBlockStart = ClaudeImportsRegion.Start()
+	ManagedImportBlockEnd   = ClaudeImportsRegion.End()
 )
 
 // managedImportBanner is a short comment that explains where the
@@ -63,12 +58,26 @@ const managedImportBanner = "<!-- managed by sync-agents; do not edit between th
 //     and move on (a failed imports write shouldn't abort the whole
 //     sync).
 func RegenerateClaudeImports(claudeMDPath string, importPaths []string) (bool, error) {
+	block := claudeImportsBlock(importPaths)
+	existing, err := os.ReadFile(claudeMDPath)
+	if err != nil && !os.IsNotExist(err) {
+		return false, err
+	}
+	if err := os.MkdirAll(filepath.Dir(claudeMDPath), 0o755); err != nil {
+		return false, err
+	}
+	return writeIfChanged(claudeMDPath, []byte(spliceRegion(string(existing), ClaudeImportsRegion, block)))
+}
+
+// claudeImportsBlock renders the full claude-imports region (markers,
+// banner, one sorted `@<path>` line per import, trailing newline).
+func claudeImportsBlock(importPaths []string) string {
 	sorted := make([]string, len(importPaths))
 	copy(sorted, importPaths)
 	sort.Strings(sorted)
 
-	var buf bytes.Buffer
-	buf.WriteString(ManagedImportBlockStart)
+	var buf strings.Builder
+	buf.WriteString(ClaudeImportsRegion.Start())
 	buf.WriteString("\n")
 	buf.WriteString(managedImportBanner)
 	buf.WriteString("\n")
@@ -77,104 +86,9 @@ func RegenerateClaudeImports(claudeMDPath string, importPaths []string) (bool, e
 		buf.WriteString(p)
 		buf.WriteString("\n")
 	}
-	buf.WriteString(ManagedImportBlockEnd)
+	buf.WriteString(ClaudeImportsRegion.End())
 	buf.WriteString("\n")
-
-	newBlock := buf.String()
-
-	existing, readErr := os.ReadFile(claudeMDPath)
-	var out string
-	if readErr != nil {
-		if !os.IsNotExist(readErr) {
-			return false, readErr
-		}
-		// File doesn't exist yet — the block IS the whole file.
-		// Ensure the parent dir exists before write.
-		out = newBlock
-	} else {
-		out = replaceManagedBlock(string(existing), newBlock)
-	}
-
-	// Idempotency: skip write when the file is already content-
-	// identical to what we would produce.
-	if readErr == nil && string(existing) == out {
-		return false, nil
-	}
-
-	if err := os.MkdirAll(filepath.Dir(claudeMDPath), 0o755); err != nil {
-		return false, err
-	}
-
-	tmp := claudeMDPath + ".sync-agents-tmp"
-	if err := os.WriteFile(tmp, []byte(out), 0o644); err != nil {
-		os.Remove(tmp)
-		return false, err
-	}
-	if err := os.Rename(tmp, claudeMDPath); err != nil {
-		os.Remove(tmp)
-		return false, err
-	}
-	return true, nil
-}
-
-// replaceManagedBlock replaces the content between the managed-block
-// markers with newBlock. If the markers are missing, the new block
-// is appended to the existing content (with one blank line separator
-// when the original ends without a trailing newline). If the markers
-// are present, everything between them — including the lines on the
-// same line as the markers — is replaced.
-//
-// Edge cases handled:
-//   - Start marker present, end marker missing: append a fresh end-
-//     terminated block (treat as if markers missing on the tail).
-//     Practically shouldn't happen; graceful fallback.
-//   - Markers present at the very start of the file: replaced in
-//     place; leading content before the start marker is empty.
-//   - Multiple marker pairs: only the first pair is replaced; later
-//     pairs are left verbatim (a pathological case we don't need to
-//     defend against).
-func replaceManagedBlock(existing, newBlock string) string {
-	startIdx := strings.Index(existing, ManagedImportBlockStart)
-	if startIdx < 0 {
-		// No existing block. Append — with a separator blank line
-		// if the existing content doesn't already end with one.
-		if len(existing) == 0 {
-			return newBlock
-		}
-		sep := ""
-		if !strings.HasSuffix(existing, "\n") {
-			sep = "\n"
-		}
-		return existing + sep + "\n" + newBlock
-	}
-
-	endIdx := strings.Index(existing[startIdx:], ManagedImportBlockEnd)
-	if endIdx < 0 {
-		// Start present, end missing — malformed. Treat as if
-		// start was not present: append the block.
-		sep := ""
-		if !strings.HasSuffix(existing, "\n") {
-			sep = "\n"
-		}
-		return existing + sep + "\n" + newBlock
-	}
-	// endIdx is relative to startIdx; make it absolute.
-	endIdx += startIdx
-	endFull := endIdx + len(ManagedImportBlockEnd)
-
-	// Eat the trailing newline after the end marker (if any) so the
-	// replaced block owns its own trailing newline.
-	if endFull < len(existing) && existing[endFull] == '\n' {
-		endFull++
-	}
-
-	var out strings.Builder
-	out.WriteString(existing[:startIdx])
-	out.WriteString(newBlock)
-	if endFull < len(existing) {
-		out.WriteString(existing[endFull:])
-	}
-	return out.String()
+	return buf.String()
 }
 
 // CollectClaudeRuleImportPaths walks the passive-rule destinations
@@ -273,42 +187,11 @@ type ClaudeRoutedArtifact struct {
 	ImportOptIn bool
 }
 
-// FormatManagedImportBlockForTest exposes replaceManagedBlock's
-// behavior for tests that want to assert on the exact block output
-// without going through filesystem writes. Production code calls
-// RegenerateClaudeImports directly.
-var FormatManagedImportBlockForTest = func(importPaths []string) string {
-	sorted := make([]string, len(importPaths))
-	copy(sorted, importPaths)
-	sort.Strings(sorted)
-	var buf bytes.Buffer
-	buf.WriteString(ManagedImportBlockStart)
-	buf.WriteString("\n")
-	buf.WriteString(managedImportBanner)
-	buf.WriteString("\n")
-	for _, p := range sorted {
-		buf.WriteString("@")
-		buf.WriteString(p)
-		buf.WriteString("\n")
-	}
-	buf.WriteString(ManagedImportBlockEnd)
-	buf.WriteString("\n")
-	return buf.String()
-}
-
-// managedBlockMarkerRegexp is used by tests to verify that a file
-// contains a well-formed managed block. Exported via a test-only
-// helper so test packages don't have to re-implement the regex.
-var managedBlockMarkerRegexp = regexp.MustCompile(
-	"(?s)" + regexp.QuoteMeta(ManagedImportBlockStart) +
-		".*?" +
-		regexp.QuoteMeta(ManagedImportBlockEnd),
-)
-
 // HasManagedImportBlock reports whether content contains a
 // well-formed start...end marker pair.
 func HasManagedImportBlock(content string) bool {
-	return managedBlockMarkerRegexp.MatchString(content)
+	_, _, ok := ClaudeImportsRegion.locate(content)
+	return ok
 }
 
 // ExtractManagedImports returns the @-import lines between the

@@ -1745,7 +1745,7 @@ func (a *App) generateAgentsMD() {
 	}
 
 	if importLines := ManagedImportBlockForLocal(localArts); len(importLines) > 0 {
-		importBlock := FormatManagedImportBlockForTest(importLines)
+		importBlock := claudeImportsBlock(importLines)
 		b.WriteString(importBlock)
 	}
 
