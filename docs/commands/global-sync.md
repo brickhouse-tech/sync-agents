@@ -23,12 +23,15 @@ every registered tool, the sync:
 3. **Performs the appropriate filesystem operation**:
    - Per-artifact **symlink** (Claude, Cursor, Windsurf invocables)
    - Append to a **concat batch** (Windsurf passive, Copilot, Codex)
+   - Append to a **region batch** (OpenClaw passive): one marked
+     region inside a file another program owns
    - **Skip with warning** (multi-file invocable skills targeting
      Windsurf workflows; passive skill dirs targeting Claude)
 4. **Regenerates concat targets** at the end — one atomic
    tmp+rename write per concat file. If the new content equals the
    existing content (byte-identical), the file is left alone
-   preserving its mtime.
+   preserving its mtime. Region hosts get the same treatment, and
+   only the bytes between their markers ever change.
 
 ## Per-tool routing reference
 
@@ -39,6 +42,7 @@ every registered tool, the sync:
 | `cursor` | `~/.cursor/rules/<name>.md` | `~/.cursor/rules/<name>.md` (same — Cursor doesn't distinguish) |
 | `copilot` | concat → `~/.github/copilot/instructions.md` | same concat |
 | `codex` | concat → `~/.codex/instructions.md` | same concat |
+| `openclaw` | skipped (no command surface; skills load natively) | region `openclaw-rules` → `<workspace>/AGENTS.md` |
 
 Skipped cases:
 
@@ -50,6 +54,38 @@ Skipped cases:
   has no clean Claude destination (Claude's passive surface is a
   single `rules/*.md` file). Skipped with a warning. Decide whether
   to split the skill into rules or accept the gap.
+
+## OpenClaw
+
+OpenClaw reads a fixed set of files from its workspace and follows
+neither `@`-imports nor links, so passive rule **text** is inlined
+into `<workspace>/AGENTS.md` between
+`<!-- sync-agents:openclaw-rules:start -->` and `...:end -->`.
+Everything outside the markers (the project index, a `## Tools`
+section OpenClaw's doctor added, your own notes) is left untouched.
+
+- **Workspace.** Resolved the way OpenClaw resolves it: config
+  `agents.defaults.workspace`, then `$OPENCLAW_WORKSPACE_DIR`, then
+  `<state dir>/workspace`. The state dir is `$OPENCLAW_STATE_DIR`, or
+  `~/.openclaw` (`~/.openclaw-<profile>` for `$OPENCLAW_PROFILE`), under
+  `$OPENCLAW_HOME` when set. The config is `$OPENCLAW_CONFIG_PATH` or
+  `<state dir>/openclaw.json`. A config that fails to parse (including
+  JSON5 comments) skips the target with a warning rather than guessing.
+- **Consent.** A plain `global sync` leaves OpenClaw alone until you
+  opt in once with `--targets openclaw`, which adds the markers. From
+  then on the default sync keeps the region current. Delete the region
+  (or run `global clean`) to opt out.
+- **Never creates the file.** If `<workspace>/AGENTS.md` does not
+  exist, the target is skipped: run OpenClaw once so it seeds its own
+  template.
+- **Size cap.** OpenClaw cuts the middle out of any bootstrap file
+  longer than `agents.defaults.bootstrapMaxChars` (default 20000).
+  Sync warns when AGENTS.md passes that cap.
+- **Skipped.** Skills (OpenClaw loads `~/.agents/skills` itself),
+  invocable rules and workflows, agents, and reference docs.
+
+`global clean` strips only the region and keeps the file. `global
+status` prints one `[region synced|stale|missing]` row for it.
 
 ## Idempotency
 
@@ -85,7 +121,7 @@ will be overwritten on the next sync; that's why the banner says
 
 | Flag | Default | Effect |
 |---|---|---|
-| `--targets <list>` | all | Comma-separated tool IDs to sync. Aliases honored: `windsurf` resolves to `codeium`. Unknown names produce a warning and are skipped. |
+| `--targets <list>` | all | Comma-separated tool IDs to sync. Aliases honored: `windsurf` resolves to `codeium`. Unknown names produce a warning and are skipped. The default includes `openclaw` only once its region markers exist (see [OpenClaw](#openclaw)). |
 | `--dry-run` | false | Print every planned operation prefixed with `[dry-run]`. No filesystem writes. |
 | `--force` | false | Replace non-symlink files in the way (saved as `*.replaced-by-sync-agents`). |
 | `--global-root <path>` | `$HOME/.agents` | Override the global root. See [Global root resolution](../architecture/global-root-resolution.md). |
