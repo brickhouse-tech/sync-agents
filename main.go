@@ -648,7 +648,7 @@ func main() {
 			})
 		},
 	}
-	globalSyncCmd.Flags().StringVar(&globalSyncTargets, "targets", "", "Comma-separated tools to sync (default: all registered)")
+	globalSyncCmd.Flags().StringVar(&globalSyncTargets, "targets", "", "Comma-separated tools to sync (default: all registered; openclaw only after an explicit --targets openclaw)")
 	globalCmd.AddCommand(globalSyncCmd)
 
 	// global status — read-only report of every per-tool destination's
@@ -664,7 +664,7 @@ func main() {
 			})
 		},
 	}
-	globalStatusCmd.Flags().StringVar(&globalStatusTargets, "targets", "", "Comma-separated tools to report on (default: all registered)")
+	globalStatusCmd.Flags().StringVar(&globalStatusTargets, "targets", "", "Comma-separated tools to report on (default: all registered; openclaw only after an explicit --targets openclaw)")
 	globalCmd.AddCommand(globalStatusCmd)
 
 	// global clean — remove sync-agents-owned symlinks and concat
@@ -681,7 +681,7 @@ func main() {
 			})
 		},
 	}
-	globalCleanCmd.Flags().StringVar(&globalCleanTargets, "targets", "", "Comma-separated tools to clean (default: all registered)")
+	globalCleanCmd.Flags().StringVar(&globalCleanTargets, "targets", "", "Comma-separated tools to clean (default: all registered; openclaw only after an explicit --targets openclaw)")
 	globalCmd.AddCommand(globalCleanCmd)
 
 	rootCmd.AddCommand(globalCmd)

@@ -67,10 +67,11 @@ func TestResolveTool_CaseSensitivity(t *testing.T) {
 
 // TestTools_Registry_HasExpectedIDs is a regression guard: SPEC-002
 // names 5 tools (claude, codeium, cursor, copilot, codex) and
-// SPEC-011 Part B adds opencode. Anything that changes that set
-// should require an update here and a corresponding spec change.
+// SPEC-011 Part B adds opencode, SPEC-012 openclaw. Anything that
+// changes that set should require an update here and a corresponding
+// spec change.
 func TestTools_Registry_HasExpectedIDs(t *testing.T) {
-	want := []string{"claude", "codeium", "cursor", "copilot", "codex", "opencode"}
+	want := []string{"claude", "codeium", "cursor", "copilot", "codex", "opencode", "openclaw"}
 	if got := ToolIDs(); !reflect.DeepEqual(got, want) {
 		t.Errorf("ToolIDs() = %v, want %v", got, want)
 	}
@@ -105,13 +106,16 @@ func TestTools_OpencodeNotInDefaultTargets(t *testing.T) {
 	}
 }
 
+// globalOnlyTools have no project-scope surface (SPEC-012: OpenClaw's
+// workspace is per user).
+var globalOnlyTools = map[string]bool{"openclaw": true}
+
 // TestTool_HasScope covers the LocalOnly opt-out and the standard
-// case. Today every tool has both scopes; this test exists so that if
-// a future tool sets LocalOnly=true, the registry behavior is
-// covered.
+// case: every tool has a global scope unless LocalOnly, and a local
+// scope unless listed in globalOnlyTools.
 func TestTool_HasScope(t *testing.T) {
 	for _, tool := range Tools {
-		if !tool.HasScope(ScopeLocal) {
+		if !tool.HasScope(ScopeLocal) && !globalOnlyTools[tool.ID] {
 			t.Errorf("tool %q is missing ScopeLocal mapping", tool.ID)
 		}
 		if !tool.HasScope(ScopeGlobal) {
@@ -140,13 +144,19 @@ func TestTool_DirForScope_Copilot(t *testing.T) {
 	}
 }
 
-// TestToolIDsForScope returns all tools today (none are LocalOnly).
-// Tests that change this should also document the LocalOnly opt-out.
+// TestToolIDsForScope: every tool is global (none are LocalOnly);
+// every tool but the global-only ones is local.
 func TestToolIDsForScope(t *testing.T) {
 	local := ToolIDsForScope(ScopeLocal)
 	global := ToolIDsForScope(ScopeGlobal)
-	if !reflect.DeepEqual(local, ToolIDs()) {
-		t.Errorf("ToolIDsForScope(ScopeLocal) = %v, want %v", local, ToolIDs())
+	var wantLocal []string
+	for _, id := range ToolIDs() {
+		if !globalOnlyTools[id] {
+			wantLocal = append(wantLocal, id)
+		}
+	}
+	if !reflect.DeepEqual(local, wantLocal) {
+		t.Errorf("ToolIDsForScope(ScopeLocal) = %v, want %v", local, wantLocal)
 	}
 	if !reflect.DeepEqual(global, ToolIDs()) {
 		t.Errorf("ToolIDsForScope(ScopeGlobal) = %v, want %v", global, ToolIDs())

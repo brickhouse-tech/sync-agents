@@ -65,6 +65,24 @@ type ConcatEntry struct {
 // The artifact body — what comes after the closing `---\n` — is
 // what gets appended.
 func RegenerateConcat(concatPath string, entries []ConcatEntry) (bool, error) {
+	body, err := buildEntriesBody(entries)
+	if err != nil {
+		return false, err
+	}
+	// Concat files often live a few levels deep
+	// (e.g. ~/.codeium/windsurf/memories/).
+	if err := os.MkdirAll(filepath.Dir(concatPath), 0o755); err != nil {
+		return false, err
+	}
+	return writeIfChanged(concatPath, append([]byte(ConcatBanner), body...))
+}
+
+// buildEntriesBody renders entries as `## <name>` sections sorted by
+// name, each followed by the artifact body with frontmatter stripped.
+// It is the single builder behind every concat-shaped output (whole
+// concat files, spliced regions, and the status comparisons of both),
+// so what status expects can never drift from what sync writes.
+func buildEntriesBody(entries []ConcatEntry) ([]byte, error) {
 	// Sort by Name so the output is deterministic regardless of how
 	// the orchestration layer discovered the entries.
 	sorted := make([]ConcatEntry, len(entries))
@@ -73,14 +91,11 @@ func RegenerateConcat(concatPath string, entries []ConcatEntry) (bool, error) {
 		return sorted[i].Name < sorted[j].Name
 	})
 
-	// Build the new content in memory. Concat files are small (a
-	// handful of rules at most), so this is fine.
 	var buf bytes.Buffer
-	buf.WriteString(ConcatBanner)
 	for _, e := range sorted {
 		body, err := readArtifactBody(e.SourcePath)
 		if err != nil {
-			return false, fmt.Errorf("read %s: %w", e.SourcePath, err)
+			return nil, fmt.Errorf("read %s: %w", e.SourcePath, err)
 		}
 		// SPEC-006: an OS-scoped artifact ("macos/brew") gets a header
 		// comment so a reader of the flat concat knows which platform
@@ -99,53 +114,7 @@ func RegenerateConcat(concatPath string, entries []ConcatEntry) (bool, error) {
 		}
 		buf.WriteByte('\n')
 	}
-
-	newContent := buf.Bytes()
-
-	// If existing content matches new content, skip the write to
-	// preserve mtime.
-	if existing, err := os.ReadFile(concatPath); err == nil {
-		if bytes.Equal(existing, newContent) {
-			return false, nil
-		}
-	}
-
-	// Ensure the destination directory exists. Concat files often
-	// live a few levels deep (e.g. ~/.codeium/windsurf/memories/).
-	if err := os.MkdirAll(filepath.Dir(concatPath), 0o755); err != nil {
-		return false, err
-	}
-
-	// Atomic write: tmp file in the same directory, then rename.
-	// Same directory is important so the rename stays on one
-	// filesystem (cross-filesystem rename falls back to copy+delete
-	// on some platforms and loses atomicity).
-	tmp, err := os.CreateTemp(filepath.Dir(concatPath), filepath.Base(concatPath)+".tmp-*")
-	if err != nil {
-		return false, err
-	}
-	tmpName := tmp.Name()
-	// Clean up the tmp file on any error path. If we successfully
-	// rename it, the deferred Remove is a no-op (file no longer
-	// exists at tmpName).
-	defer os.Remove(tmpName)
-
-	if _, err := tmp.Write(newContent); err != nil {
-		tmp.Close()
-		return false, err
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return false, err
-	}
-	if err := tmp.Close(); err != nil {
-		return false, err
-	}
-
-	if err := os.Rename(tmpName, concatPath); err != nil {
-		return false, err
-	}
-	return true, nil
+	return buf.Bytes(), nil
 }
 
 // readArtifactBody returns the body of an artifact file with any

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -64,6 +65,23 @@ const (
 	ConcatStateForeign ConcatState = "foreign"
 )
 
+// RegionState classifies a managed region inside a host file another
+// program owns (OpenClaw's AGENTS.md).
+type RegionState string
+
+const (
+	// RegionStateSynced: the region matches what `global sync` would
+	// write.
+	RegionStateSynced RegionState = "synced"
+
+	// RegionStateStale: the region exists but its content differs.
+	RegionStateStale RegionState = "stale"
+
+	// RegionStateMissing: the host file has no region markers (or no
+	// longer exists).
+	RegionStateMissing RegionState = "missing"
+)
+
 // StatusEntry is one row of `global status` output. Each entry maps
 // to a single (tool, artifact) destination OR a single concat target.
 type StatusEntry struct {
@@ -90,6 +108,10 @@ type StatusEntry struct {
 	// IsConcat is true for concat-target rows so callers can
 	// distinguish them in output.
 	IsConcat bool
+
+	// IsRegion is true for managed-region rows (one per host file);
+	// State is one of the RegionState values.
+	IsRegion bool
 
 	// Detail is an optional human-readable note (e.g. the actual
 	// vs expected symlink target for drifted state).
@@ -185,6 +207,18 @@ func computeStatus(artifacts []Artifact, tools []Tool, parent string) (perDestin
 	concatBatches := map[string][]ConcatEntry{}
 	concatTool := map[string]string{} // path → tool ID for display
 
+	// Region hosts are seeded empty so a region with no contributors
+	// still gets its row (sync would empty it).
+	regionBatches := map[string][]ConcatEntry{}
+	regionTool := map[string]Tool{}
+	for _, t := range tools {
+		if t.Region != nil {
+			host := filepath.Join(t.DirForScope(ScopeGlobal, parent), t.RegionFile)
+			regionBatches[host] = []ConcatEntry{}
+			regionTool[host] = t
+		}
+	}
+
 	for _, art := range artifacts {
 		sem, err := ResolveSemantic(art.SourcePath, art.Type)
 		if err != nil {
@@ -227,6 +261,11 @@ func computeStatus(artifacts []Artifact, tools []Tool, parent string) (perDestin
 					SourcePath: concatSourcePath(art),
 				})
 				concatTool[dest.Path] = tool.ID
+			case StrategyRegion:
+				regionBatches[dest.Path] = append(regionBatches[dest.Path], ConcatEntry{
+					Name:       art.Name,
+					SourcePath: concatSourcePath(art),
+				})
 			}
 		}
 	}
@@ -262,7 +301,41 @@ func computeStatus(artifacts []Artifact, tools []Tool, parent string) (perDestin
 		})
 	}
 
+	regionPaths := make([]string, 0, len(regionBatches))
+	for p := range regionBatches {
+		regionPaths = append(regionPaths, p)
+	}
+	sort.Strings(regionPaths)
+	for _, p := range regionPaths {
+		t, entries := regionTool[p], regionBatches[p]
+		concatRows = append(concatRows, StatusEntry{
+			Tool:            t.ID,
+			DestinationPath: p,
+			State:           string(classifyRegion(p, *t.Region, entries)),
+			IsRegion:        true,
+			Detail:          fmt.Sprintf("region %s, %d entries", t.Region.Name, len(entries)),
+		})
+	}
+
 	return perDestination, concatRows, expected
+}
+
+// classifyRegion compares the region in the host file at path against
+// the exact bytes RegenerateRegion would produce.
+func classifyRegion(path string, r ManagedRegion, entries []ConcatEntry) RegionState {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return RegionStateMissing
+	}
+	existing := string(data)
+	if _, _, found := r.locate(existing); !found {
+		return RegionStateMissing
+	}
+	want, err := renderRegion(existing, r, entries)
+	if err != nil || want != existing {
+		return RegionStateStale
+	}
+	return RegionStateSynced
 }
 
 // classifySymlinkDestination inspects a symlink destination and
@@ -329,34 +402,14 @@ func classifyConcatTarget(path string, entries []ConcatEntry) ConcatState {
 	return ConcatStateStale
 }
 
-// buildConcatContent runs the regeneration build step *without*
-// touching the filesystem. Used by classifyConcatTarget to compare
-// against the existing concat file.
-//
-// This is a small duplication of the build step inside
-// RegenerateConcat; the alternative is to factor that step out and
-// have RegenerateConcat call it. Either works; the duplication is
-// trivially small and isolated by tests.
+// buildConcatContent returns the exact bytes RegenerateConcat would
+// write, without touching the filesystem.
 func buildConcatContent(entries []ConcatEntry) ([]byte, error) {
-	sorted := make([]ConcatEntry, len(entries))
-	copy(sorted, entries)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
-
-	var buf bytes.Buffer
-	buf.WriteString(ConcatBanner)
-	for _, e := range sorted {
-		body, err := readArtifactBody(e.SourcePath)
-		if err != nil {
-			return nil, err
-		}
-		fmt.Fprintf(&buf, "## %s\n\n", e.Name)
-		buf.Write(body)
-		if !bytes.HasSuffix(bytes.TrimRight(buf.Bytes(), " \t"), []byte("\n")) {
-			buf.WriteByte('\n')
-		}
-		buf.WriteByte('\n')
+	body, err := buildEntriesBody(entries)
+	if err != nil {
+		return nil, err
 	}
-	return buf.Bytes(), nil
+	return append([]byte(ConcatBanner), body...), nil
 }
 
 // printStatusEntry formats one StatusEntry as a single text line. The
@@ -369,10 +422,13 @@ func (a *App) printStatusEntry(e StatusEntry) {
 	if e.IsConcat {
 		sb.WriteString("concat ")
 	}
+	if e.IsRegion {
+		sb.WriteString("region ")
+	}
 	sb.WriteString(e.State)
 	sb.WriteString("] ")
 
-	if e.IsConcat {
+	if e.IsConcat || e.IsRegion {
 		sb.WriteString(e.DestinationPath)
 	} else {
 		if e.Tool != "" {
