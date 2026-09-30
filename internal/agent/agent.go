@@ -1434,24 +1434,13 @@ func (a *App) generateAgentsMD() {
 	outfile := filepath.Join(a.ProjectRoot, "AGENTS.md")
 	agentsDir := filepath.Join(a.ProjectRoot, ".agents")
 
-	// Preserve Inherits section
-	inheritsBlock := ""
+	existing := ""
 	if data, err := os.ReadFile(outfile); err == nil {
-		inSection := false
-		for _, line := range strings.Split(string(data), "\n") {
-			if regexp.MustCompile(`^##\s+Inherits`).MatchString(line) {
-				inSection = true
-				inheritsBlock += line + "\n"
-				continue
-			}
-			if inSection && strings.HasPrefix(line, "## ") {
-				break
-			}
-			if inSection {
-				inheritsBlock += line + "\n"
-			}
-		}
+		existing = string(data)
 	}
+	foreign := foreignRegions(existing, ClaudeImportsRegion)
+	preserved := capturePreservedSections(existing, foreign)
+	inheritsBlock := preserved["Inherits"]
 
 	var b strings.Builder
 	b.WriteString("---\ntrigger: always_on\n---\n\n# AGENTS\n\n")
@@ -1744,32 +1733,67 @@ func (a *App) generateAgentsMD() {
 		}
 	}
 
-	if importLines := ManagedImportBlockForLocal(localArts); len(importLines) > 0 {
-		importBlock := claudeImportsBlock(importLines)
-		b.WriteString(importBlock)
+	if tools := preserved["Tools"]; tools != "" {
+		b.WriteString(strings.TrimRight(tools, "\n"))
+		b.WriteString("\n\n")
 	}
 
-	// Strip any stale managed block the user previously had in
-	// AGENTS.md when the current .agents/ has no passive rules
-	// (so a deleted rule doesn't leave a dead @-import forever).
-	finalContent := b.String()
-	if len(localArts) == 0 {
-		if existing, err := os.ReadFile(outfile); err == nil {
-			if HasManagedImportBlock(string(existing)) {
-				startIdx := strings.Index(string(existing), ManagedImportBlockStart)
-				endIdx := strings.Index(string(existing)[startIdx:], ManagedImportBlockEnd)
-				if startIdx >= 0 && endIdx >= 0 {
-					endFull := startIdx + endIdx + len(ManagedImportBlockEnd)
-					if endFull < len(existing) && existing[endFull] == '\n' {
-						endFull++
-					}
-					finalContent = string(existing[:startIdx]) + string(existing[endFull:])
+	// Marker regions close the file, one blank line apart: ours first,
+	// then every region another writer (global sync's openclaw-rules)
+	// spliced in, verbatim and in document order. With no passive rules
+	// the claude-imports block is simply absent, so a deleted rule never
+	// leaves a dead @-import behind.
+	var regions []string
+	if importLines := ManagedImportBlockForLocal(localArts); len(importLines) > 0 {
+		regions = append(regions, claudeImportsBlock(importLines))
+	}
+	regions = append(regions, foreign...)
+	b.WriteString(strings.Join(regions, "\n"))
+
+	if _, err := writeIfChanged(outfile, []byte(b.String())); err != nil {
+		a.Warn(fmt.Sprintf("write %s: %v", outfile, err))
+	}
+}
+
+// preservedSectionTitles are the hand-kept H2 sections index carries
+// across a regeneration. Inherits sits right after the header, as it
+// always has. Tools is the section OpenClaw's doctor appends (or merges
+// into, matching the heading case-insensitively) when it folds TOOLS.md
+// into AGENTS.md; it goes after the generated sections.
+var preservedSectionTitles = []string{"Inherits", "Tools"}
+
+// capturePreservedSections returns each preserved section of existing
+// (heading line through the line before the next H2), keyed by its
+// canonical title. Marker regions, which carry their own `## ` headings,
+// are cut out first so they neither end a section early nor get
+// captured into one.
+func capturePreservedSections(existing string, foreign []string) map[string]string {
+	scan, _ := stripRegion(existing, ClaudeImportsRegion)
+	for _, r := range foreign {
+		scan = strings.Replace(scan, r, "", 1)
+	}
+
+	out := map[string]string{}
+	current := ""
+	for _, line := range strings.Split(scan, "\n") {
+		if strings.HasPrefix(line, "## ") {
+			current = ""
+			for _, title := range preservedSectionTitles {
+				if _, seen := out[title]; !seen && preservedHeading(title).MatchString(line) {
+					current = title
 				}
 			}
 		}
+		if current != "" {
+			out[current] += line + "\n"
+		}
 	}
+	return out
+}
 
-	os.WriteFile(outfile, []byte(finalContent), 0644)
+// preservedHeading matches an H2 line naming title, case-insensitively.
+func preservedHeading(title string) *regexp.Regexp {
+	return regexp.MustCompile(`(?i)^##\s+` + regexp.QuoteMeta(title) + `\b`)
 }
 
 func listMDFiles(dir string) []string {

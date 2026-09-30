@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -98,6 +99,35 @@ func stripRegion(existing string, r ManagedRegion) (string, bool) {
 		head = head[:len(head)-1]
 	}
 	return head + tail, true
+}
+
+// regionStartPattern finds any region's start marker and captures its
+// name.
+var regionStartPattern = regexp.MustCompile(regexp.QuoteMeta(regionMarkerPrefix) + `([A-Za-z0-9_.-]+):start -->`)
+
+// foreignRegions returns every well-formed sync-agents region in text
+// other than own, verbatim (markers and one trailing newline included)
+// and in document order. A start marker with no matching end is not a
+// region and is skipped.
+func foreignRegions(text string, own ManagedRegion) []string {
+	var out []string
+	for pos := 0; pos < len(text); {
+		m := regionStartPattern.FindStringSubmatchIndex(text[pos:])
+		if m == nil {
+			break
+		}
+		r := ManagedRegion{Name: text[pos+m[2] : pos+m[3]]}
+		start, end, ok := r.locate(text[pos+m[0]:])
+		if !ok {
+			pos += m[1]
+			continue
+		}
+		if r != own {
+			out = append(out, text[pos+m[0]+start:pos+m[0]+end])
+		}
+		pos += m[0] + end
+	}
+	return out
 }
 
 // writeIfChanged atomically replaces path with content unless the file
