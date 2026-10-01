@@ -82,8 +82,12 @@ type Tool struct {
 	RegionFile string
 
 	// RegionCharCap, when set, reports the size above which the tool
-	// truncates RegionFile, so sync can warn before content is lost.
+	// truncates RegionFile. bindTool resolves it into RegionLimit.
 	RegionCharCap func(parent string, env ToolEnv) (int, error)
+
+	// RegionLimit is the bound RegionCharCap: the host file's size cap
+	// in characters, 0 for none. Sync and status fit the region to it.
+	RegionLimit int
 }
 
 // DirForScope returns the absolute directory path for this tool at the

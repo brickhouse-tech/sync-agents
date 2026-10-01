@@ -311,7 +311,7 @@ func computeStatus(artifacts []Artifact, tools []Tool, parent string) (perDestin
 		concatRows = append(concatRows, StatusEntry{
 			Tool:            t.ID,
 			DestinationPath: p,
-			State:           string(classifyRegion(p, *t.Region, entries)),
+			State:           string(classifyRegion(p, *t.Region, entries, t.RegionLimit)),
 			IsRegion:        true,
 			Detail:          fmt.Sprintf("region %s, %d entries", t.Region.Name, len(entries)),
 		})
@@ -322,7 +322,7 @@ func computeStatus(artifacts []Artifact, tools []Tool, parent string) (perDestin
 
 // classifyRegion compares the region in the host file at path against
 // the exact bytes RegenerateRegion would produce.
-func classifyRegion(path string, r ManagedRegion, entries []ConcatEntry) RegionState {
+func classifyRegion(path string, r ManagedRegion, entries []ConcatEntry, limit int) RegionState {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return RegionStateMissing
@@ -331,7 +331,7 @@ func classifyRegion(path string, r ManagedRegion, entries []ConcatEntry) RegionS
 	if _, _, found := r.locate(existing); !found {
 		return RegionStateMissing
 	}
-	want, err := renderRegion(existing, r, entries)
+	want, err := renderRegion(existing, r, entries, limit)
 	if err != nil || want != existing {
 		return RegionStateStale
 	}

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -106,32 +107,95 @@ func stripRegion(existing string, r ManagedRegion) (string, bool) {
 // knows where the text comes from and where to change it.
 const regionBanner = "<!-- managed by sync-agents global sync from ~/.agents/; do not edit between the markers -->"
 
+// regionHeadroomPct is how much of a host's cap fitting aims to leave
+// unused, so a small edit to the host or a rule does not immediately
+// push the file back over.
+const regionHeadroomPct = 10
+
+// RegionOverBudgetError reports a region that cannot fit its host's
+// size cap even with every entry reduced to a summary.
+type RegionOverBudgetError struct {
+	Chars, Limit int
+}
+
+func (e *RegionOverBudgetError) Error() string {
+	return fmt.Sprintf("host file would be %d chars with every entry summarized, over the %d-char cap", e.Chars, e.Limit)
+}
+
 // renderRegion returns existing with r's region regenerated from
 // entries: banner, then one `## <name>` section per entry, the same
 // body concat files carry. Pure apart from reading the entry sources,
 // so status compares against exactly what RegenerateRegion writes.
-func renderRegion(existing string, r ManagedRegion, entries []ConcatEntry) (string, error) {
-	body, err := buildEntriesBody(entries)
-	if err != nil {
-		return "", err
+//
+// A positive limit caps the resulting host file in characters. While
+// the file is over limit minus headroom, the entry with the largest
+// body is reduced to a summary that points at its source file. If the
+// file is still over limit with every entry summarized, it returns a
+// *RegionOverBudgetError and no text, so callers never write a file
+// the host program would truncate.
+func renderRegion(existing string, r ManagedRegion, entries []ConcatEntry, limit int) (string, error) {
+	fitted := make([]ConcatEntry, len(entries))
+	copy(fitted, entries)
+	render := func() (string, error) {
+		body, err := buildEntriesBody(fitted)
+		if err != nil {
+			return "", err
+		}
+		block := r.Start() + "\n" + regionBanner + "\n" + string(body) + r.End() + "\n"
+		return spliceRegion(existing, r, block), nil
 	}
-	block := r.Start() + "\n" + regionBanner + "\n" + string(body) + r.End() + "\n"
-	return spliceRegion(existing, r, block), nil
+
+	out, err := render()
+	if err != nil || limit <= 0 {
+		return out, err
+	}
+	target := limit - limit*regionHeadroomPct/100
+
+	sizes := make([]int, len(fitted))
+	for i, e := range fitted {
+		b, err := readArtifactBody(e.SourcePath)
+		if err != nil {
+			return "", fmt.Errorf("read %s: %w", e.SourcePath, err)
+		}
+		sizes[i] = len(b)
+	}
+	for utf8.RuneCountInString(out) > target {
+		largest := -1
+		for i, e := range fitted {
+			if e.Summary {
+				continue
+			}
+			if largest < 0 || sizes[i] > sizes[largest] || (sizes[i] == sizes[largest] && e.Name < fitted[largest].Name) {
+				largest = i
+			}
+		}
+		if largest < 0 {
+			break
+		}
+		fitted[largest].Summary = true
+		if out, err = render(); err != nil {
+			return "", err
+		}
+	}
+	if n := utf8.RuneCountInString(out); n > limit {
+		return "", &RegionOverBudgetError{Chars: n, Limit: limit}
+	}
+	return out, nil
 }
 
 // RegenerateRegion rewrites r's region in the host file at path from
 // entries, leaving every byte outside the markers alone. The host file
 // must already exist: it belongs to another program, and creating it
 // could stop that program from seeding its own default. An unchanged
-// result is not written (mtime preserved). Returns the resulting file
-// length in characters alongside the changed flag so callers can check
-// it against a size cap.
-func RegenerateRegion(path string, r ManagedRegion, entries []ConcatEntry) (changed bool, chars int, err error) {
+// result is not written (mtime preserved). limit is the host's size
+// cap in characters, 0 for none; see renderRegion. Returns the
+// resulting file length in characters alongside the changed flag.
+func RegenerateRegion(path string, r ManagedRegion, entries []ConcatEntry, limit int) (changed bool, chars int, err error) {
 	existing, err := os.ReadFile(path)
 	if err != nil {
 		return false, 0, err
 	}
-	out, err := renderRegion(string(existing), r, entries)
+	out, err := renderRegion(string(existing), r, entries, limit)
 	if err != nil {
 		return false, 0, err
 	}

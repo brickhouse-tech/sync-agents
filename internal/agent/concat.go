@@ -38,6 +38,11 @@ type ConcatEntry struct {
 	// under ~/.agents/. For rules and workflows, the .md file
 	// itself; for skills, the SKILL.md inside the dir.
 	SourcePath string
+
+	// Summary renders the entry as a one-line description plus
+	// SourcePath instead of its body. Only region fitting sets it, to
+	// keep a region under its host's size cap.
+	Summary bool
 }
 
 // RegenerateConcat writes a concat file at concatPath whose content
@@ -104,6 +109,10 @@ func buildEntriesBody(entries []ConcatEntry) ([]byte, error) {
 			fmt.Fprintf(&buf, "<!-- OS: %s -->\n", scope)
 		}
 		fmt.Fprintf(&buf, "## %s\n\n", e.Name)
+		if e.Summary {
+			fmt.Fprintf(&buf, "%s\nFull text, read it when relevant: %s\n\n", entrySummary(e.SourcePath, body), e.SourcePath)
+			continue
+		}
 		buf.Write(body)
 		// Always end an entry on a blank line so the next heading
 		// starts cleanly. We trim the body's trailing whitespace
@@ -162,4 +171,33 @@ func readArtifactBody(path string) ([]byte, error) {
 
 	body := strings.TrimLeft(afterClose, "\n\r ")
 	return []byte(body), nil
+}
+
+// entrySummary is the one-line stand-in for an entry body: the
+// frontmatter description when the file declares one, else the first
+// paragraph after the title.
+func entrySummary(path string, body []byte) string {
+	if d := artifactDescription(path); d != "" {
+		return d
+	}
+	var para []string
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "<!--") {
+			if len(para) > 0 {
+				break
+			}
+			continue
+		}
+		para = append(para, line)
+	}
+	if len(para) == 0 {
+		return "(no summary)"
+	}
+	const maxSummary = 140
+	text := strings.Join(para, " ")
+	if len(text) > maxSummary {
+		text = truncateAtWord(text, maxSummary) + "…"
+	}
+	return text
 }

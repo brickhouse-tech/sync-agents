@@ -2,11 +2,13 @@ package agent
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 var openClawEnvKeys = []string{
@@ -260,15 +262,66 @@ func TestGlobalSync_OpenClaw_DeletingLastRuleEmptiesRegion(t *testing.T) {
 	}
 }
 
-func TestGlobalSync_OpenClaw_SizeCapWarning(t *testing.T) {
-	r := newOpenClawRig(t)
+func setBootstrapCap(t *testing.T, r *openClawRig, n int) {
+	t.Helper()
 	cfg := filepath.Join(r.parent, ".openclaw", "openclaw.json")
-	if err := os.WriteFile(cfg, []byte(`{"agents":{"defaults":{"bootstrapMaxChars":100}}}`), 0o644); err != nil {
+	body := fmt.Sprintf(`{"agents":{"defaults":{"bootstrapMaxChars":%d}}}`, n)
+	if err := os.WriteFile(cfg, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestGlobalSync_OpenClaw_OverBudgetFailsAndLeavesHostUntouched(t *testing.T) {
+	r := newOpenClawRig(t)
+	setBootstrapCap(t, r, 100)
+	err := r.app.CmdGlobalSync(GlobalSyncOpts{Targets: []string{"openclaw"}})
+	if err == nil || !strings.Contains(err.Error(), "over the 100-char cap") {
+		t.Fatalf("want an over-budget error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "bootstrapMaxChars") {
+		t.Errorf("error does not name the cap setting: %v", err)
+	}
+	if got := readFile(t, r.host); got != r.fixture {
+		t.Errorf("over-budget sync still wrote the host file:\n%s", got)
+	}
+}
+
+func TestGlobalSync_OpenClaw_SummarizesLargestRulesToFitCap(t *testing.T) {
+	r := newOpenClawRig(t)
+	seedRule(t, r.app.GlobalRoot, "huge", "Huge rule opening.\n\n"+strings.Repeat("blah ", 2000)+"HUGE-TAIL-SENTINEL\n")
+	limit := utf8.RuneCountInString(r.fixture) + 2500
+	setBootstrapCap(t, r, limit)
+
 	r.sync(t, "openclaw")
-	if !strings.Contains(r.stdout.String(), "over the 100-char bootstrap cap (agents.defaults.bootstrapMaxChars)") {
-		t.Errorf("no size-cap warning:\n%s", r.stdout)
+	got := readFile(t, r.host)
+	if n := utf8.RuneCountInString(got); n > limit {
+		t.Errorf("host is %d chars, over the %d cap", n, limit)
+	}
+	if strings.Contains(got, "HUGE-TAIL-SENTINEL") {
+		t.Error("oversized rule body was inlined")
+	}
+	if !strings.Contains(got, "Huge rule opening.") || !strings.Contains(got, filepath.Join(r.app.GlobalRoot, "rules", "huge.md")) {
+		t.Error("summarized rule lost its summary or source path")
+	}
+	if !strings.Contains(got, "Commit small.") || !strings.Contains(got, "Run the tests.") {
+		t.Error("small rules lost their bodies")
+	}
+
+	before := mtime(t, r.host)
+	r.sync(t, "openclaw")
+	if !mtime(t, r.host).Equal(before) {
+		t.Error("second sync rewrote an already-fitted host")
+	}
+}
+
+func TestGlobalSync_OpenClaw_EachRuleAppearsOnce(t *testing.T) {
+	r := newOpenClawRig(t)
+	r.sync(t, "openclaw")
+	got := readFile(t, r.host)
+	for _, h := range []string{"## git\n", "## testing\n"} {
+		if n := strings.Count(got, h); n != 1 {
+			t.Errorf("%q appears %d times, want 1", h, n)
+		}
 	}
 }
 

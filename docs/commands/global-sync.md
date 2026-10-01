@@ -79,8 +79,13 @@ section OpenClaw's doctor added, your own notes) is left untouched.
   exist, the target is skipped: run OpenClaw once so it seeds its own
   template.
 - **Size cap.** OpenClaw cuts the middle out of any bootstrap file
-  longer than `agents.defaults.bootstrapMaxChars` (default 20000).
-  Sync warns when AGENTS.md passes that cap.
+  longer than `agents.defaults.bootstrapMaxChars` (default 20000), so
+  sync fits the region to the cap. If the file would pass 90% of it,
+  sync replaces the largest rules, one at a time, with their
+  description (or first paragraph) and the absolute path of the full
+  text. If the file still passes the cap with every rule summarized,
+  sync exits non-zero and leaves AGENTS.md untouched. `global status`
+  uses the same fit, so a fitted region reads `synced`.
 - **Skipped.** Skills (OpenClaw loads `~/.agents/skills` itself),
   invocable rules and workflows, agents, and reference docs.
 

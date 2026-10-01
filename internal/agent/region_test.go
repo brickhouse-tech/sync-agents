@@ -1,10 +1,13 @@
 package agent
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func TestSpliceRegion(t *testing.T) {
@@ -91,5 +94,58 @@ func TestWriteIfChanged_WritesThroughSymlink(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(real); string(got) != "new\n" {
 		t.Errorf("target not updated: %q", got)
+	}
+}
+
+func writeEntry(t *testing.T, dir, name, body string) ConcatEntry {
+	t.Helper()
+	p := filepath.Join(dir, name+".md")
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return ConcatEntry{Name: name, SourcePath: p}
+}
+
+func TestRenderRegion_LimitDemotesLargestFirstAndKeepsHeadroom(t *testing.T) {
+	dir := t.TempDir()
+	entries := []ConcatEntry{
+		writeEntry(t, dir, "small", "Small body.\n"),
+		writeEntry(t, dir, "big", "Big opening.\n\n"+strings.Repeat("x", 3000)+"\n"),
+		writeEntry(t, dir, "mid", "Mid opening.\n\n"+strings.Repeat("y", 1000)+"\n"),
+	}
+	unlimited, err := renderRegion("", OpenClawRulesRegion, entries, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(unlimited, strings.Repeat("x", 3000)) {
+		t.Fatal("limit 0 must inline everything")
+	}
+
+	limit := 2000
+	got, err := renderRegion("", OpenClawRulesRegion, entries, limit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := utf8.RuneCountInString(got); n > limit-limit*regionHeadroomPct/100 {
+		t.Errorf("region is %d chars, want within the headroom target", n)
+	}
+	if strings.Contains(got, strings.Repeat("x", 100)) {
+		t.Error("largest entry was not summarized")
+	}
+	if !strings.Contains(got, "Small body.") {
+		t.Error("smallest entry should stay inline")
+	}
+}
+
+func TestRenderRegion_ImpossibleLimitReturnsTypedError(t *testing.T) {
+	dir := t.TempDir()
+	entries := []ConcatEntry{writeEntry(t, dir, "a", "Body.\n")}
+	got, err := renderRegion("host text\n", OpenClawRulesRegion, entries, 20)
+	var over *RegionOverBudgetError
+	if !errors.As(err, &over) || over.Limit != 20 || over.Chars <= 20 {
+		t.Fatalf("want *RegionOverBudgetError, got %v", err)
+	}
+	if got != "" {
+		t.Errorf("no text may be returned on failure, got %q", got)
 	}
 }

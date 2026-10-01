@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -237,7 +238,7 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 		}
 	}
 
-	a.regenerateRegions(regionBatches, regionTools, parent)
+	regionErr := a.regenerateRegions(regionBatches, regionTools)
 
 	// Merge .agents/hooks/ fragments into .claude/settings.json
 	// (SPEC-004 Part C). This runs after the per-artifact loop
@@ -260,6 +261,9 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 		}
 	}
 
+	if regionErr != nil {
+		return regionErr
+	}
 	if !a.DryRun {
 		a.Info("global sync complete")
 	}
@@ -317,43 +321,43 @@ func (a *App) resolveSyncTools(targets []string) ([]Tool, error) {
 	return out, nil
 }
 
-// regenerateRegions rewrites each region host once, in path order, and
-// warns when a host grows past the size its tool truncates at.
-func (a *App) regenerateRegions(batches map[string][]ConcatEntry, tools map[string]Tool, parent string) {
+// regenerateRegions rewrites each region host once, in path order. A
+// host whose region cannot fit the tool's size cap is left untouched
+// and reported as an error, since writing it would have the tool
+// truncate the middle of the file.
+func (a *App) regenerateRegions(batches map[string][]ConcatEntry, tools map[string]Tool) error {
 	paths := make([]string, 0, len(batches))
 	for p := range batches {
 		paths = append(paths, p)
 	}
 	sort.Strings(paths)
 
+	var errs []error
 	for _, p := range paths {
 		t, entries := tools[p], batches[p]
 		if a.DryRun {
 			a.Info(fmt.Sprintf("[dry-run] [%s] would regenerate region %s in %s with %d entries", t.ID, t.Region.Name, p, len(entries)))
 			continue
 		}
-		changed, chars, err := RegenerateRegion(p, *t.Region, entries)
+		changed, chars, err := RegenerateRegion(p, *t.Region, entries, t.RegionLimit)
+		var over *RegionOverBudgetError
+		if errors.As(err, &over) {
+			overErr := fmt.Errorf("[%s] %s left unchanged: %w (agents.defaults.bootstrapMaxChars); %s would truncate the middle of the file; remove or shorten passive rules in the global rules dir", t.ID, p, err, t.ID)
+			a.Error(overErr.Error())
+			errs = append(errs, overErr)
+			continue
+		}
 		if err != nil {
 			a.Warn(fmt.Sprintf("[%s] region regen failed for %s: %v", t.ID, p, err))
 			continue
 		}
 		if changed {
-			a.Info(fmt.Sprintf("[%s] regenerated region %s in %s (%d entries)", t.ID, t.Region.Name, p, len(entries)))
+			a.Info(fmt.Sprintf("[%s] regenerated region %s in %s (%d entries, %d chars of %d)", t.ID, t.Region.Name, p, len(entries), chars, t.RegionLimit))
 		} else {
-			a.Info(fmt.Sprintf("[%s] region %s in %s already current (%d entries)", t.ID, t.Region.Name, p, len(entries)))
-		}
-		if t.RegionCharCap == nil {
-			continue
-		}
-		limit, err := t.RegionCharCap(parent, a.ToolEnv)
-		if err != nil {
-			a.Warn(fmt.Sprintf("[%s] cannot read size cap: %v", t.ID, err))
-			continue
-		}
-		if chars > limit {
-			a.Warn(fmt.Sprintf("[%s] %s is %d chars, over the %d-char bootstrap cap (agents.defaults.bootstrapMaxChars); %s truncates the middle of the file. Trim passive rules or raise the cap.", t.ID, p, chars, limit, t.ID))
+			a.Info(fmt.Sprintf("[%s] region %s in %s already current (%d entries, %d chars of %d)", t.ID, t.Region.Name, p, len(entries), chars, t.RegionLimit))
 		}
 	}
+	return errors.Join(errs...)
 }
 
 // bindTool resolves a tool's global dir when it has a resolver and
@@ -384,6 +388,14 @@ func (a *App) bindTool(t Tool, explicit bool) (Tool, bool) {
 	bound.DirByScope[ScopeGlobal] = dir
 	if t.Region == nil {
 		return bound, true
+	}
+	if t.RegionCharCap != nil {
+		limit, err := t.RegionCharCap(a.ResolveGlobalRootParent(), a.ToolEnv)
+		if err != nil {
+			a.Warn(fmt.Sprintf("[%s] cannot read size cap: %v; skipping", t.ID, err))
+			return Tool{}, false
+		}
+		bound.RegionLimit = limit
 	}
 
 	host := filepath.Join(dir, t.RegionFile)

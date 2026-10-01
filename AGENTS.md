@@ -39,10 +39,6 @@ _No skills defined yet. Add one with `sync-agents add skill <name>`._
 
 Follow [rules/state.md](.agents/rules/state.md): record progress in `.agents/STATE_<context>_<timestamp>.md` snapshots. Snapshots are per-engineer and not indexed unless marked `shared: true` in frontmatter.
 
-### Shared
-
-- [STATE.md](.agents/STATE.md)
-
 <!-- sync-agents:claude-imports:start -->
 <!-- managed by sync-agents; do not edit between the markers -->
 @.claude/rules/bash.md
