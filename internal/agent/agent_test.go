@@ -100,6 +100,9 @@ func TestAddDefaultGitignoreEntries(t *testing.T) {
 	if !strings.Contains(content, "sync-agents") {
 		t.Errorf("missing sync-agents marker:\n%s", content)
 	}
+	if !containsExactLine(content, ".agents/.sync/") {
+		t.Errorf("missing .agents/.sync/ (per-machine sync state and the SPEC-013 backup):\n%s", content)
+	}
 }
 
 func TestUpdateGitignore_AddsEntries(t *testing.T) {

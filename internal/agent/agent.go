@@ -1466,12 +1466,15 @@ func (a *App) addDefaultGitignoreEntries() {
 	// step 5): those files were read by no tool. !.cursor/rules stays so
 	// a team's own .mdc rules remain committable; sync appends the exact
 	// .cursor/rules/sync-agents.mdc line, which wins as the last match.
+	// .agents/.sync/ is per-machine state: hook ownership and the
+	// one-time AGENTS.md backup.
 	sectionEntries := []string{
 		".cursor/*",
 		"!.cursor/rules",
 		".codex/*",
 		".github/copilot/*",
 		".agents/index/",
+		".agents/.sync/",
 	}
 
 	if strings.Contains(content, marker) {

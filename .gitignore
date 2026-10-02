@@ -54,3 +54,4 @@ vendor
 .agents/index/
 .cursor/rules/sync-agents.mdc
 .github/instructions/sync-agents.instructions.md
+.agents/.sync/
