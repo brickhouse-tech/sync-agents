@@ -93,7 +93,7 @@ func (a *App) CmdADR(action, name string) error {
 	}
 
 	a.Info(fmt.Sprintf("ADR %q: %s -> %s", name, currentStatus, target))
-	a.migrateAgentsMDOrWarn()
+	a.refreshIndex()
 	return nil
 }
 

@@ -123,15 +123,15 @@ func shortRef(sha string) string {
 	return sha
 }
 
-// finishSourceWrite runs the one-time AGENTS.md migration (SPEC-013)
-// after a source command that changed the tree. Only at project scope:
-// the global tree's fan-out is `global sync`'s job, and there is no
-// project AGENTS.md there.
+// finishSourceWrite refreshes .agents/index/ (and runs the one-time
+// AGENTS.md migration, SPEC-013) after a source command that changed
+// the tree. Only at project scope: the global tree's fan-out is
+// `global sync`'s job.
 func (a *App) finishSourceWrite(changed bool, opts SourceCmdOpts) {
 	if !changed || opts.Global || a.DryRun {
 		return
 	}
-	a.migrateAgentsMDOrWarn()
+	a.refreshIndex()
 }
 
 // CmdPull implements `sync-agents pull`.

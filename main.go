@@ -72,6 +72,7 @@ func main() {
 					}
 				}
 				app.ActiveTargets = targets
+				app.TargetsFromFlag = true
 			} else {
 				app.ActiveTargets = agent.ReadConfigTargets(app.ProjectRoot)
 			}
@@ -187,7 +188,7 @@ func main() {
 	var indexNoFix bool
 	indexCmd := &cobra.Command{
 		Use:   "index",
-		Short: "Migrate a generated AGENTS.md once (backfills skill frontmatter first)",
+		Short: "Regenerate .agents/index/ for each tool (backfills skill frontmatter first)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !indexNoFix {
 				app.CmdBackfillSkills()
@@ -496,7 +497,7 @@ func main() {
 	rootCmd.AddCommand(&cobra.Command{
 		Use:     "git-hook",
 		Aliases: []string{"hook"},
-		Short:   "Install git pre-commit hook that syncs + indexes on commit",
+		Short:   "Install git pre-commit hook that syncs on commit",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if cmd.CalledAs() == "hook" {
 				fmt.Fprintln(os.Stderr, "[warn] `sync-agents hook` is deprecated; use `sync-agents git-hook` (same behavior).")

@@ -16,6 +16,7 @@ func newSyncApp(t *testing.T, targets ...string) (*App, string, *bytes.Buffer) {
 	var buf bytes.Buffer
 	app := &App{
 		ProjectRoot:   root,
+		GlobalRoot:    filepath.Join(t.TempDir(), ".agents"),
 		ActiveTargets: targets,
 		Stdout:        &buf,
 		Stderr:        &buf,
@@ -306,7 +307,9 @@ func TestCmdSync_CopilotDrillRelativePathResolves(t *testing.T) {
 	}
 
 	assertResolvesTo(t, filepath.Join(root, ".github", "copilot", "skills", "foo"), filepath.Join(root, ".agents", "skills", "foo"))
-	assertResolvesTo(t, filepath.Join(root, ".github", "copilot", "rules"), filepath.Join(root, ".agents", "rules"))
+	// Rules reach Copilot through its delivery channel, not a fold.
+	assertAbsent(t, filepath.Join(root, ".github", "copilot", "rules"))
+	assertResolvesTo(t, filepath.Join(root, ".github", "instructions", "sync-agents.instructions.md"), filepath.Join(root, ".agents", "index", "copilot.md"))
 	assertContent(t, native, "native")
 }
 

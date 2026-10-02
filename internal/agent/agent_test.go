@@ -106,7 +106,7 @@ func TestUpdateGitignore_AddsEntries(t *testing.T) {
 	dir := t.TempDir()
 	var buf strings.Builder
 	app := &App{ProjectRoot: dir, Stdout: &buf, Stderr: &buf, ActiveTargets: []string{"claude"}}
-	app.updateGitignore(ClaudeMDDecision{})
+	app.updateGitignore(ClaudeMDDecision{}, nil)
 
 	data, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
 	if err != nil {

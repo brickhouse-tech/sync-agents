@@ -70,6 +70,13 @@ type App struct {
 	// --targets flag.
 	ActiveTargets []string
 
+	// TargetsFromFlag is true when ActiveTargets came from --targets on
+	// this invocation. Only then do they count as consent to edit a
+	// file the user owns, such as an existing opencode.json (SPEC-013
+	// §Mounts and consent); targets in .agents/config only say which
+	// tools to deliver to.
+	TargetsFromFlag bool
+
 	// Stdout and Stderr are the writers used by Info/Warn/Error. Tests
 	// inject bytes.Buffer here to assert on output without capturing
 	// the real stdio.
@@ -277,7 +284,8 @@ func (a *App) CmdInit() error {
 	// Config
 	configFile := filepath.Join(agentsDir, "config")
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
-		content := "# sync-agents configuration\n# Comma-separated list of sync targets (available: claude, windsurf, cursor, copilot)\n# Override per-command with: sync-agents sync --targets claude,cursor\ntargets = claude,windsurf,cursor,copilot\n"
+		content := "# sync-agents configuration\n# Comma-separated list of sync targets (available: claude, windsurf, cursor, copilot, codex, opencode)\n# Override per-command with: sync-agents sync --targets claude,cursor\ntargets = claude,windsurf,cursor,copilot\n" +
+			"# index = local      # local (default: .agents/index/ and its links are gitignored) | commit\n"
 		os.WriteFile(configFile, []byte(content), 0644)
 		a.Info("Created .agents/config")
 	} else {
@@ -373,7 +381,7 @@ func (a *App) CmdAdd(typ, name string, opts AddOpts) error {
 			}
 			a.Info(fmt.Sprintf("Imported %s: %s (from %s)", typ, fpath, srcPath))
 		}
-		a.migrateAgentsMDOrWarn()
+		a.refreshIndex()
 		return nil
 	}
 
@@ -383,7 +391,7 @@ func (a *App) CmdAdd(typ, name string, opts AddOpts) error {
 	os.WriteFile(fpath, []byte(content), 0644)
 	a.Info(fmt.Sprintf("Created %s: %s", typ, fpath))
 
-	a.migrateAgentsMDOrWarn()
+	a.refreshIndex()
 	return nil
 }
 
@@ -410,7 +418,7 @@ func (a *App) CmdSync() error {
 		a.Info(fmt.Sprintf("Syncing to %s/", relDisplay))
 
 		for _, b := range Buckets {
-			if !b.SyncsToTool(target) {
+			if !linksBucket(target, b) {
 				continue
 			}
 			subdirPath := filepath.Join(a.ProjectRoot, ".agents", b.Dir)
@@ -419,6 +427,16 @@ func (a *App) CmdSync() error {
 			}
 		}
 	}
+
+	// Per-tool delivery channels (SPEC-013, deliver.go): rule bodies
+	// reach Cursor, Copilot, Codex, and opencode through
+	// .agents/index/ and a native mount each.
+	channels, err := a.deliverChannels(ChannelRun{Scope: ScopeLocal, Mode: ChannelMount, Explicit: a.explicitTargets()})
+	if err != nil {
+		a.Error(err.Error())
+		return err
+	}
+	conflicts += countState(channels, ChannelConflict)
 
 	// CLAUDE.md follows the SPEC-013 policy (claudemd.go). A
 	// hand-written CLAUDE.md is warned about but kept out of the exit
@@ -450,7 +468,7 @@ func (a *App) CmdSync() error {
 		}
 	}
 
-	a.updateGitignore(claudeMD)
+	a.updateGitignore(claudeMD, channels)
 
 	if conflicts > 0 {
 		a.Warn(fmt.Sprintf("Sync finished with %d conflict(s); nothing was deleted", conflicts))
@@ -475,11 +493,14 @@ func (a *App) CmdStatus() error {
 
 	fmt.Fprintln(a.Stdout)
 
-	agentsMD := filepath.Join(a.ProjectRoot, "AGENTS.md")
-	if _, err := os.Stat(agentsMD); err == nil {
-		fmt.Fprintf(a.Stdout, "[ok] AGENTS.md exists\n")
-	} else {
+	// AGENTS.md is the user's file (SPEC-013); status only says whether
+	// the one-time migration of an old generated index is still due.
+	if data, err := os.ReadFile(filepath.Join(a.ProjectRoot, "AGENTS.md")); err != nil {
 		fmt.Fprintf(a.Stdout, "[missing] AGENTS.md not found\n")
+	} else if _, m := migrateAgentsMD(string(data)); m.Changed() {
+		fmt.Fprintf(a.Stdout, "[migrate] AGENTS.md still has the generated index; run `sync-agents index`\n")
+	} else {
+		fmt.Fprintf(a.Stdout, "[ok] AGENTS.md (yours; sync-agents does not write it)\n")
 	}
 
 	fmt.Fprintln(a.Stdout, a.claudeMDDecision().statusLine())
@@ -505,7 +526,7 @@ func (a *App) CmdStatus() error {
 		if hasDirOrLinks {
 			fmt.Fprintf(a.Stdout, "%s/\n", displayDir)
 			for _, b := range Buckets {
-				if !b.SyncsToTool(target) {
+				if !linksBucket(target, b) {
 					continue
 				}
 				sub := filepath.Join(targetDir, b.Dir)
@@ -537,7 +558,7 @@ func (a *App) CmdStatus() error {
 			fmt.Fprintf(a.Stdout, "[not synced] %s/\n", displayDir)
 		}
 	}
-	return nil
+	return a.printChannelRows()
 }
 
 // statusTargets is AllTargets plus any configured extra target (such
@@ -560,16 +581,21 @@ func (a *App) statusTargets() []string {
 	return targets
 }
 
-// CmdIndex runs the one-time AGENTS.md migration (SPEC-013). It no
-// longer writes a link index: no tool followed those links, and
-// AGENTS.md now belongs to the user. main.go runs the skill
-// frontmatter backfill before it unless --no-fix is given.
+// CmdIndex regenerates .agents/index/ (SPEC-013 ChannelRefresh) after
+// the one-time AGENTS.md migration. It never writes AGENTS.md beyond
+// that migration and never creates anything in a tool directory; sync
+// places the mounts. main.go runs the skill frontmatter backfill before
+// it unless --no-fix is given.
 func (a *App) CmdIndex() error {
 	if err := a.EnsureAgentsDir(); err != nil {
 		return err
 	}
 	if _, err := a.migrateProjectAgentsMD(); err != nil {
 		a.Error(fmt.Sprintf("AGENTS.md migration: %v", err))
+		return err
+	}
+	if _, err := a.deliverChannels(ChannelRun{Scope: ScopeLocal, Mode: ChannelRefresh}); err != nil {
+		a.Error(fmt.Sprintf("regenerate .agents/index/: %v", err))
 		return err
 	}
 	return nil
@@ -604,6 +630,12 @@ func (a *App) CmdClean() error {
 		}
 	}
 
+	// Delivery channels (SPEC-013): the native links, our opencode.json
+	// entry, and .agents/index/. AGENTS.md is never touched.
+	if _, err := a.cleanChannels(ScopeLocal, a.explicitTargets()); err != nil {
+		a.Warn(fmt.Sprintf("clean delivery channels: %v", err))
+	}
+
 	// Only our CLAUDE.md -> AGENTS.md link is removed; a real file or
 	// a symlink pointing elsewhere is the user's.
 	if state, err := classifyClaudeMD(a.ProjectRoot); err != nil {
@@ -625,12 +657,22 @@ func (a *App) CmdWatch() error {
 		return err
 	}
 
+	// .agents/index/ is excluded so regenerating it does not retrigger
+	// the watcher. AGENTS.md is watched too: Codex's override copies it
+	// (SPEC-013 §Fate of each piece).
 	watchDir := filepath.Join(a.ProjectRoot, ".agents")
+	paths := []string{watchDir}
+	if _, err := os.Stat(filepath.Join(a.ProjectRoot, "AGENTS.md")); err == nil {
+		paths = append(paths, filepath.Join(a.ProjectRoot, "AGENTS.md"))
+	}
+	const indexExclude = `/\.agents/index/`
+	const watching = "Watching .agents/ and AGENTS.md for changes; regenerating .agents/index/ on each... (Ctrl+C to stop)"
+	const changed = "Change detected, regenerating .agents/index/..."
 
 	if _, err := exec.LookPath("fswatch"); err == nil {
-		a.Info("Watching .agents/ for changes... (Ctrl+C to stop)")
+		a.Info(watching)
 		a.CmdIndex()
-		cmd := exec.Command("fswatch", "-o", watchDir)
+		cmd := exec.Command("fswatch", append([]string{"-o", "-e", indexExclude}, paths...)...)
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
 			return err
@@ -640,16 +682,16 @@ func (a *App) CmdWatch() error {
 		}
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
-			a.Info("Change detected, regenerating index...")
+			a.Info(changed)
 			a.CmdIndex()
 		}
 		return cmd.Wait()
 	}
 
 	if _, err := exec.LookPath("inotifywait"); err == nil {
-		a.Info("Watching .agents/ for changes... (Ctrl+C to stop)")
+		a.Info(watching)
 		a.CmdIndex()
-		cmd := exec.Command("inotifywait", "-m", "-r", "-e", "modify,create,delete,move", "--format", "%w%f", watchDir)
+		cmd := exec.Command("inotifywait", append([]string{"-m", "-r", "-e", "modify,create,delete,move", "--exclude", indexExclude, "--format", "%w%f"}, paths...)...)
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
 			return err
@@ -659,7 +701,7 @@ func (a *App) CmdWatch() error {
 		}
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
-			a.Info("Change detected, regenerating index...")
+			a.Info(changed)
 			a.CmdIndex()
 		}
 		return cmd.Wait()
@@ -898,6 +940,29 @@ func originFromRawGitHubURL(rawURL string) (source.Origin, bool) {
 	return o, true
 }
 
+// hookStart and hookEnd delimit the block CmdHook owns in
+// .git/hooks/pre-commit. Everything outside them is the user's.
+const (
+	hookStart = "# --- sync-agents start ---"
+	hookEnd   = "# --- sync-agents end ---"
+)
+
+// hookBlock is the pre-commit block (SPEC-013 §Migration, step 6). sync
+// regenerates .agents/index/ and the mounts; the git add restages the
+// index under `index = commit` and is a no-op under `index = local`
+// (ignored path). It names one path that sync always creates when any
+// channel is active, so it never fails the way the old multi-path
+// `git add AGENTS.md CLAUDE.md ...` did when CLAUDE.md was absent.
+const hookBlock = hookStart + `
+if command -v sync-agents >/dev/null 2>&1; then
+  sync-agents sync 2>/dev/null
+  git add -- .agents/index 2>/dev/null || true
+fi
+` + hookEnd + "\n"
+
+// CmdHook installs hookBlock in .git/hooks/pre-commit. A hook that
+// already has a block between the markers gets it replaced in place,
+// so re-running the command upgrades an old block; other lines stay.
 func (a *App) CmdHook() error {
 	gitDir := filepath.Join(a.ProjectRoot, ".git")
 	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
@@ -906,41 +971,43 @@ func (a *App) CmdHook() error {
 	}
 
 	hookDir := filepath.Join(gitDir, "hooks")
-	os.MkdirAll(hookDir, 0755)
+	if err := os.MkdirAll(hookDir, 0o755); err != nil {
+		return err
+	}
 	hookFile := filepath.Join(hookDir, "pre-commit")
 
-	marker := "sync-agents start"
-
-	if data, err := os.ReadFile(hookFile); err == nil {
-		if strings.Contains(string(data), marker) {
-			a.Info(fmt.Sprintf("Git hook already installed in %s", hookFile))
-			return nil
-		}
+	data, err := os.ReadFile(hookFile)
+	if err != nil && !os.IsNotExist(err) {
+		return err
 	}
-
-	hookBlock := `
-# --- sync-agents start ---
-if command -v sync-agents >/dev/null 2>&1; then
-  sync-agents sync 2>/dev/null
-  sync-agents index 2>/dev/null
-  git add AGENTS.md CLAUDE.md .claude/ .windsurf/ .cursor/ .github/copilot/ 2>/dev/null || true
-fi
-# --- sync-agents end ---
-`
-
-	if _, err := os.Stat(hookFile); err == nil {
-		f, err := os.OpenFile(hookFile, os.O_APPEND|os.O_WRONLY, 0755)
-		if err != nil {
-			return err
+	content := string(data)
+	var next, msg string
+	switch i, j := strings.Index(content, hookStart), strings.Index(content, hookEnd); {
+	case os.IsNotExist(err):
+		next, msg = "#!/bin/sh\n\n"+hookBlock, "Created git hook: "+hookFile
+	case i >= 0 && j > i:
+		end := j + len(hookEnd)
+		if end < len(content) && content[end] == '\n' {
+			end++
 		}
-		f.WriteString(hookBlock)
-		f.Close()
-		a.Info(fmt.Sprintf("Appended sync-agents hook to existing %s", hookFile))
-	} else {
-		content := "#!/bin/sh\n" + hookBlock + "\n"
-		os.WriteFile(hookFile, []byte(content), 0755)
-		a.Info(fmt.Sprintf("Created git hook: %s", hookFile))
+		next, msg = content[:i]+hookBlock+content[end:], "Updated sync-agents hook in "+hookFile
+	default:
+		if content != "" && !strings.HasSuffix(content, "\n") {
+			content += "\n"
+		}
+		next, msg = content+"\n"+hookBlock, "Appended sync-agents hook to existing "+hookFile
 	}
+	if next == content {
+		a.Info(fmt.Sprintf("Git hook already installed in %s", hookFile))
+		return nil
+	}
+	if err := os.WriteFile(hookFile, []byte(next), 0o755); err != nil {
+		return err
+	}
+	if err := os.Chmod(hookFile, 0o755); err != nil {
+		return err
+	}
+	a.Info(msg)
 	return nil
 }
 
@@ -1148,7 +1215,7 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 
 		for _, subdir := range subdirs {
 			b, ok := BucketForDir(subdir)
-			if !ok || !b.SyncsToTool(target) {
+			if !ok || !linksBucket(target, b) {
 				continue
 			}
 			if fi, err := os.Stat(filepath.Join(agentsAbs, subdir)); err != nil || !fi.IsDir() {
@@ -1161,6 +1228,12 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 			}
 		}
 	}
+	channels, err := a.deliverChannels(ChannelRun{Scope: ScopeLocal, Mode: ChannelMount, Explicit: a.explicitTargets()})
+	if err != nil {
+		a.Error(err.Error())
+		return err
+	}
+	conflicts += countState(channels, ChannelConflict)
 	// CLAUDE.md follows the same SPEC-013 policy as sync.
 	if changed, err := a.applyClaudeMD(a.claudeMDDecision()); err != nil {
 		a.Warn(err.Error())
@@ -1387,13 +1460,17 @@ func (a *App) addDefaultGitignoreEntries() {
 	}
 
 	marker := "# sync-agents — ignore tool artifacts, keep symlinks"
+	// .agents/index/ replaces the old !.codex/instructions.md and
+	// !.github/copilot/instructions.md exceptions (SPEC-013 §Migration,
+	// step 5): those files were read by no tool. !.cursor/rules stays so
+	// a team's own .mdc rules remain committable; sync appends the exact
+	// .cursor/rules/sync-agents.mdc line, which wins as the last match.
 	sectionEntries := []string{
 		".cursor/*",
 		"!.cursor/rules",
 		".codex/*",
-		"!.codex/instructions.md",
 		".github/copilot/*",
-		"!.github/copilot/instructions.md",
+		".agents/index/",
 	}
 
 	if strings.Contains(content, marker) {
@@ -1440,10 +1517,12 @@ func (a *App) addDefaultGitignoreEntries() {
 	os.WriteFile(gitignore, []byte(content), 0644)
 }
 
-// updateGitignore appends the exact paths sync owns to .gitignore.
-// CLAUDE.md is listed only when the CLAUDE.md decision says it is, or
-// will be, our symlink: a real CLAUDE.md is the user's to commit.
-func (a *App) updateGitignore(claude ClaudeMDDecision) {
+// updateGitignore appends the exact paths sync owns to .gitignore: each
+// target's bucket-link directory, then gitignoreEntries for the
+// delivery channels and CLAUDE.md (SPEC-013 §Index policy). CLAUDE.md
+// is listed only when the CLAUDE.md decision says it is, or will be,
+// our symlink: a real CLAUDE.md is the user's to commit.
+func (a *App) updateGitignore(claude ClaudeMDDecision, channels []ChannelResult) {
 	gitignore := filepath.Join(a.ProjectRoot, ".gitignore")
 
 	var entries []string
@@ -1455,8 +1534,10 @@ func (a *App) updateGitignore(claude ClaudeMDDecision) {
 		}
 		entries = append(entries, rel+"/")
 	}
-	if claude.linked() {
-		entries = append(entries, "CLAUDE.md")
+	policy, _ := ReadConfigIndex(filepath.Join(a.ProjectRoot, ".agents"))
+	entries = append(entries, gitignoreEntries(policy, a.ProjectRoot, channels, claude)...)
+	if data, err := os.ReadFile(gitignore); err == nil && policy == IndexCommit && containsExactLine(string(data), ".agents/index/") {
+		a.Warn(".gitignore ignores .agents/index/ but index = commit; remove that line so the committed links resolve")
 	}
 
 	if a.DryRun {

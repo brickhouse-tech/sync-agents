@@ -21,6 +21,11 @@ setup() {
   FAKE_BIN="$(mktemp -d)"
   export PATH="$FAKE_BIN:$PATH"
   fake_claude 2.1.286
+  # HOME is the project, so without this every project would be the
+  # global root and SPEC-013's $HOME dedupe would skip the Copilot,
+  # Codex, and opencode channels. Point the global root elsewhere
+  # (absent: no global rules to merge).
+  export SYNC_AGENTS_GLOBAL_ROOT="$FAKE_BIN/home/.agents"
 }
 
 teardown() {
@@ -379,7 +384,7 @@ fake_claude() {
   run "$SCRIPT" -d "$TEST_DIR" status
   [ "$status" -eq 0 ]
   [[ "$output" == *".agents/ exists"* ]]
-  [[ "$output" == *"AGENTS.md exists"* ]]
+  [[ "$output" == *"[ok] AGENTS.md (yours"* ]]
 }
 
 @test "status shows synced state after sync" {
@@ -561,15 +566,21 @@ fake_claude() {
 # New targets: cursor, codex, copilot
 # --------------------------------------------------------------------------
 
-@test "sync creates symlinks for all 4 targets" {
+@test "sync folds rules for claude/windsurf and delivers cursor/copilot through .agents/index" {
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" add rule test-rule
   run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.claude/rules" ]
   [ -L "$TEST_DIR/.windsurf/rules" ]
-  [ -L "$TEST_DIR/.cursor/rules" ]
-  [ -L "$TEST_DIR/.github/copilot/rules" ]
+  # SPEC-013: no rules fold for channel tools; a link to the index instead.
+  [ ! -e "$TEST_DIR/.cursor/rules/test-rule.md" ]
+  [ ! -e "$TEST_DIR/.github/copilot/rules" ]
+  [ "$(readlink "$TEST_DIR/.cursor/rules/sync-agents.mdc")" = "../../.agents/index/cursor.mdc" ]
+  [ "$(readlink "$TEST_DIR/.github/instructions/sync-agents.instructions.md")" = "../../.agents/index/copilot.md" ]
+  grep -q '^alwaysApply: true$' "$TEST_DIR/.agents/index/cursor.mdc"
+  grep -q '^## test-rule$' "$TEST_DIR/.agents/index/cursor.mdc"
+  grep -q '^applyTo: "\*\*"$' "$TEST_DIR/.agents/index/copilot.md"
 }
 
 @test "sync --targets cursor only syncs to .cursor/" {
@@ -577,27 +588,108 @@ fake_claude() {
   "$SCRIPT" -d "$TEST_DIR" add rule test-rule
   run "$SCRIPT" -d "$TEST_DIR" sync --targets cursor
   [ "$status" -eq 0 ]
-  [ -L "$TEST_DIR/.cursor/rules" ]
+  [ -L "$TEST_DIR/.cursor/rules/sync-agents.mdc" ]
   [ ! -d "$TEST_DIR/.claude" ]
   [ ! -d "$TEST_DIR/.windsurf" ]
+  [ ! -e "$TEST_DIR/.github/instructions" ]
 }
 
-@test "sync --targets copilot creates .github/copilot/ structure" {
+@test "sync --targets copilot links .github/instructions, not .github/copilot/rules" {
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" add rule test-rule
   run "$SCRIPT" -d "$TEST_DIR" sync --targets copilot
   [ "$status" -eq 0 ]
-  [ -L "$TEST_DIR/.github/copilot/rules" ]
+  [ -L "$TEST_DIR/.github/instructions/sync-agents.instructions.md" ]
+  [ ! -e "$TEST_DIR/.github/copilot/rules" ]
   [ ! -d "$TEST_DIR/.copilot" ]
 }
 
-@test "clean removes copilot symlinks from .github/copilot/" {
+@test "sync --targets codex links AGENTS.override.md and never writes AGENTS.md" {
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" add rule test-rule
-  "$SCRIPT" -d "$TEST_DIR" sync --targets copilot
-  run "$SCRIPT" -d "$TEST_DIR" clean --targets copilot
+  printf '# AGENTS.md\n\nMine.\n' > "$TEST_DIR/AGENTS.md"
+  before="$(cat "$TEST_DIR/AGENTS.md")"
+  run "$SCRIPT" -d "$TEST_DIR" sync --targets codex
   [ "$status" -eq 0 ]
-  [ ! -L "$TEST_DIR/.github/copilot/rules" ]
+  [ "$(readlink "$TEST_DIR/AGENTS.override.md")" = ".agents/index/codex.md" ]
+  grep -q '^Mine\.$' "$TEST_DIR/AGENTS.override.md"
+  grep -q '^## test-rule$' "$TEST_DIR/AGENTS.override.md"
+  [ ! -e "$TEST_DIR/.codex/rules" ]
+  run "$SCRIPT" -d "$TEST_DIR" index
+  [ "$status" -eq 0 ]
+  [ "$(cat "$TEST_DIR/AGENTS.md")" = "$before" ]
+}
+
+@test "sync --targets opencode creates opencode.json; an existing one needs --targets consent" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule test-rule
+  run "$SCRIPT" -d "$TEST_DIR" sync --targets opencode
+  [ "$status" -eq 0 ]
+  grep -qF '".agents/index/opencode.md"' "$TEST_DIR/opencode.json"
+
+  # A user-owned config is not edited from .agents/config targets alone.
+  printf '{\n  "model": "x"\n}\n' > "$TEST_DIR/opencode.json"
+  echo "targets = opencode" > "$TEST_DIR/.agents/config"
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--targets opencode"* ]]
+  ! grep -qF 'instructions' "$TEST_DIR/opencode.json"
+
+  run "$SCRIPT" -d "$TEST_DIR" sync --targets opencode
+  [ "$status" -eq 0 ]
+  grep -qF '"model": "x"' "$TEST_DIR/opencode.json"
+  grep -qF '".agents/index/opencode.md"' "$TEST_DIR/opencode.json"
+}
+
+@test "sync removes the legacy .cursor/rules fold before placing the .mdc link" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule test-rule
+  mkdir -p "$TEST_DIR/.cursor" "$TEST_DIR/.codex"
+  ln -s ../.agents/rules "$TEST_DIR/.cursor/rules"
+  ln -s ../.agents/rules "$TEST_DIR/.codex/rules"
+  run "$SCRIPT" -d "$TEST_DIR" sync --targets cursor,codex
+  [ "$status" -eq 0 ]
+  [ ! -L "$TEST_DIR/.cursor/rules" ]
+  [ -d "$TEST_DIR/.cursor/rules" ]
+  [ -L "$TEST_DIR/.cursor/rules/sync-agents.mdc" ]
+  [ ! -e "$TEST_DIR/.agents/rules/sync-agents.mdc" ]
+  [ ! -e "$TEST_DIR/.codex/rules" ]
+}
+
+@test "status reports one row per delivery channel" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule test-rule
+  "$SCRIPT" -d "$TEST_DIR" sync --targets cursor,copilot
+  run "$SCRIPT" -d "$TEST_DIR" status --targets cursor,copilot
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[synced] cursor"* ]]
+  [[ "$output" == *"[synced] copilot"* ]]
+  echo "edited" >> "$TEST_DIR/.agents/rules/test-rule.md"
+  run "$SCRIPT" -d "$TEST_DIR" status --targets cursor,copilot
+  [[ "$output" == *"[stale] cursor"* ]]
+}
+
+@test "project at \$HOME leaves copilot to global sync (same tree)" {
+  unset SYNC_AGENTS_GLOBAL_ROOT
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule test-rule
+  run "$SCRIPT" -d "$TEST_DIR" sync --targets cursor,copilot
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"copilot: skipped at project scope"* ]]
+  [ ! -e "$TEST_DIR/.github/instructions" ]
+  [ -L "$TEST_DIR/.cursor/rules/sync-agents.mdc" ]
+}
+
+@test "clean removes delivery links, the index, and empty tool dirs" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule test-rule
+  "$SCRIPT" -d "$TEST_DIR" sync --targets copilot,cursor
+  run "$SCRIPT" -d "$TEST_DIR" clean --targets copilot,cursor
+  [ "$status" -eq 0 ]
+  [ ! -e "$TEST_DIR/.github" ]
+  [ ! -e "$TEST_DIR/.cursor" ]
+  [ ! -e "$TEST_DIR/.agents/index" ]
+  [ -f "$TEST_DIR/AGENTS.md" ]
 }
 
 # --------------------------------------------------------------------------
@@ -666,7 +758,27 @@ fake_claude() {
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/.git/hooks/pre-commit" ]
   [ -x "$TEST_DIR/.git/hooks/pre-commit" ]
-  grep -q "sync-agents" "$TEST_DIR/.git/hooks/pre-commit"
+  grep -qxF "  git add -- .agents/index 2>/dev/null || true" "$TEST_DIR/.git/hooks/pre-commit"
+  ! grep -q "sync-agents index" "$TEST_DIR/.git/hooks/pre-commit"
+  ! grep -q "git add AGENTS.md" "$TEST_DIR/.git/hooks/pre-commit"
+}
+
+@test "git-hook replaces an old block and the hook commits without CLAUDE.md" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.git/hooks"
+  printf '#!/bin/sh\necho keep-me\n# --- sync-agents start ---\nsync-agents index\ngit add AGENTS.md CLAUDE.md\n# --- sync-agents end ---\n' > "$TEST_DIR/.git/hooks/pre-commit"
+  run "$SCRIPT" -d "$TEST_DIR" git-hook
+  [ "$status" -eq 0 ]
+  grep -q "keep-me" "$TEST_DIR/.git/hooks/pre-commit"
+  ! grep -q "git add AGENTS.md" "$TEST_DIR/.git/hooks/pre-commit"
+  [ "$(grep -c 'sync-agents start' "$TEST_DIR/.git/hooks/pre-commit")" -eq 1 ]
+  # The hook runs the binary under test via PATH.
+  ln -s "$SCRIPT" "$FAKE_BIN/sync-agents"
+  [ ! -e "$TEST_DIR/CLAUDE.md" ]
+  cd "$TEST_DIR"
+  git -c user.email=t@t -c user.name=t add AGENTS.md
+  run git -c user.email=t@t -c user.name=t commit -q -m test
+  [ "$status" -eq 0 ]
 }
 
 @test "git-hook is idempotent" {
@@ -784,7 +896,7 @@ fake_claude() {
   run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.claude/rules" ]
-  [ -L "$TEST_DIR/.cursor/rules" ]
+  [ -L "$TEST_DIR/.cursor/rules/sync-agents.mdc" ]
   [ ! -d "$TEST_DIR/.windsurf" ]
 }
 
@@ -802,6 +914,9 @@ fake_claude() {
   grep -qxF ".cursor/" "$TEST_DIR/.gitignore"
   grep -qxF ".github/copilot/" "$TEST_DIR/.gitignore"
   grep -qxF "CLAUDE.md" "$TEST_DIR/.gitignore"
+  grep -qxF ".agents/index/" "$TEST_DIR/.gitignore"
+  grep -qxF ".cursor/rules/sync-agents.mdc" "$TEST_DIR/.gitignore"
+  grep -qxF ".github/instructions/sync-agents.instructions.md" "$TEST_DIR/.gitignore"
 }
 
 @test "sync adds header comment to .gitignore" {
