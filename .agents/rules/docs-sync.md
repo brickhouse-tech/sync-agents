@@ -27,7 +27,8 @@ Purpose:
 - Update example README.md with current best practices and use cases
 
 ### .agents/ Directory Structure
-- Ensure AGENTS.md is up-to-date by running `sync-agents index` when rules/skills/workflows are added or removed
+- Run `sync-agents sync` after adding or removing rules, skills, or workflows. It refreshes the per-tool delivery files in `.agents/index/` and their links
+- `AGENTS.md` is hand-written. sync-agents does not regenerate it, so update it by hand when the project's shared instructions change
 - Keep STATE.md current with any configuration state changes
 - Document any new file types or structure changes
 
@@ -48,12 +49,12 @@ Apply this rule when:
 ## Checklist
 
 Before committing changes to `.agents/` or core implementation:
-- [ ] Run `sync-agents index` to regenerate AGENTS.md if structure changed
+- [ ] Run `sync-agents sync` if `.agents/` structure changed (refreshes `.agents/index/`)
 - [ ] Review README.md for outdated commands or topology descriptions
 - [ ] Check examples/ directory for alignment with new patterns
 - [ ] Verify template files in src/md/ match current format standards
-- [ ] Update CHANGELOG.md with significant changes
-- [ ] Ensure docstrings and comments in src/sh/sync-agents.sh are current
+- [ ] Use conventional commit messages; CHANGELOG.md is generated from them at release (`commit-and-tag-version`), so do not edit it by hand
+- [ ] Ensure doc comments in `internal/` and help strings in `main.go` are current
 - [ ] Test examples work with current implementation
 
 ## Guidelines

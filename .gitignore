@@ -37,9 +37,7 @@ dist/
 .cursor/*
 !.cursor/rules
 .codex/*
-!.codex/instructions.md
 .github/copilot/*
-!.github/copilot/instructions.md
 .claude/
 .windsurf/
 .cursor/
@@ -53,3 +51,6 @@ npm/*/bin/sync-agents.exe
 
 vendor
 .agents/STATE*
+.agents/index/
+.cursor/rules/sync-agents.mdc
+.github/instructions/sync-agents.instructions.md
