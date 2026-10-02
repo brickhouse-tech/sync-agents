@@ -626,6 +626,14 @@ func DiscoverArtifacts(rootAgentsDir string) ([]Artifact, error) {
 // without cross-compiling. SPEC-006: OS-scoped subdirs route only when
 // goos matches; non-matching subtrees are skipped entirely.
 func discoverArtifactsForOS(rootAgentsDir, goos string) ([]Artifact, error) {
+	return discoverArtifactsWithScopes(rootAgentsDir, func(scope string) bool { return osScopes[scope](goos) })
+}
+
+// discoverArtifactsWithScopes is the discovery walk itself. includeScope
+// decides which OS-scoped subdirectories are descended into: the host's
+// for DiscoverArtifacts, every one for a committed delivery index
+// (SPEC-013 §Index policy, discoverChannelArtifacts).
+func discoverArtifactsWithScopes(rootAgentsDir string, includeScope func(scope string) bool) ([]Artifact, error) {
 	var out []Artifact
 
 	for _, b := range Buckets {
@@ -648,7 +656,7 @@ func discoverArtifactsForOS(rootAgentsDir, goos string) ([]Artifact, error) {
 			// destination mirrors the source tree and platforms don't
 			// collide in the flat target dir.
 			if e.IsDir() && isOSScopeDir(e.Name()) {
-				if !osScopes[e.Name()](goos) {
+				if !includeScope(e.Name()) {
 					continue
 				}
 				scoped, err := discoverBucketDir(filepath.Join(dir, e.Name()), b, e.Name()+"/")
