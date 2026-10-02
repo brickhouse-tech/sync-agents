@@ -15,23 +15,30 @@ import (
 // OpenClawRulesRegion and StrategyRegion).
 
 // ToolEnv is the environment a tool resolver reads: environment
-// variables and files. It is the injected boundary input that keeps
-// resolvers pure, so tests drive every precedence branch without
-// touching the real environment or $HOME.
+// variables, files, and programs it may run. It is the injected
+// boundary input that keeps resolvers pure, so tests drive every
+// precedence branch without touching the real environment, $HOME, or
+// an installed tool.
 type ToolEnv struct {
 	// Getenv looks up an environment variable. Nil reads as unset.
 	Getenv func(string) string
 
 	// ReadFile reads a config file. Nil means os.ReadFile.
 	ReadFile func(string) ([]byte, error)
+
+	// Run executes a program, such as `claude --version` for the
+	// CLAUDE.md policy (claudemd.go). Nil means no program can run, so
+	// the probe reports an unknown version and nothing changes.
+	Run CommandRunner
 }
 
-// OSToolEnv reads the real process environment and filesystem.
-// NewApp installs it; a zero-value App (every test literal) sees no
-// environment variables at all, so a developer's OPENCLAW_* exports can
-// never steer a test into a live workspace.
+// OSToolEnv reads the real process environment and filesystem and runs
+// real programs. NewApp installs it; a zero-value App (every test
+// literal) sees no environment variables at all and runs nothing, so a
+// developer's OPENCLAW_* exports or installed claude can never steer a
+// test.
 func OSToolEnv() ToolEnv {
-	return ToolEnv{Getenv: os.Getenv, ReadFile: os.ReadFile}
+	return ToolEnv{Getenv: os.Getenv, ReadFile: os.ReadFile, Run: runCommand}
 }
 
 func (e ToolEnv) getenv(key string) string {

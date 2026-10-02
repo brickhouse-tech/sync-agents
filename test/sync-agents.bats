@@ -15,11 +15,28 @@ setup() {
   export HOME="$TEST_DIR"
   # OpenClaw's workspace follows these vars even with HOME redirected.
   unset OPENCLAW_HOME OPENCLAW_STATE_DIR OPENCLAW_CONFIG_PATH OPENCLAW_WORKSPACE_DIR OPENCLAW_PROFILE
+  # The CLAUDE.md policy (SPEC-013) runs `claude --version`. A fake
+  # claude first on PATH keeps every test off the real install; the
+  # default is a release that reads AGENTS.md natively.
+  FAKE_BIN="$(mktemp -d)"
+  export PATH="$FAKE_BIN:$PATH"
+  fake_claude 2.1.286
 }
 
 teardown() {
   # Clean up temp directory
-  rm -rf "$TEST_DIR"
+  rm -rf "$TEST_DIR" "$FAKE_BIN"
+}
+
+# fake_claude VERSION|fail: replace the fake claude with one that prints
+# "VERSION (Claude Code)", or with one that exits 1.
+fake_claude() {
+  if [ "$1" = "fail" ]; then
+    printf '#!/bin/sh\necho "claude: broken install" >&2\nexit 1\n' > "$FAKE_BIN/claude"
+  else
+    printf '#!/bin/sh\necho "%s (Claude Code)"\n' "$1" > "$FAKE_BIN/claude"
+  fi
+  chmod +x "$FAKE_BIN/claude"
 }
 
 # --------------------------------------------------------------------------
@@ -242,7 +259,8 @@ teardown() {
   [ -L "$TEST_DIR/.windsurf/workflows" ]
 }
 
-@test "sync creates CLAUDE.md symlink to AGENTS.md" {
+@test "sync links CLAUDE.md to AGENTS.md for Claude Code < 2.1.281" {
+  fake_claude 2.1.276
   "$SCRIPT" -d "$TEST_DIR" init
   run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
@@ -250,6 +268,92 @@ teardown() {
   local link_target
   link_target="$(readlink "$TEST_DIR/CLAUDE.md")"
   [[ "$link_target" == "AGENTS.md" ]]
+}
+
+@test "sync creates no CLAUDE.md for Claude Code >= 2.1.281" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [ ! -e "$TEST_DIR/CLAUDE.md" ] && [ ! -L "$TEST_DIR/CLAUDE.md" ]
+  [[ "$output" == *"CLAUDE.md not created: Claude Code 2.1.286 reads AGENTS.md natively"* ]]
+  ! grep -qxF "CLAUDE.md" "$TEST_DIR/.gitignore"
+}
+
+@test "an existing CLAUDE.md link survives sync under Claude Code 2.1.286" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  ln -s AGENTS.md "$TEST_DIR/CLAUDE.md"
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [[ "$(readlink "$TEST_DIR/CLAUDE.md")" == "AGENTS.md" ]]
+  run "$SCRIPT" -d "$TEST_DIR" status
+  [[ "$output" == *"[ok] CLAUDE.md -> AGENTS.md is not needed"* ]]
+}
+
+@test "sync changes nothing and warns once when claude --version fails" {
+  fake_claude fail
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [ ! -e "$TEST_DIR/CLAUDE.md" ] && [ ! -L "$TEST_DIR/CLAUDE.md" ]
+  [ "$(grep -c "cannot tell the Claude Code version" <<<"$output")" -eq 1 ]
+  [[ "$output" == *"exit status 1"* ]]
+  [[ "$output" == *"claude-md = link"* ]]
+}
+
+@test "sync keeps an existing CLAUDE.md link when claude --version fails" {
+  fake_claude fail
+  "$SCRIPT" -d "$TEST_DIR" init
+  ln -s AGENTS.md "$TEST_DIR/CLAUDE.md"
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [[ "$(readlink "$TEST_DIR/CLAUDE.md")" == "AGENTS.md" ]]
+}
+
+@test "CLAUDE.local.md forces the CLAUDE.md link on Claude Code 2.1.286" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  echo "local notes" > "$TEST_DIR/CLAUDE.local.md"
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [[ "$(readlink "$TEST_DIR/CLAUDE.md")" == "AGENTS.md" ]]
+}
+
+@test "claude-md = link links CLAUDE.md even when claude --version fails" {
+  fake_claude fail
+  "$SCRIPT" -d "$TEST_DIR" init
+  echo "claude-md = link" >> "$TEST_DIR/.agents/config"
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [[ "$(readlink "$TEST_DIR/CLAUDE.md")" == "AGENTS.md" ]]
+  [[ "$output" != *"cannot tell the Claude Code version"* ]]
+}
+
+@test "claude-md = off never touches CLAUDE.md" {
+  fake_claude 2.1.276
+  "$SCRIPT" -d "$TEST_DIR" init
+  echo "claude-md = off" >> "$TEST_DIR/.agents/config"
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [ ! -e "$TEST_DIR/CLAUDE.md" ] && [ ! -L "$TEST_DIR/CLAUDE.md" ]
+}
+
+@test "a real CLAUDE.md is never moved aside, even with --overwrite" {
+  fake_claude 2.1.276
+  "$SCRIPT" -d "$TEST_DIR" init
+  echo "my notes" > "$TEST_DIR/CLAUDE.md"
+  run "$SCRIPT" -d "$TEST_DIR" --overwrite sync
+  [ "$status" -eq 0 ]
+  [ ! -L "$TEST_DIR/CLAUDE.md" ]
+  [[ "$(cat "$TEST_DIR/CLAUDE.md")" == "my notes" ]]
+  ! ls "$TEST_DIR"/CLAUDE.md.replaced-by-sync-agents* >/dev/null 2>&1
+  [[ "$output" == *"@AGENTS.md"* ]]
+}
+
+@test "sync does not handle CLAUDE.md when claude is not a target" {
+  fake_claude 2.1.276
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" sync --targets windsurf
+  [ "$status" -eq 0 ]
+  [ ! -e "$TEST_DIR/CLAUDE.md" ] && [ ! -L "$TEST_DIR/CLAUDE.md" ]
 }
 
 # --------------------------------------------------------------------------
@@ -297,6 +401,7 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "clean removes symlinks and empty directories" {
+  fake_claude 2.1.276
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" sync
   # Verify symlinks exist first
@@ -688,6 +793,7 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "sync adds symlink entries to .gitignore" {
+  fake_claude 2.1.276
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" sync
   [ -f "$TEST_DIR/.gitignore" ]
@@ -705,6 +811,7 @@ teardown() {
 }
 
 @test "sync does not duplicate .gitignore entries" {
+  fake_claude 2.1.276
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" sync
   "$SCRIPT" -d "$TEST_DIR" sync
@@ -714,6 +821,7 @@ teardown() {
 }
 
 @test "sync preserves existing .gitignore content" {
+  fake_claude 2.1.276
   "$SCRIPT" -d "$TEST_DIR" init
   echo "node_modules/" > "$TEST_DIR/.gitignore"
   "$SCRIPT" -d "$TEST_DIR" sync
@@ -722,6 +830,7 @@ teardown() {
 }
 
 @test "sync --targets only adds relevant entries to .gitignore" {
+  fake_claude 2.1.276
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" sync --targets claude
   grep -qxF ".claude/" "$TEST_DIR/.gitignore"
@@ -1055,6 +1164,7 @@ teardown() {
 }
 
 @test "fix repairs missing CLAUDE.md symlink" {
+  fake_claude 2.1.276
   "$SCRIPT" -d "$TEST_DIR" init
   # AGENTS.md exists but CLAUDE.md symlink is missing
   [ -f "$TEST_DIR/AGENTS.md" ]
@@ -1067,6 +1177,7 @@ teardown() {
 }
 
 @test "fix repairs deleted symlinks after sync" {
+  fake_claude 2.1.276
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" sync
   # Verify sync worked

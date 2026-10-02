@@ -2,7 +2,6 @@ package agent
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -421,15 +420,13 @@ func (a *App) CmdSync() error {
 		}
 	}
 
-	// A hand-written CLAUDE.md is warned about but kept out of the
-	// exit status: it is common and harmless, and failing every such
-	// project would teach users to ignore the conflict exit.
-	agentsMD := filepath.Join(a.ProjectRoot, "AGENTS.md")
-	if _, err := os.Stat(agentsMD); err == nil {
-		claudeMD := filepath.Join(a.ProjectRoot, "CLAUDE.md")
-		if err := a.CreateSymlink("AGENTS.md", claudeMD, a.DryRun); errors.Is(err, ErrConflict) {
-			a.Warn(fmt.Sprintf("conflict: %s is a real file shadowing AGENTS.md; leaving it in place (resync with --overwrite to move it aside)", claudeMD))
-		}
+	// CLAUDE.md follows the SPEC-013 policy (claudemd.go). A
+	// hand-written CLAUDE.md is warned about but kept out of the exit
+	// status: it is common and harmless, and failing every such project
+	// would teach users to ignore the conflict exit.
+	claudeMD := a.claudeMDDecision()
+	if _, err := a.applyClaudeMD(claudeMD); err != nil {
+		a.Warn(err.Error())
 	}
 
 	// Hooks (SPEC-004 Part C): merge .agents/hooks/*.json fragments
@@ -453,7 +450,7 @@ func (a *App) CmdSync() error {
 		}
 	}
 
-	a.updateGitignore()
+	a.updateGitignore(claudeMD)
 
 	if conflicts > 0 {
 		a.Warn(fmt.Sprintf("Sync finished with %d conflict(s); nothing was deleted", conflicts))
@@ -485,16 +482,7 @@ func (a *App) CmdStatus() error {
 		fmt.Fprintf(a.Stdout, "[missing] AGENTS.md not found\n")
 	}
 
-	claudeMD := filepath.Join(a.ProjectRoot, "CLAUDE.md")
-	fi, err := os.Lstat(claudeMD)
-	if err == nil && fi.Mode()&os.ModeSymlink != 0 {
-		linkTarget, _ := os.Readlink(claudeMD)
-		fmt.Fprintf(a.Stdout, "[ok] CLAUDE.md -> %s\n", linkTarget)
-	} else if err == nil {
-		fmt.Fprintf(a.Stdout, "[warn] CLAUDE.md exists but is not a symlink\n")
-	} else {
-		fmt.Fprintf(a.Stdout, "[missing] CLAUDE.md not found\n")
-	}
+	fmt.Fprintln(a.Stdout, a.claudeMDDecision().statusLine())
 
 	fmt.Fprintln(a.Stdout)
 
@@ -616,11 +604,16 @@ func (a *App) CmdClean() error {
 		}
 	}
 
-	claudeMD := filepath.Join(a.ProjectRoot, "CLAUDE.md")
-	fi, err := os.Lstat(claudeMD)
-	if err == nil && fi.Mode()&os.ModeSymlink != 0 {
-		os.Remove(claudeMD)
-		a.Info("Removed: CLAUDE.md symlink")
+	// Only our CLAUDE.md -> AGENTS.md link is removed; a real file or
+	// a symlink pointing elsewhere is the user's.
+	if state, err := classifyClaudeMD(a.ProjectRoot); err != nil {
+		a.Warn(fmt.Sprintf("CLAUDE.md: %v", err))
+	} else if state == ClaudeMDOurLink {
+		if err := os.Remove(filepath.Join(a.ProjectRoot, "CLAUDE.md")); err != nil {
+			a.Warn(fmt.Sprintf("remove CLAUDE.md symlink: %v", err))
+		} else {
+			a.Info("Removed: CLAUDE.md symlink")
+		}
 	}
 
 	a.Info("Clean complete.")
@@ -1168,30 +1161,11 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 			}
 		}
 	}
-	// Repair CLAUDE.md symlink
-	agentsMDPath := filepath.Join(a.ProjectRoot, "AGENTS.md")
-	claudeMDPath := filepath.Join(a.ProjectRoot, "CLAUDE.md")
-	if _, err := os.Stat(agentsMDPath); err == nil {
-		fi, err := os.Lstat(claudeMDPath)
-		if err == nil && fi.Mode()&os.ModeSymlink != 0 {
-			currentTarget, _ := os.Readlink(claudeMDPath)
-			if currentTarget != "AGENTS.md" {
-				if a.DryRun {
-					fmt.Fprintf(a.Stdout, "  would relink: CLAUDE.md -> AGENTS.md (was %s)\n", currentTarget)
-				} else {
-					os.Remove(claudeMDPath)
-					a.CreateSymlink("AGENTS.md", claudeMDPath, false)
-				}
-				repaired++
-			}
-		} else if os.IsNotExist(err) || (err != nil) {
-			if a.DryRun {
-				fmt.Fprintf(a.Stdout, "  would create: CLAUDE.md -> AGENTS.md\n")
-			} else {
-				a.CreateSymlink("AGENTS.md", claudeMDPath, false)
-			}
-			repaired++
-		}
+	// CLAUDE.md follows the same SPEC-013 policy as sync.
+	if changed, err := a.applyClaudeMD(a.claudeMDDecision()); err != nil {
+		a.Warn(err.Error())
+	} else if changed {
+		repaired++
 	}
 
 	// Phase 3: Migrate legacy STATE.md
@@ -1466,7 +1440,10 @@ func (a *App) addDefaultGitignoreEntries() {
 	os.WriteFile(gitignore, []byte(content), 0644)
 }
 
-func (a *App) updateGitignore() {
+// updateGitignore appends the exact paths sync owns to .gitignore.
+// CLAUDE.md is listed only when the CLAUDE.md decision says it is, or
+// will be, our symlink: a real CLAUDE.md is the user's to commit.
+func (a *App) updateGitignore(claude ClaudeMDDecision) {
 	gitignore := filepath.Join(a.ProjectRoot, ".gitignore")
 
 	var entries []string
@@ -1478,7 +1455,9 @@ func (a *App) updateGitignore() {
 		}
 		entries = append(entries, rel+"/")
 	}
-	entries = append(entries, "CLAUDE.md")
+	if claude.linked() {
+		entries = append(entries, "CLAUDE.md")
+	}
 
 	if a.DryRun {
 		data, _ := os.ReadFile(gitignore)

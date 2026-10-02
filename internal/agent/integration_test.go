@@ -318,8 +318,10 @@ func TestCmdSync_AgentsMDToClaudeMD(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, ".agents", "rules"), 0o755)
 	os.WriteFile(filepath.Join(dir, ".agents", "rules", "test.md"), []byte("# rule\n"), 0o644)
 
-	// Pre-create AGENTS.md so CLAUDE.md symlink is created.
+	// Pre-create AGENTS.md and report a Claude Code that predates native
+	// AGENTS.md reading, so the CLAUDE.md symlink is created.
 	os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("test"), 0o644)
+	app.ToolEnv.Run = fakeClaude("2.1.276 (Claude Code)\n", nil)
 
 	if err := app.CmdSync(); err != nil {
 		t.Fatal(err)
