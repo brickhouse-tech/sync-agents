@@ -98,11 +98,18 @@ func TestResolveOpenClaw_InvalidConfigFailsClosed(t *testing.T) {
 }
 
 func TestResolveOpenClaw_BootstrapMaxChars(t *testing.T) {
-	if n, _ := openClawRegionCharCap("/home/u", mapEnv(nil, nil)); n != 20000 {
+	limit := func(env ToolEnv) int {
+		b, err := openClawBudget(ToolContext{Parent: "/home/u", Env: env})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b.Cap.Limit
+	}
+	if n := limit(mapEnv(nil, nil)); n != 20000 {
 		t.Errorf("default cap = %d, want 20000", n)
 	}
 	env := mapEnv(nil, map[string]string{"/home/u/.openclaw/openclaw.json": `{"agents":{"defaults":{"bootstrapMaxChars":500}}}`})
-	if n, _ := openClawRegionCharCap("/home/u", env); n != 500 {
+	if n := limit(env); n != 500 {
 		t.Errorf("configured cap = %d, want 500", n)
 	}
 }
@@ -114,12 +121,12 @@ func TestOpenClawDestination(t *testing.T) {
 		sem      Semantic
 		strategy DestinationStrategy
 	}{
-		{ArtifactRule, Passive, StrategyRegion},
-		{ArtifactWorkflow, Passive, StrategyRegion},
+		{ArtifactRule, Passive, StrategyChannel},
+		{ArtifactWorkflow, Passive, StrategyChannel},
 		{ArtifactRule, Invocable, StrategySkip},
 		{ArtifactWorkflow, Invocable, StrategySkip},
 		{ArtifactSkill, Invocable, StrategySkip},
-		{ArtifactSkill, Passive, StrategySkip},
+		{ArtifactSkill, Passive, StrategyChannel},
 		{ArtifactAgent, Passive, StrategySkip},
 	}
 	for _, c := range cases {
@@ -127,11 +134,10 @@ func TestOpenClawDestination(t *testing.T) {
 		if d.Strategy != c.strategy {
 			t.Errorf("%s/%v: strategy %v, want %v", c.typ, c.sem, d.Strategy, c.strategy)
 		}
-		if c.strategy == StrategyRegion {
-			if d.Path != "/home/u/.openclaw/workspace/AGENTS.md" || d.Region != OpenClawRulesRegion {
-				t.Errorf("%s/%v: got %q region %q", c.typ, c.sem, d.Path, d.Region.Name)
-			}
-		}
+	}
+	host := channelSpecs["openclaw"][ScopeGlobal].Mount.(RegionMount)
+	if host.Host.Rel != "AGENTS.md" || host.Region != OpenClawRulesRegion || host.CreateHost {
+		t.Errorf("openclaw channel = %+v; want the openclaw-rules region in the workspace AGENTS.md, never created", host)
 	}
 }
 
@@ -198,7 +204,7 @@ func TestGlobalSync_OpenClaw_InsertsRegionAndPreservesHost(t *testing.T) {
 		t.Fatalf("content outside the region changed:\n%s", got)
 	}
 	region := strings.TrimPrefix(got, r.fixture)
-	want := "\n" + OpenClawRulesRegion.Start() + "\n" + regionBanner + "\n" +
+	want := "\n" + OpenClawRulesRegion.Start() + "\n" + globalBanner + "\n\n" +
 		"## git\n\nCommit small.\n\n" +
 		"## testing\n\nRun the tests.\n\n" +
 		OpenClawRulesRegion.End() + "\n"
@@ -263,7 +269,7 @@ func TestGlobalSync_OpenClaw_DeletingLastRuleEmptiesRegion(t *testing.T) {
 		}
 	}
 	r.sync(t)
-	want := r.fixture + "\n" + OpenClawRulesRegion.Start() + "\n" + regionBanner + "\n" + OpenClawRulesRegion.End() + "\n"
+	want := r.fixture + "\n" + OpenClawRulesRegion.Start() + "\n" + globalBanner + "\n\n" + OpenClawRulesRegion.End() + "\n"
 	if got := readFile(t, r.host); got != want {
 		t.Errorf("region not emptied:\n%s", got)
 	}
@@ -276,7 +282,7 @@ func TestGlobalSync_OpenClaw_SizeCapWarning(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.sync(t, "openclaw")
-	if !strings.Contains(r.stdout.String(), "over the 100-char bootstrap cap (agents.defaults.bootstrapMaxChars)") {
+	if !strings.Contains(r.stdout.String(), "of 100 chars even with every rule as a pointer, so openclaw will truncate it. Raise agents.defaults.bootstrapMaxChars in openclaw.json") {
 		t.Errorf("no size-cap warning:\n%s", r.stdout)
 	}
 }
@@ -284,7 +290,7 @@ func TestGlobalSync_OpenClaw_SizeCapWarning(t *testing.T) {
 func TestGlobalSync_OpenClaw_NoSizeCapWarningUnderDefault(t *testing.T) {
 	r := newOpenClawRig(t)
 	r.sync(t, "openclaw")
-	if strings.Contains(r.stdout.String(), "bootstrap cap") {
+	if out := r.stdout.String(); strings.Contains(out, "truncate") || strings.Contains(out, "pointers instead") {
 		t.Errorf("spurious size-cap warning:\n%s", r.stdout)
 	}
 }
@@ -318,11 +324,11 @@ func TestGlobalStatus_OpenClaw_RegionRow(t *testing.T) {
 		}
 		return r.stdout.String()
 	}
-	if out := status(); !strings.Contains(out, "[region synced] "+r.host) {
+	if out := status(); !strings.Contains(out, "[synced] openclaw -> "+r.host) {
 		t.Errorf("want synced region row:\n%s", out)
 	}
 	seedRule(t, r.app.GlobalRoot, "git", "Commit smaller.\n")
-	if out := status(); !strings.Contains(out, "[region stale] "+r.host) {
+	if out := status(); !strings.Contains(out, "[stale] openclaw -> "+r.host) {
 		t.Errorf("want stale region row:\n%s", out)
 	}
 }
@@ -338,7 +344,7 @@ func TestOpenClaw_IndexPreservesRegionAcrossSyncs(t *testing.T) {
 	}
 	afterIndex := readFile(t, r.host)
 	for _, want := range []string{
-		OpenClawRulesRegion.Start() + "\n" + regionBanner + "\n## git\n\nCommit small.\n",
+		OpenClawRulesRegion.Start() + "\n" + globalBanner + "\n\n## git\n\nCommit small.\n",
 		"## Tools\n\nSkills define how tools work.",
 		"### Cameras\n",
 	} {

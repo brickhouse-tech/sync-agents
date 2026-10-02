@@ -1,10 +1,8 @@
 package agent
 
 import (
-	"bytes"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -36,63 +34,18 @@ const (
 	StateMissing DestinationState = "missing"
 )
 
-// ConcatState classifies the filesystem state of a concat target
-// (Windsurf memories, Copilot/Codex instructions.md). Concat targets
-// are content-compared rather than identity-compared, so the states
-// differ from per-symlink DestinationState.
-type ConcatState string
-
-const (
-	// ConcatStateOK: the concat file exists, carries the
-	// sync-agents banner, and its content matches what a fresh
-	// regeneration would produce.
-	ConcatStateOK ConcatState = "ok"
-
-	// ConcatStateStale: the file exists but its content differs
-	// from what regeneration would produce. Running `global sync`
-	// will rewrite it.
-	ConcatStateStale ConcatState = "stale"
-
-	// ConcatStateMissing: no file at the destination. `global sync`
-	// will create it.
-	ConcatStateMissing ConcatState = "missing"
-
-	// ConcatStateForeign: a file exists at the destination but
-	// lacks the sync-agents banner — almost certainly a user-owned
-	// file we should not touch. `global sync` will overwrite it
-	// (concat targets are sync-agents-owned by design); `global
-	// clean` will leave it alone.
-	ConcatStateForeign ConcatState = "foreign"
-)
-
-// RegionState classifies a managed region inside a host file another
-// program owns (OpenClaw's AGENTS.md).
-type RegionState string
-
-const (
-	// RegionStateSynced: the region matches what `global sync` would
-	// write.
-	RegionStateSynced RegionState = "synced"
-
-	// RegionStateStale: the region exists but its content differs.
-	RegionStateStale RegionState = "stale"
-
-	// RegionStateMissing: the host file has no region markers (or no
-	// longer exists).
-	RegionStateMissing RegionState = "missing"
-)
-
-// StatusEntry is one row of `global status` output. Each entry maps
-// to a single (tool, artifact) destination OR a single concat target.
+// StatusEntry is one row of `status` or `global status` output. Each
+// entry maps to a single (tool, artifact) destination OR a single
+// delivery channel.
 type StatusEntry struct {
 	// Tool is the destination tool ID (claude, codeium, …).
 	Tool string
 
-	// ArtifactType is the source bucket; empty for concat-only rows
-	// where multiple buckets contribute to the same file.
+	// ArtifactType is the source bucket; empty for channel rows, where
+	// every passive artifact contributes to the same file.
 	ArtifactType ArtifactType
 
-	// ArtifactName is the source artifact's name; empty for concat
+	// ArtifactName is the source artifact's name; empty for channel
 	// rows.
 	ArtifactName string
 
@@ -100,18 +53,14 @@ type StatusEntry struct {
 	DestinationPath string
 
 	// State is exactly one of {synced, drifted, not-a-symlink,
-	// missing} for symlink destinations, or one of {ok, stale,
-	// missing, foreign} for concat destinations. Stored as string
+	// missing} for symlink destinations, or a ChannelState (plus
+	// "skipped", "gap", "error") for channel rows. Stored as string
 	// so callers don't have to type-switch when rendering.
 	State string
 
-	// IsConcat is true for concat-target rows so callers can
-	// distinguish them in output.
-	IsConcat bool
-
-	// IsRegion is true for managed-region rows (one per host file);
-	// State is one of the RegionState values.
-	IsRegion bool
+	// IsChannel is true for delivery-channel rows (one per tool), so
+	// they print as "tool -> path" rather than "tool/type/name".
+	IsChannel bool
 
 	// Detail is an optional human-readable note (e.g. the actual
 	// vs expected symlink target for drifted state).
@@ -135,14 +84,14 @@ type GlobalStatusOpts struct {
 // same destinations TargetDestination would, then stats each one.
 //
 // Output: one line per (tool, artifact) destination plus one line
-// per concat target. Format:
+// per delivery channel (SPEC-013), from channelRows. Format:
 //
 //	[STATE] tool/typ/name -> path  (detail)
-//	[concat STATE] path  (N entries)
+//	[STATE] tool -> path  (detail)
 //
-// Concat targets are aggregated (one line per unique concat path,
-// not one per contributing artifact). Empty global root produces
-// a clear error pointing at `global init`.
+// A channel is one line per tool, not one per contributing artifact,
+// and Cursor's missing user-rules file is one "gap" line. Empty global
+// root produces a clear error pointing at `global init`.
 //
 // See SPEC-002 §Requirement: Global status and
 // docs/commands/global-status.md for the user-facing contract.
@@ -165,14 +114,23 @@ func (a *App) CmdGlobalStatus(opts GlobalStatusOpts) error {
 		return err
 	}
 
-	entries, concatRows, expected := computeStatus(artifacts, tools, parent)
+	run := ChannelRun{Scope: ScopeGlobal, Explicit: opts.Targets, Tools: tools}
+	chans, _, err := a.bindChannels(run)
+	if err != nil {
+		return err
+	}
+	entries, expected := computeStatus(artifacts, tools, parent, artifactGates(chans))
+	channelRows, err := a.channelRows(run)
+	if err != nil {
+		return err
+	}
 
 	a.Info(fmt.Sprintf("global status (%d artifacts, %d tool(s)):", len(artifacts), len(tools)))
 
 	for _, e := range entries {
 		a.printStatusEntry(e)
 	}
-	for _, e := range concatRows {
+	for _, e := range channelRows {
 		a.printStatusEntry(e)
 	}
 
@@ -184,41 +142,24 @@ func (a *App) CmdGlobalStatus(opts GlobalStatusOpts) error {
 		a.printStatusEntry(e)
 	}
 
-	all := append(append(append([]StatusEntry{}, entries...), concatRows...), sweepRows...)
+	all := append(append(append([]StatusEntry{}, entries...), channelRows...), sweepRows...)
 	a.Info(auditSummary(all))
 	return nil
 }
 
-// computeStatus is the pure logic of `global status`: given the
-// discovered artifacts and tool set, return the per-destination
-// entries, the aggregated concat rows, and the set of symlink
-// destination paths the .agents/ tree claims (consumed by the
-// SPEC-010 reverse sweep to separate managed entries from
-// foreign/orphaned ones).
+// computeStatus is the per-artifact logic of `global status`: given
+// the discovered artifacts, tool set, and the per-tool gates sync
+// applies (artifactGates), return the per-destination entries and the
+// set of symlink destination paths the .agents/ tree claims (consumed
+// by the SPEC-010 reverse sweep to separate managed entries from
+// foreign/orphaned ones). Channels are reported separately, by
+// channelRows.
 //
 // Split out from CmdGlobalStatus so tests can exercise the state
 // classification without going through the App + filesystem-write
 // surface.
-func computeStatus(artifacts []Artifact, tools []Tool, parent string) (perDestination []StatusEntry, concatRows []StatusEntry, expected map[string]bool) {
+func computeStatus(artifacts []Artifact, tools []Tool, parent string, gates artifactGateMap) (perDestination []StatusEntry, expected map[string]bool) {
 	expected = map[string]bool{}
-	// Track concat targets and the entries that contribute to them
-	// so we can both classify their state AND show the contributor
-	// count.
-	concatBatches := map[string][]ConcatEntry{}
-	concatTool := map[string]string{} // path → tool ID for display
-
-	// Region hosts are seeded empty so a region with no contributors
-	// still gets its row (sync would empty it).
-	regionBatches := map[string][]ConcatEntry{}
-	regionTool := map[string]Tool{}
-	for _, t := range tools {
-		if t.Region != nil {
-			host := filepath.Join(t.DirForScope(ScopeGlobal, parent), t.RegionFile)
-			regionBatches[host] = []ConcatEntry{}
-			regionTool[host] = t
-		}
-	}
-
 	for _, art := range artifacts {
 		sem, err := ResolveSemantic(art.SourcePath, art.Type)
 		if err != nil {
@@ -234,9 +175,13 @@ func computeStatus(artifacts []Artifact, tools []Tool, parent string) (perDestin
 			continue
 		}
 		for _, tool := range tools {
+			gate := gates.of(tool.ID)
 			dest := TargetDestination(tool, art.Type, art.Name, sem, art.SourcePath, parent)
 			switch dest.Strategy {
 			case StrategySkip:
+				if !gate.warn {
+					continue
+				}
 				perDestination = append(perDestination, StatusEntry{
 					Tool:         tool.ID,
 					ArtifactType: art.Type,
@@ -245,6 +190,9 @@ func computeStatus(artifacts []Artifact, tools []Tool, parent string) (perDestin
 					Detail:       dest.SkipReason,
 				})
 			case StrategySymlink:
+				if !gate.link {
+					continue
+				}
 				expected[dest.Path] = true
 				state, detail := classifySymlinkDestination(dest.Path, symlinkTarget(art))
 				perDestination = append(perDestination, StatusEntry{
@@ -254,17 +202,6 @@ func computeStatus(artifacts []Artifact, tools []Tool, parent string) (perDestin
 					DestinationPath: dest.Path,
 					State:           string(state),
 					Detail:          detail,
-				})
-			case StrategyConcat:
-				concatBatches[dest.Path] = append(concatBatches[dest.Path], ConcatEntry{
-					Name:       art.Name,
-					SourcePath: concatSourcePath(art),
-				})
-				concatTool[dest.Path] = tool.ID
-			case StrategyRegion:
-				regionBatches[dest.Path] = append(regionBatches[dest.Path], ConcatEntry{
-					Name:       art.Name,
-					SourcePath: concatSourcePath(art),
 				})
 			}
 		}
@@ -280,62 +217,7 @@ func computeStatus(artifacts []Artifact, tools []Tool, parent string) (perDestin
 		}
 		return perDestination[i].ArtifactName < perDestination[j].ArtifactName
 	})
-
-	// Concat rows: one per unique path, with the contributing-entry
-	// count in Detail.
-	concatPaths := make([]string, 0, len(concatBatches))
-	for p := range concatBatches {
-		concatPaths = append(concatPaths, p)
-	}
-	sort.Strings(concatPaths)
-
-	for _, p := range concatPaths {
-		entries := concatBatches[p]
-		state := classifyConcatTarget(p, entries)
-		concatRows = append(concatRows, StatusEntry{
-			Tool:            concatTool[p],
-			DestinationPath: p,
-			State:           string(state),
-			IsConcat:        true,
-			Detail:          fmt.Sprintf("%d entries", len(entries)),
-		})
-	}
-
-	regionPaths := make([]string, 0, len(regionBatches))
-	for p := range regionBatches {
-		regionPaths = append(regionPaths, p)
-	}
-	sort.Strings(regionPaths)
-	for _, p := range regionPaths {
-		t, entries := regionTool[p], regionBatches[p]
-		concatRows = append(concatRows, StatusEntry{
-			Tool:            t.ID,
-			DestinationPath: p,
-			State:           string(classifyRegion(p, *t.Region, entries)),
-			IsRegion:        true,
-			Detail:          fmt.Sprintf("region %s, %d entries", t.Region.Name, len(entries)),
-		})
-	}
-
-	return perDestination, concatRows, expected
-}
-
-// classifyRegion compares the region in the host file at path against
-// the exact bytes RegenerateRegion would produce.
-func classifyRegion(path string, r ManagedRegion, entries []ConcatEntry) RegionState {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return RegionStateMissing
-	}
-	existing := string(data)
-	if _, _, found := r.locate(existing); !found {
-		return RegionStateMissing
-	}
-	want, err := renderRegion(existing, r, entries)
-	if err != nil || want != existing {
-		return RegionStateStale
-	}
-	return RegionStateSynced
+	return perDestination, expected
 }
 
 // classifySymlinkDestination inspects a symlink destination and
@@ -370,66 +252,23 @@ func classifySymlinkDestination(destPath, wantTarget string) (DestinationState, 
 	return StateSynced, ""
 }
 
-// classifyConcatTarget inspects a concat target and returns its
-// state, comparing existing content against what RegenerateConcat
-// would produce.
-//
-// We avoid actually calling RegenerateConcat (it writes to disk).
-// Instead we read the existing content, compute the expected content
-// in-memory using the same helpers RegenerateConcat uses, and
-// compare bytes.
-func classifyConcatTarget(path string, entries []ConcatEntry) ConcatState {
-	existing, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return ConcatStateMissing
-		}
-		return ConcatStateMissing
-	}
-	if !bytes.HasPrefix(existing, []byte("<!--\nGenerated by sync-agents")) {
-		return ConcatStateForeign
-	}
-	// Build the expected content the same way RegenerateConcat does.
-	want, err := buildConcatContent(entries)
-	if err != nil {
-		// If we can't read a source artifact, we can't say for sure;
-		// treat as stale so the user runs sync to re-attempt.
-		return ConcatStateStale
-	}
-	if bytes.Equal(existing, want) {
-		return ConcatStateOK
-	}
-	return ConcatStateStale
-}
-
-// buildConcatContent returns the exact bytes RegenerateConcat would
-// write, without touching the filesystem.
-func buildConcatContent(entries []ConcatEntry) ([]byte, error) {
-	body, err := buildEntriesBody(entries)
-	if err != nil {
-		return nil, err
-	}
-	return append([]byte(ConcatBanner), body...), nil
-}
-
 // printStatusEntry formats one StatusEntry as a single text line. The
 // format is intentionally regex-friendly: a state bracketed at the
-// start, then the tool/type/name (when present), then `->` and the
-// path, optionally a parenthetical detail.
+// start, then the tool/type/name (just the tool for a channel row),
+// then `->` and the path when there is one, optionally a parenthetical
+// detail.
 func (a *App) printStatusEntry(e StatusEntry) {
 	var sb strings.Builder
 	sb.WriteString("[")
-	if e.IsConcat {
-		sb.WriteString("concat ")
-	}
-	if e.IsRegion {
-		sb.WriteString("region ")
-	}
 	sb.WriteString(e.State)
 	sb.WriteString("] ")
 
-	if e.IsConcat || e.IsRegion {
-		sb.WriteString(e.DestinationPath)
+	if e.IsChannel {
+		sb.WriteString(e.Tool)
+		if e.DestinationPath != "" {
+			sb.WriteString(" -> ")
+			sb.WriteString(e.DestinationPath)
+		}
 	} else {
 		if e.Tool != "" {
 			sb.WriteString(e.Tool)

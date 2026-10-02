@@ -42,10 +42,7 @@ type codexLayout struct {
 // positive integer is an error, because guessing past it would size
 // bundles against a limit Codex does not use.
 func resolveCodex(parent string, env ToolEnv) (codexLayout, error) {
-	home := filepath.Join(parent, ".codex")
-	if h := env.getenv("CODEX_HOME"); h != "" {
-		home = expandTilde(h, parent)
-	}
+	home, _ := resolveCodexHome(parent, env)
 	layout := codexLayout{
 		Home:     home,
 		MaxBytes: codexDefaultProjectDocMaxBytes,
@@ -71,6 +68,16 @@ func resolveCodex(parent string, env ToolEnv) (codexLayout, error) {
 		layout.Global = override
 	}
 	return layout, nil
+}
+
+// resolveCodexHome is the codex Tool's ResolveGlobalDir: $CODEX_HOME,
+// else <parent>/.codex. It reads no config, so it never fails; the
+// error return satisfies the resolver signature.
+func resolveCodexHome(parent string, env ToolEnv) (string, error) {
+	if h := env.getenv("CODEX_HOME"); h != "" {
+		return expandTilde(h, parent), nil
+	}
+	return filepath.Join(parent, ".codex"), nil
 }
 
 // scanTOMLTopLevelInt finds `key = N` among the top-level keys of a TOML

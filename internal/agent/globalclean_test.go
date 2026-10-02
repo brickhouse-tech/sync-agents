@@ -68,41 +68,29 @@ func TestSymlinkPointsInto(t *testing.T) {
 	}
 }
 
-// TestFileCarriesBanner covers the regular-file safety gate: only
-// files that begin with the canonical banner are sync-agents-owned.
-func TestFileCarriesBanner(t *testing.T) {
-	tmp := t.TempDir()
-
-	withBanner := filepath.Join(tmp, "with.md")
-	if err := os.WriteFile(withBanner, []byte(ConcatBanner+"## x\n\nbody\n"), 0o644); err != nil {
-		t.Fatalf("setup: %v", err)
+// TestIsLegacyConcat covers the proof that a legacy global file is
+// sync-agents': only bytes that begin with the old banner qualify.
+func TestIsLegacyConcat(t *testing.T) {
+	cases := []struct {
+		name string
+		data string
+		want bool
+	}{
+		{"old banner", legacyConcatBanner + " — do not edit by hand.\n-->\n\n## x\n", true},
+		{"user content", "just user content\n", false},
+		{"banner not at the top", "user prelude\n" + legacyConcatBanner, false},
+		{"empty", "", false},
 	}
-	if !fileCarriesBanner(withBanner) {
-		t.Error("file with banner should be detected")
-	}
-
-	withoutBanner := filepath.Join(tmp, "without.md")
-	if err := os.WriteFile(withoutBanner, []byte("just user content\n"), 0o644); err != nil {
-		t.Fatalf("setup: %v", err)
-	}
-	if fileCarriesBanner(withoutBanner) {
-		t.Error("user-content file must not be detected as banner-bearing")
-	}
-
-	// Banner not at the very top must not match.
-	bannerLater := filepath.Join(tmp, "later.md")
-	if err := os.WriteFile(bannerLater, []byte("user prelude\n"+ConcatBanner), 0o644); err != nil {
-		t.Fatalf("setup: %v", err)
-	}
-	if fileCarriesBanner(bannerLater) {
-		t.Error("banner not at file start must not match — that's a user-edited file")
+	for _, c := range cases {
+		if got := isLegacyConcat([]byte(c.data)); got != c.want {
+			t.Errorf("%s: isLegacyConcat = %v, want %v", c.name, got, c.want)
+		}
 	}
 }
 
 // TestCmdGlobalClean_RemovesSyncedSymlinks is the happy path: after
 // `global sync`, calling `global clean` removes every per-artifact
-// symlink and concat file. The canonical ~/.agents/ tree stays
-// intact.
+// symlink. The canonical ~/.agents/ tree stays intact.
 func TestCmdGlobalClean_RemovesSyncedSymlinks(t *testing.T) {
 	a, root, _ := newCleanTestApp(t)
 	seedRule(t, a.ResolveGlobalRoot(), "x", "body\n")
@@ -124,11 +112,6 @@ func TestCmdGlobalClean_RemovesSyncedSymlinks(t *testing.T) {
 	// Symlinks gone.
 	if _, err := os.Lstat(claudeLink); err == nil {
 		t.Errorf("expected %s to be removed", claudeLink)
-	}
-	// Concat files gone.
-	memoryFile := filepath.Join(root, ".codeium", "windsurf", "memories", "global_rules.md")
-	if _, err := os.Stat(memoryFile); err == nil {
-		t.Errorf("expected concat %s to be removed", memoryFile)
 	}
 	// Canonical artifact untouched.
 	src := filepath.Join(a.ResolveGlobalRoot(), "rules", "x.md")
@@ -168,8 +151,8 @@ func TestCmdGlobalClean_LeavesUserOwnedSymlinks(t *testing.T) {
 }
 
 // TestCmdGlobalClean_LeavesUserOwnedFiles writes a plain file at a
-// concat destination (e.g. user manually wrote an instructions.md)
-// and verifies clean preserves it with a warning.
+// legacy concat path (e.g. user manually wrote an instructions.md)
+// and verifies clean preserves it and says why.
 func TestCmdGlobalClean_LeavesUserOwnedFiles(t *testing.T) {
 	a, root, stdout := newCleanTestApp(t)
 
@@ -188,8 +171,8 @@ func TestCmdGlobalClean_LeavesUserOwnedFiles(t *testing.T) {
 	if _, err := os.Stat(userFile); err != nil {
 		t.Errorf("user-owned file removed by clean: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "skip non-sync-agents") {
-		t.Errorf("expected skip-warning in output:\n%s", stdout.String())
+	if !strings.Contains(stdout.String(), "does not start with the sync-agents banner") {
+		t.Errorf("expected a note that the file was left:\n%s", stdout.String())
 	}
 }
 

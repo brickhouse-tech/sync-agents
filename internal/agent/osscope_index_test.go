@@ -1,30 +1,24 @@
 package agent
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// TestRegenerateConcat_OSHeader covers SPEC-006's concat test plan:
-// an OS-scoped entry is preceded by `<!-- OS: <scope> -->`, an
-// unscoped entry gets no header.
-func TestRegenerateConcat_OSHeader(t *testing.T) {
+// TestBuildEntriesBody_OSHeader covers SPEC-006's bundle test plan: an
+// OS-scoped entry is preceded by `<!-- OS: <scope> -->`, an unscoped
+// entry gets no header.
+func TestBuildEntriesBody_OSHeader(t *testing.T) {
 	tmp := t.TempDir()
 	plain := writeArtifact(t, tmp, "rules/security.md", "security body\n")
 	scoped := writeArtifact(t, tmp, "rules/macos/brew.md", "brew body\n")
-	out := filepath.Join(tmp, "windsurf", "global_rules.md")
 
-	if _, err := RegenerateConcat(out, []ConcatEntry{
+	data, err := buildEntriesBody([]ConcatEntry{
 		{Name: "security", SourcePath: plain},
 		{Name: "macos/brew", SourcePath: scoped},
-	}); err != nil {
-		t.Fatalf("RegenerateConcat: %v", err)
-	}
-	data, err := os.ReadFile(out)
+	})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("buildEntriesBody: %v", err)
 	}
 	s := string(data)
 	if !strings.Contains(s, "<!-- OS: macos -->\n## macos/brew\n") {

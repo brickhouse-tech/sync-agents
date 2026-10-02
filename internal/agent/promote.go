@@ -159,9 +159,9 @@ func DetectArtifact(rel string) (ArtifactType, string, error) {
 // The global root location is resolved via App.ResolveGlobalRoot
 // (env / field / $HOME precedence).
 //
-// CmdPromote does NOT regenerate the global AGENTS.md or run global
-// sync. Those responsibilities belong to subsequent commands (and
-// AC-10 explicitly attaches index regen to `global sync`).
+// CmdPromote does NOT run global sync: `promote --sync` composes the
+// two, and `global sync` alone delivers the promoted artifact to each
+// tool (SPEC-013 channels).
 //
 // See docs/commands/promote.md for user-facing documentation.
 func (a *App) CmdPromote(typ ArtifactType, name string, opts PromoteOpts) error {

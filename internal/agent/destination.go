@@ -10,11 +10,10 @@ import (
 // sync` performs for a given (tool, artifact, semantic) tuple.
 //
 // Most tool/artifact pairs resolve to StrategySymlink — a per-artifact
-// symlink at a per-tool path. A few resolve to StrategyConcat
-// (Windsurf passive rules, Copilot, Codex), where multiple artifacts
-// merge into one tool-owned file. StrategySkip is for cases that
-// can't be cleanly represented in a tool's filesystem layout (today:
-// multi-file invocable skills targeting Windsurf workflows).
+// symlink at a per-tool path. Passive content for a tool that reads
+// aggregated rule text resolves to StrategyChannel and is delivered by
+// the channel layer (SPEC-013). StrategySkip is for cases that can't be
+// cleanly represented in a tool's filesystem layout.
 type DestinationStrategy int
 
 const (
@@ -22,49 +21,31 @@ const (
 	// pointing at the canonical artifact under ~/.agents/.
 	StrategySymlink DestinationStrategy = iota
 
-	// StrategyConcat: the artifact contributes to a tool's merged
-	// file (e.g. ~/.codeium/windsurf/memories/global_rules.md). The
-	// concat layer regenerates that file once per sync, not once per
-	// artifact. See concat.go for the regeneration logic.
-	StrategyConcat
-
 	// StrategySkip: the artifact cannot be routed to this tool.
 	// SkipReason explains why (multi-file invocable skill targeting
 	// Windsurf, etc.). The sync loop logs the reason and continues
 	// to other tools.
 	StrategySkip
 
-	// StrategyRegion: the artifact contributes to one managed region
-	// inside a file another program owns (OpenClaw's workspace
-	// AGENTS.md). Like concat, the orchestration layer regenerates the
-	// region once per path; unlike concat, everything outside the
-	// region's markers is left alone and the file is never created.
-	StrategyRegion
+	// StrategyChannel: the artifact is passive content for a tool that
+	// has a global row in channelSpecs (or a gap in channelGaps). The
+	// per-artifact loop does nothing with it: deliverChannels renders
+	// every passive artifact into the tool's channel once per run, and
+	// global status reports the channel (or the gap) as one row.
+	StrategyChannel
 )
 
 // Destination is the resolved location for one (tool, artifact,
 // semantic) tuple. Strategy determines how the orchestration layer
-// handles it; Path is the absolute target path (for symlink) or the
-// concat file (for concat).
+// handles it; Path is the absolute symlink path.
 type Destination struct {
 	// Strategy is how to write this destination — see
 	// DestinationStrategy.
 	Strategy DestinationStrategy
 
-	// Path is the absolute filesystem path. Its meaning depends on
-	// Strategy:
-	//   - StrategySymlink: the symlink to create (or repair).
-	//   - StrategyConcat: the concat output file that this artifact
-	//     contributes to. The orchestration layer collects all
-	//     artifacts pointing at the same concat Path and regenerates
-	//     it as a single file.
-	//   - StrategyRegion: the host file whose Region is regenerated.
-	//   - StrategySkip: empty.
+	// Path is the absolute symlink to create (or repair). Empty unless
+	// Strategy == StrategySymlink.
 	Path string
-
-	// Region is the managed region Path carries; set only when
-	// Strategy == StrategyRegion.
-	Region ManagedRegion
 
 	// SkipReason is set only when Strategy == StrategySkip. Used by
 	// the orchestration layer to print a per-skip warning.
@@ -108,9 +89,9 @@ func TargetDestination(
 	// Agents (subagent definitions) route independently of semantic,
 	// into each tool's native subagent directory. Routing them through
 	// the per-tool semantic tables would mislabel them as commands
-	// (Claude), always-on rules (Cursor), workflows (Windsurf), or
-	// concat fodder (Copilot/Codex) — an agent body inlined into an
-	// always-on instructions file is the worst of those outcomes.
+	// (Claude), workflows (Windsurf), or channel content (every tool
+	// with a channel) — an agent body inlined into an always-on
+	// instructions file is the worst of those outcomes.
 	//
 	// Which tools qualify is the agents bucket's Tools restriction
 	// (SPEC-011 Part A), so this branch and local sync can never
@@ -135,15 +116,15 @@ func TargetDestination(
 		}
 		return Destination{
 			Strategy:   StrategySkip,
-			SkipReason: fmt.Sprintf("%s has no subagent surface; agents reach it via the AGENTS.md index", tool.ID),
+			SkipReason: fmt.Sprintf("%s has no subagent surface", tool.ID),
 		}
 	}
 
 	// Reference docs (plans/specs, SPEC-004 Part D) also route
 	// independently of semantic: symlinked under .claude/ so they're
-	// @-mentionable, skipped everywhere else — never concatenated
-	// into always-on instructions (that would preload reference
-	// material into baseline context).
+	// @-mentionable, skipped everywhere else — never inlined into
+	// always-on instructions (that would preload reference material
+	// into baseline context).
 	if typ == ArtifactPlan || typ == ArtifactSpec || typ == ArtifactADR {
 		bucket, _ := BucketForArtifact(typ)
 		if tool.ID == "claude" {
@@ -154,7 +135,7 @@ func TargetDestination(
 		}
 		return Destination{
 			Strategy:   StrategySkip,
-			SkipReason: fmt.Sprintf("%s reference docs are Claude-only; other tools read them via the AGENTS.md index", bucket.Dir),
+			SkipReason: fmt.Sprintf("%s reference docs are Claude-only; other tools open them from ~/.agents/%s/ when asked", bucket.Dir, bucket.Dir),
 		}
 	}
 
@@ -169,26 +150,64 @@ func TargetDestination(
 		}
 	}
 
+	// Passive content for a tool that reads aggregated rule text is
+	// the channel layer's (SPEC-013 §Per-tool delivery): delivered by
+	// deliverChannels, or reported once by global status when the tool
+	// has no file to deliver to (channelGaps).
+	if sem == Passive && hasGlobalChannel(tool.ID) {
+		return Destination{Strategy: StrategyChannel}
+	}
+
 	switch tool.ID {
 	case "claude":
 		return claudeDestination(typ, name, sem, globalRootParent)
 	case "codeium":
 		return codeiumDestination(typ, name, sem, artifactSourcePath, globalRootParent)
-	case "cursor":
-		return cursorDestination(typ, name, sem, globalRootParent)
-	case "copilot":
-		return copilotDestination(globalRootParent)
-	case "codex":
-		return codexDestination(globalRootParent)
-	case "opencode":
-		return opencodeDestination(typ, name, globalRootParent)
-	case "openclaw":
-		return openclawDestination(tool, typ, name, sem, globalRootParent)
-	default:
+	}
+	if _, known := ResolveTool(tool.ID); !known {
 		return Destination{
 			Strategy:   StrategySkip,
 			SkipReason: fmt.Sprintf("unknown tool %q", tool.ID),
 		}
+	}
+	return invocableSkip(tool.ID, typ, name)
+}
+
+// hasGlobalChannel reports whether toolID's passive content is handled
+// by the channel layer at global scope: a channelSpecs row, or a
+// channelGaps entry explaining why there is none.
+func hasGlobalChannel(toolID string) bool {
+	if _, ok := channelSpecs[toolID][ScopeGlobal]; ok {
+		return true
+	}
+	_, ok := channelGaps[toolID][ScopeGlobal]
+	return ok
+}
+
+// skillsNative lists the tools that load ~/.agents/skills themselves
+// (SPEC-013 §Per-tool delivery), so a link into their own tree would
+// register each skill twice.
+var skillsNative = map[string]string{
+	"codex":    "Codex",
+	"cursor":   "Cursor",
+	"opencode": "opencode",
+	"openclaw": "OpenClaw",
+}
+
+// invocableSkip is the Skip for an invocable artifact sent to a tool
+// with no user-scope command or skill surface that sync-agents writes:
+// every tool except Claude and Windsurf. Passive content never reaches
+// here (StrategyChannel); agents and reference docs are routed earlier.
+func invocableSkip(toolID string, typ ArtifactType, name string) Destination {
+	if typ == ArtifactSkill {
+		if brand, ok := skillsNative[toolID]; ok {
+			return Destination{Strategy: StrategySkip, SkipReason: brand + " loads ~/.agents/skills natively"}
+		}
+		return Destination{Strategy: StrategySkip, SkipReason: fmt.Sprintf("%s has no user-scope skill surface", toolID)}
+	}
+	return Destination{
+		Strategy:   StrategySkip,
+		SkipReason: fmt.Sprintf("%s has no user-scope command surface; invocable %s %q is not delivered", toolID, typ, name),
 	}
 }
 
@@ -245,7 +264,9 @@ func claudeDestination(typ ArtifactType, name string, sem Semantic, parent strin
 //   - Invocable multi-file skill: SKIP (Windsurf workflows are single
 //     .md files; a skill dir with supporting files can't be a
 //     workflow without flattening)
-//   - Passive: concat into ~/.codeium/windsurf/memories/global_rules.md
+//
+// Passive content never reaches here: it is the codeium-rules region
+// of global_rules.md (StrategyChannel).
 //
 // Multi-file detection: a skill is "multi-file" if its source dir
 // contains anything besides SKILL.md. SkillIsMultiFile inspects the
@@ -277,98 +298,8 @@ func codeiumDestination(typ ArtifactType, name string, sem Semantic, artifactSou
 			Strategy: StrategySymlink,
 			Path:     filepath.Join(windsurfBase, "global_workflows", invocableSource),
 		}
-	case Passive:
-		return Destination{
-			Strategy: StrategyConcat,
-			Path:     filepath.Join(windsurfBase, "memories", "global_rules.md"),
-		}
 	}
 	return Destination{Strategy: StrategySkip, SkipReason: "unknown semantic"}
-}
-
-// cursorDestination implements the Cursor row. Cursor doesn't
-// distinguish invocable from passive at the filesystem level — both
-// land in ~/.cursor/rules/<name>.md. For skills (dirs), we symlink
-// the SKILL.md inside the dir as <name>.md.
-func cursorDestination(typ ArtifactType, name string, sem Semantic, parent string) Destination {
-	_ = sem // intentionally unused — Cursor has no per-semantic split
-	return Destination{
-		Strategy: StrategySymlink,
-		Path:     filepath.Join(parent, ".cursor", "rules", name+".md"),
-	}
-}
-
-// copilotDestination implements the Copilot row: every artifact
-// merges into one instructions.md regardless of semantic. The
-// orchestration layer collects all artifacts pointing at this Path
-// and regenerates the file once.
-func copilotDestination(parent string) Destination {
-	return Destination{
-		Strategy: StrategyConcat,
-		Path:     filepath.Join(parent, ".github", "copilot", "instructions.md"),
-	}
-}
-
-// codexDestination implements the Codex row: same shape as Copilot,
-// different file location.
-func codexDestination(parent string) Destination {
-	return Destination{
-		Strategy: StrategyConcat,
-		Path:     filepath.Join(parent, ".codex", "instructions.md"),
-	}
-}
-
-// opencodeDestination implements the opencode row (SPEC-011 Part B).
-//
-// opencode's only surface this project has verified is its subagent
-// directory, and agents never reach here — TargetDestination's agent
-// branch handles them before the per-tool switch. Everything else
-// skips.
-//
-// This is deliberately conservative rather than a guess. opencode
-// reads AGENTS.md natively, so passive rules are already delivered by
-// the index rather than by a concat file, and its user-scope command
-// surface has not been verified against an installed build. Routing
-// artifacts into an unverified path would write files into a tree the
-// user hand-manages, which is exactly the failure the skip avoids. A
-// contributor who confirms the layout should replace this with real
-// destinations and drop the skip.
-func opencodeDestination(typ ArtifactType, name, parent string) Destination {
-	return Destination{
-		Strategy: StrategySkip,
-		SkipReason: fmt.Sprintf(
-			"opencode routing covers subagents only; %s %q reaches opencode through AGENTS.md",
-			typ, name,
-		),
-	}
-}
-
-// openclawDestination implements the OpenClaw row (SPEC-012):
-//
-//   - Passive rule/workflow: its body goes into the OpenClaw-rules
-//     region of <workspace>/AGENTS.md.
-//   - Skill: skip. OpenClaw loads ~/.agents/skills itself; a copy in
-//     the workspace would duplicate or shadow it.
-//   - Invocable rule/workflow: skip. OpenClaw has no command surface
-//     this project has verified.
-func openclawDestination(tool Tool, typ ArtifactType, name string, sem Semantic, parent string) Destination {
-	if typ == ArtifactSkill {
-		return Destination{
-			Strategy:   StrategySkip,
-			SkipReason: "OpenClaw loads ~/.agents/skills natively",
-		}
-	}
-	if sem != Passive {
-		return Destination{
-			Strategy:   StrategySkip,
-			SkipReason: fmt.Sprintf("OpenClaw has no invocable-command surface; %s %q is not inlined", typ, name),
-		}
-	}
-	return Destination{
-		Strategy: StrategyRegion,
-		Path:     filepath.Join(tool.DirForScope(ScopeGlobal, parent), tool.RegionFile),
-		Region:   *tool.Region,
-	}
 }
 
 // SkillIsMultiFile reports whether the skill directory at the given

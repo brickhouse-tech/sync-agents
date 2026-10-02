@@ -12,15 +12,11 @@ import (
 // the channel specs to this run's paths, observes the filesystem,
 // writes .agents/index/<tool>.<ext>, and places or reports each tool's
 // native mount. Commands see four entry points: deliverChannels (sync,
-// fix, index, add, ...), channelRows (status), cleanChannels (clean),
-// and gitignoreEntries (sync's .gitignore lines). Every one of them
-// starts from the same bindChannels result, so no path is derived
-// twice and status, clean, and .gitignore agree with sync by
-// construction.
-//
-// Only project scope is wired here. Global scope (U6 of SPEC-013)
-// keeps its own pipeline in globalsync.go until it moves onto
-// channels.
+// fix, index, add, global sync, ...), channelRows (status, global
+// status), cleanChannels (clean, global clean), and gitignoreEntries
+// (sync's .gitignore lines). Every one of them starts from the same
+// bindChannels result, so no path is derived twice and status, clean,
+// and .gitignore agree with sync by construction.
 
 // ChannelMode is how much a channel run may change.
 type ChannelMode int
@@ -34,7 +30,7 @@ const (
 
 	// ChannelMount refreshes, then removes legacy placements and
 	// creates or repairs native mounts where mayMount allows. Used by
-	// sync and fix.
+	// sync, fix, and global sync.
 	ChannelMount
 )
 
@@ -44,9 +40,17 @@ type ChannelRun struct {
 	Mode  ChannelMode
 
 	// Explicit lists the tool names given to --targets on this
-	// invocation. They give consent to edit a file the user owns
-	// (mayMount). Targets read from .agents/config do not.
+	// invocation. They give consent to edit a file the user owns and,
+	// at global scope, open the home gate (mayMount). Targets read from
+	// .agents/config do not.
 	Explicit []string
+
+	// Tools (global scope only) are the run's tools, already filtered by
+	// --targets and bound by resolveSyncTools, so every tool home
+	// ($CODEX_HOME, the OpenClaw workspace) is resolved once and a
+	// resolver error is reported once. Project scope binds from
+	// App.ActiveTargets instead.
+	Tools []Tool
 }
 
 // ChannelState classifies one channel for sync output and status.
@@ -94,15 +98,20 @@ type Channel struct {
 	// Index is <Tree>/index/<Spec.Format.IndexName(Tool)>.
 	Index string
 
-	// Native is the absolute link path or config file.
+	// Native is the absolute link path, region host, or config file.
 	Native string
 
-	// Home is the tool's directory at Scope (.cursor, .github/copilot,
-	// ...). Budgets and shadowing read it.
+	// Home is the tool's directory at Scope (.cursor, ~/.codex, the
+	// OpenClaw workspace, ...). Budgets, shadowing, and the global home
+	// gate read it.
 	Home string
 
+	// Explicit: --targets named this tool on this invocation.
+	Explicit bool
+
 	// Mountable and Why are mayMount's verdict for this run. A channel
-	// that is not mountable still refreshes a mount that carries ours.
+	// that is not mountable still refreshes a mount that carries ours
+	// (mayMount says yes to those).
 	Mountable bool
 	Why       string
 }
@@ -162,19 +171,23 @@ func (a *App) explicitTargets() []string {
 	return nil
 }
 
-// bindChannels turns the active targets into bound channels at project
-// scope. For each target with a local channel spec it makes the paths
-// absolute, observes the native path, and records mayMount's verdict.
+// bindChannels turns the run's tools into bound channels: for each tool
+// with a channel spec at run.Scope it makes the paths absolute,
+// observes the native path, and records mayMount's verdict.
 //
-// When the project's .agents/ is the global root (sameTree), a tool
-// that also has a global channel is skipped and returned in deferred:
-// global sync owns that tree's delivery for it, so Codex and Copilot
-// never see the same rules twice from $HOME. Cursor has no global
-// channel and keeps its local one, without merging (the trees are the
-// same).
+// Project scope binds the active targets. When the project's .agents/
+// is the global root (sameTree), a tool that also has a global channel
+// is skipped and returned in deferred: global sync owns that tree's
+// delivery for it, so Codex and Copilot never see the same rules twice
+// from $HOME. Cursor has no global channel and keeps its local one,
+// without merging (the trees are the same).
+//
+// Global scope binds run.Tools against the global root and its parent
+// (normally $HOME). Nothing is deferred there.
 func (a *App) bindChannels(run ChannelRun) (chans []Channel, deferred []string, err error) {
-	if run.Scope != ScopeLocal {
-		return nil, nil, fmt.Errorf("%s channels are delivered by `sync-agents global sync`", run.Scope)
+	if run.Scope == ScopeGlobal {
+		chans, err = a.bindGlobalChannels(run)
+		return chans, nil, err
 	}
 	tree := filepath.Join(a.ProjectRoot, ".agents")
 	same := a.sameTree()
@@ -193,29 +206,69 @@ func (a *App) bindChannels(run ChannelRun) (chans []Channel, deferred []string, 
 			deferred = append(deferred, tool.ID)
 			continue
 		}
-		ch := Channel{
-			Tool:   tool.ID,
-			Scope:  ScopeLocal,
-			Spec:   spec,
-			Tree:   tree,
-			Index:  filepath.Join(tree, "index", spec.Format.IndexName(tool.ID)),
-			Native: filepath.Join(a.ProjectRoot, filepath.FromSlash(mountPath(spec.Mount).Rel)),
-			Home:   a.ResolveToolDir(tool, ScopeLocal),
-		}
-		facts, err := a.mountFacts(ch)
+		ch, err := a.bindChannel(tool, ScopeLocal, spec, tree, a.ProjectRoot, a.ResolveToolDir(tool, ScopeLocal), run.Explicit)
 		if err != nil {
 			return nil, nil, err
 		}
-		for _, name := range run.Explicit {
-			if tool.Matches(name) {
-				facts.Explicit = true
-			}
-		}
-		ok, why := mayMount(spec.Mount, facts)
-		ch.Mountable, ch.Why = ok, strings.ReplaceAll(why, "<tool>", tool.ID)
 		chans = append(chans, ch)
 	}
 	return chans, deferred, nil
+}
+
+// bindGlobalChannels binds every tool in run.Tools that has a global
+// channel spec. Each tool is already bound (resolveSyncTools), so its
+// home is DirForScope(ScopeGlobal, parent).
+func (a *App) bindGlobalChannels(run ChannelRun) ([]Channel, error) {
+	tree := a.ResolveGlobalRoot()
+	parent := a.ResolveGlobalRootParent()
+	var chans []Channel
+	for _, tool := range run.Tools {
+		spec, ok := channelSpecs[tool.ID][ScopeGlobal]
+		if !ok {
+			continue
+		}
+		ch, err := a.bindChannel(tool, ScopeGlobal, spec, tree, parent, tool.DirForScope(ScopeGlobal, parent), run.Explicit)
+		if err != nil {
+			return nil, err
+		}
+		chans = append(chans, ch)
+	}
+	return chans, nil
+}
+
+// bindChannel binds one spec: base is the scope base (the project root,
+// or the global root's parent), home the tool's directory at the scope.
+func (a *App) bindChannel(tool Tool, scope Scope, spec ChannelSpec, tree, base, home string, explicit []string) (Channel, error) {
+	ch := Channel{
+		Tool:   tool.ID,
+		Scope:  scope,
+		Spec:   spec,
+		Tree:   tree,
+		Index:  filepath.Join(tree, "index", spec.Format.IndexName(tool.ID)),
+		Native: nativeAt(mountPath(spec.Mount), base, home),
+		Home:   home,
+	}
+	for _, name := range explicit {
+		if tool.Matches(strings.ToLower(strings.TrimSpace(name))) {
+			ch.Explicit = true
+		}
+	}
+	facts, err := a.mountFacts(ch)
+	if err != nil {
+		return Channel{}, err
+	}
+	ok, why := mayMount(spec.Mount, facts)
+	ch.Mountable, ch.Why = ok, strings.ReplaceAll(why, "<tool>", tool.ID)
+	return ch, nil
+}
+
+// nativeAt resolves np against the scope base or the tool's home.
+func nativeAt(np NativePath, base, home string) string {
+	root := base
+	if np.Under == AnchorHome {
+		root = home
+	}
+	return filepath.Join(root, filepath.FromSlash(np.Rel))
 }
 
 // mountPath is the native path a mount places or edits.
@@ -233,7 +286,7 @@ func mountPath(m Mount) NativePath {
 
 // mountFacts observes ch's native path for mayMount.
 func (a *App) mountFacts(ch Channel) (MountFacts, error) {
-	f := MountFacts{Scope: ch.Scope, HomeExists: isDir(ch.Home)}
+	f := MountFacts{Scope: ch.Scope, Explicit: ch.Explicit, HomeExists: isDir(ch.Home)}
 	fi, err := os.Lstat(ch.Native)
 	if err != nil && !os.IsNotExist(err) {
 		return f, err
@@ -245,6 +298,16 @@ func (a *App) mountFacts(ch Channel) (MountFacts, error) {
 	switch m := ch.Spec.Mount.(type) {
 	case LinkMount:
 		f.CarriesOurs = fi.Mode()&os.ModeSymlink != 0 && linkSatisfied(ch.Native, a.linkSource(ch))
+	case RegionMount:
+		// Our markers are ours, and so is a host that is still the
+		// pre-SPEC-013 whole-file concat: sync rewrites it in place as
+		// the region, whose markers then carry consent.
+		host, err := os.ReadFile(ch.Native)
+		if err != nil {
+			return f, err
+		}
+		_, _, found := m.Region.locate(string(host))
+		f.CarriesOurs = found || isLegacyConcat(host)
 	case ConfigListMount:
 		src, err := os.ReadFile(ch.Native)
 		if err != nil {
@@ -268,31 +331,42 @@ type channelInputs struct {
 	global []Entry
 }
 
-// loadChannelInputs discovers the passive entries chans render. A
+// loadChannelInputs discovers the passive entries chans render, from
+// the tree they share (the project's .agents/, or the global root). A
 // broken artifact is warned about and skipped, so one bad file never
 // stops delivery of the rest.
-func (a *App) loadChannelInputs(chans []Channel) (channelInputs, error) {
-	tree := filepath.Join(a.ProjectRoot, ".agents")
-	policy, err := ReadConfigIndex(tree)
-	if err != nil {
-		a.Warn(err.Error())
+//
+// The index policy is a project setting: global scope always renders
+// for this machine (OS-gated) and never merges.
+func (a *App) loadChannelInputs(scope Scope, chans []Channel) (channelInputs, error) {
+	tree := chans[0].Tree
+	displayRoot := ".agents"
+	in := channelInputs{policy: IndexLocal}
+	if scope == ScopeGlobal {
+		displayRoot = "~/.agents"
+	} else {
+		policy, err := ReadConfigIndex(tree)
+		if err != nil {
+			a.Warn(err.Error())
+		}
+		in.policy = policy
 	}
-	in := channelInputs{policy: policy}
-	arts, err := discoverChannelArtifacts(tree, policy == IndexCommit)
+	skipped := "skipped in " + a.display(filepath.Join(tree, "index")) + "/"
+	arts, err := discoverChannelArtifacts(tree, in.policy == IndexCommit)
 	if err != nil {
 		return in, err
 	}
 	var errs []error
-	in.project, errs = passiveEntries(arts, ".agents")
+	in.project, errs = passiveEntries(arts, displayRoot)
 	for _, e := range errs {
-		a.Warn(fmt.Sprintf("skipped in .agents/index/: %v", e))
+		a.Warn(fmt.Sprintf("%s: %v", skipped, e))
 	}
 
 	merge := false
 	for _, ch := range chans {
 		merge = merge || ch.Spec.MergeGlobal
 	}
-	if !merge || policy != IndexLocal || a.sameTree() {
+	if scope != ScopeLocal || !merge || in.policy != IndexLocal || a.sameTree() {
 		return in, nil
 	}
 	root := a.ResolveGlobalRoot()
@@ -305,7 +379,7 @@ func (a *App) loadChannelInputs(chans []Channel) (channelInputs, error) {
 	}
 	in.global, errs = passiveEntries(garts, "~/.agents")
 	for _, e := range errs {
-		a.Warn(fmt.Sprintf("skipped in .agents/index/: %v", e))
+		a.Warn(fmt.Sprintf("%s: %v", skipped, e))
 	}
 	return in, nil
 }
@@ -326,7 +400,20 @@ func (a *App) render(ch Channel, in channelInputs) (Rendered, error) {
 			return Rendered{}, err
 		}
 	}
+	if rm, ok := ch.Spec.Mount.(RegionMount); ok {
+		// The tool counts the whole host file against its limit, so
+		// everything that will sit outside our region body (the host's
+		// own text and the markers) is reserved.
+		host, err := os.ReadFile(ch.Native)
+		if err != nil && !os.IsNotExist(err) {
+			return Rendered{}, err
+		}
+		b.Reserved += b.Cap.Measure([]byte(regionHost(host, rm.Region, nil)))
+	}
 	fr := Frame{Banner: localBanner}
+	if ch.Scope == ScopeGlobal {
+		fr.Banner = globalBanner
+	}
 	if ch.Spec.Format == FormatCodexOverride {
 		data, err := os.ReadFile(filepath.Join(a.ProjectRoot, "AGENTS.md"))
 		if err != nil && !os.IsNotExist(err) {
@@ -337,7 +424,8 @@ func (a *App) render(ch Channel, in channelInputs) (Rendered, error) {
 	return renderChannel(ch.Spec.Format, entries, fr, b)
 }
 
-// deliverChannels is the single entry point for per-tool content.
+// deliverChannels is the single entry point for per-tool content at
+// either scope.
 //
 // In ChannelMount mode it first removes legacy placements (before any
 // link goes into .cursor/rules, which may still be the old fold
@@ -346,12 +434,25 @@ func (a *App) render(ch Channel, in channelInputs) (Rendered, error) {
 // a second run writes nothing), and mounts. Each step is idempotent and
 // a mount never points at an index file that was not written first.
 //
+// At global scope every registered tool is bound, installed or not, so
+// a channel mayMount declines is not delivered at all: no index file,
+// no output. It is returned as unmounted for the caller, reported only
+// when --targets named the tool, and explained by global status. That
+// keeps a plain `global sync` silent about tools the user does not have
+// or has not consented to (SPEC-012). At project scope the user listed
+// the targets, so the index is written and the mount reported either
+// way.
+//
 // A channel whose render fails (a broken budget config) is warned
 // about and skipped; the rest still deliver.
 func (a *App) deliverChannels(run ChannelRun) ([]ChannelResult, error) {
 	var gone []string
 	if run.Mode == ChannelMount {
-		gone = a.removeLegacyPlacements()
+		if run.Scope == ScopeGlobal {
+			gone = a.removeGlobalLegacyPlacements(run.Tools)
+		} else {
+			gone = a.removeLegacyPlacements()
+		}
 	}
 	chans, deferred, err := a.bindChannels(run)
 	if err != nil {
@@ -365,13 +466,21 @@ func (a *App) deliverChannels(run ChannelRun) ([]ChannelResult, error) {
 	if len(chans) == 0 {
 		return nil, nil
 	}
-	in, err := a.loadChannelInputs(chans)
+	in, err := a.loadChannelInputs(run.Scope, chans)
 	if err != nil {
 		return nil, err
 	}
 
 	var results []ChannelResult
 	for _, ch := range chans {
+		if run.Scope == ScopeGlobal && !ch.Mountable {
+			res := ChannelResult{Channel: ch, State: ChannelUnmounted, Detail: ch.Why}
+			results = append(results, res)
+			if ch.Explicit {
+				a.reportChannel(res, run.Mode)
+			}
+			continue
+		}
 		r, err := a.render(ch, in)
 		if err != nil {
 			a.Warn(fmt.Sprintf("%s: not delivered: %v", ch.Tool, err))
@@ -380,7 +489,7 @@ func (a *App) deliverChannels(run ChannelRun) ([]ChannelResult, error) {
 		if err := a.writeIndex(ch, r); err != nil {
 			return results, fmt.Errorf("write %s: %w", a.display(ch.Index), err)
 		}
-		state, detail, err := a.mount(ch, run.Mode, gone)
+		state, detail, err := a.mount(ch, r, run.Mode, gone)
 		if err != nil {
 			return results, fmt.Errorf("%s: %w", ch.Tool, err)
 		}

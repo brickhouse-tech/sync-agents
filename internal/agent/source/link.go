@@ -29,7 +29,7 @@ const linkScheme = "file:"
 
 // managedSourcesDir is the dot-dir under .agents/ that holds clones
 // sync-agents owns for bare `--link <entry>`. Dot-prefixed so sync and
-// the AGENTS.md index skip it, same convention as .quarantine.
+// artifact discovery skip it, same convention as .quarantine.
 const managedSourcesDir = ".sources"
 
 // ParseLinkPath validates and normalizes a file: link value from a

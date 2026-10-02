@@ -11,8 +11,8 @@ import (
 // This file is the only place that knows OpenClaw's on-disk layout.
 // OpenClaw reads a fixed set of files from its workspace directory and
 // follows neither @-imports nor Markdown links, so passive rules reach
-// its agents only as text inlined into <workspace>/AGENTS.md (see
-// OpenClawRulesRegion and StrategyRegion).
+// its agents only as text inlined into <workspace>/AGENTS.md (the
+// openclaw row of channelSpecs, region OpenClawRulesRegion).
 
 // ToolEnv is the environment a tool resolver reads: environment
 // variables, files, and programs it may run. It is the injected
@@ -142,12 +142,6 @@ func resolveOpenClaw(parent string, env ToolEnv) (openClawLayout, error) {
 func resolveOpenClawWorkspace(parent string, env ToolEnv) (string, error) {
 	layout, err := resolveOpenClaw(parent, env)
 	return layout.Workspace, err
-}
-
-// openClawRegionCharCap is the openclaw Tool's RegionCharCap.
-func openClawRegionCharCap(parent string, env ToolEnv) (int, error) {
-	layout, err := resolveOpenClaw(parent, env)
-	return layout.BootstrapMaxChars, err
 }
 
 // expandTilde expands a leading "~" against home and makes a relative

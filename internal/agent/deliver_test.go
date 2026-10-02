@@ -268,7 +268,7 @@ func TestDeliver_CodexOverrideFollowsAgentsMD(t *testing.T) {
 		t.Fatalf("CmdSync: %v\n%s", err, buf)
 	}
 	writeFile(t, filepath.Join(root, "AGENTS.md"), "# AGENTS.md\n\nUse bun.\n")
-	rows, err := app.channelRows(ScopeLocal, nil)
+	rows, err := app.channelRows(ChannelRun{Scope: ScopeLocal})
 	if err != nil || len(rows) != 1 || rows[0].State != string(ChannelStale) {
 		t.Fatalf("rows = %+v, %v; want one stale codex row", rows, err)
 	}
@@ -286,7 +286,7 @@ func TestDeliver_CodexOverrideFollowsAgentsMD(t *testing.T) {
 func TestDeliver_StatusRows(t *testing.T) {
 	app, root, buf := newDeliverApp(t, "cursor", "copilot")
 	states := func() []string {
-		rows, err := app.channelRows(ScopeLocal, nil)
+		rows, err := app.channelRows(ChannelRun{Scope: ScopeLocal})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -362,7 +362,7 @@ func TestDeliver_OpencodeConsent(t *testing.T) {
 		t.Errorf("an entry that carries ours must stay synced: %+v", res)
 	}
 
-	if _, err := app.cleanChannels(ScopeLocal, nil); err != nil {
+	if _, err := app.cleanChannels(ChannelRun{Scope: ScopeLocal}); err != nil {
 		t.Fatal(err)
 	}
 	assertContent(t, cfg, mine)

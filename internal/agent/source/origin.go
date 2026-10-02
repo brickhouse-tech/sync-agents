@@ -13,7 +13,7 @@ import (
 // Every pulled artifact carries provenance next to it — inside the
 // directory for dir-shaped artifacts (skills), as a sibling for flat
 // files (rules/workflows) — so that a human reading the tree, or a
-// downstream tool (promote, the AGENTS.md indexer), can see exactly
+// downstream tool (promote, the integrity checks), can see exactly
 // where a file came from without consulting the lock. Origin files
 // are meant to be committed; they are the provenance record that
 // survives a git clone.

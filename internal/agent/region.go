@@ -6,12 +6,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"unicode/utf8"
 )
 
 // ManagedRegion names one marker-delimited block that sync-agents owns
-// inside a file some other writer (a user, another program, the
-// project index) also edits. It is the single owner of the marker
+// inside a file some other writer (a user, another program, a tool's
+// own UI) also edits. It is the single owner of the marker
 // grammar:
 //
 //	<!-- sync-agents:<name>:start -->
@@ -98,41 +97,16 @@ func stripRegion(existing string, r ManagedRegion) (string, bool) {
 	return head + tail, true
 }
 
-// regionBanner opens every entries region so a reader of the host file
-// knows where the text comes from and where to change it.
-const regionBanner = "<!-- managed by sync-agents global sync from ~/.agents/; do not edit between the markers -->"
-
-// renderRegion returns existing with r's region regenerated from
-// entries: banner, then one `## <name>` section per entry, the same
-// body concat files carry. Pure apart from reading the entry sources,
-// so status compares against exactly what RegenerateRegion writes.
-func renderRegion(existing string, r ManagedRegion, entries []ConcatEntry) (string, error) {
-	body, err := buildEntriesBody(entries)
-	if err != nil {
-		return "", err
+// regionBlock wraps a channel's rendered body in r's markers, ready
+// for spliceRegion. The body is FormatMarkdown output, which already
+// ends with a newline; one is added when it does not, so the end
+// marker always starts its own line.
+func regionBlock(r ManagedRegion, body []byte) string {
+	b := string(body)
+	if b != "" && !strings.HasSuffix(b, "\n") {
+		b += "\n"
 	}
-	block := r.Start() + "\n" + regionBanner + "\n" + string(body) + r.End() + "\n"
-	return spliceRegion(existing, r, block), nil
-}
-
-// RegenerateRegion rewrites r's region in the host file at path from
-// entries, leaving every byte outside the markers alone. The host file
-// must already exist: it belongs to another program, and creating it
-// could stop that program from seeding its own default. An unchanged
-// result is not written (mtime preserved). Returns the resulting file
-// length in characters alongside the changed flag so callers can check
-// it against a size cap.
-func RegenerateRegion(path string, r ManagedRegion, entries []ConcatEntry) (changed bool, chars int, err error) {
-	existing, err := os.ReadFile(path)
-	if err != nil {
-		return false, 0, err
-	}
-	out, err := renderRegion(string(existing), r, entries)
-	if err != nil {
-		return false, 0, err
-	}
-	changed, err = writeIfChanged(path, []byte(out))
-	return changed, utf8.RuneCountInString(out), err
+	return r.Start() + "\n" + b + r.End() + "\n"
 }
 
 // regionStartPattern finds any region's start marker and captures its

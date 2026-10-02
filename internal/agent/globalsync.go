@@ -23,8 +23,8 @@ type GlobalSyncOpts struct {
 // CmdGlobalSync fans the user's ~/.agents/ tree out into per-tool
 // global directories per SPEC-002's semantic-aware routing.
 //
-// At a high level, for each artifact under ~/.agents/{rules,skills,
-// workflows}/ and each tool in scope, the sync:
+// At a high level, for each artifact under ~/.agents/ and each tool in
+// scope, the sync:
 //
 //  1. Resolves the artifact's Semantic via frontmatter + bucket
 //     default (see semantic.go).
@@ -33,14 +33,24 @@ type GlobalSyncOpts struct {
 //  3. For StrategySymlink destinations, creates or repairs the
 //     symlink. Existing non-symlink files at the destination are
 //     skipped unless --force is set on the App.
-//  4. For StrategyConcat destinations, accumulates the artifact into
-//     a per-concat-Path batch.
-//  5. For StrategySkip destinations, prints a warning and moves on.
+//  4. For StrategySkip destinations, prints a warning and moves on.
+//  5. For StrategyChannel destinations, does nothing: passive content
+//     is the channel layer's.
 //
-// After the per-artifact pass, RegenerateConcat is called once per
-// concat target with its accumulated entries, producing one atomic
-// write per target. Concat files preserve mtime when content is
-// unchanged (idempotency).
+// After the per-artifact pass, deliverChannels renders every passive
+// artifact into each tool's channel once (SPEC-013): the codex-rules
+// region in ~/.codex/AGENTS.md, the codeium-rules region in Windsurf's
+// global_rules.md, the Copilot instructions link, the opencode.json
+// entry, and OpenClaw's openclaw-rules region. It also removes the
+// pre-SPEC-013 placements (legacy concat files, ~/.cursor/rules links).
+// Every write preserves mtime when content is unchanged (idempotency).
+//
+// A tool with a global channel is delivered to only when it is
+// installed (its home exists) or named in --targets, and a file the
+// user owns is edited only after one --targets run (mayMount). The
+// per-artifact pass follows the same gate (artifactGates), so a plain
+// `global sync` neither creates the home of a tool the user does not
+// have nor talks about it.
 //
 // The function honors App.DryRun: in dry-run mode no filesystem
 // writes occur and a "[dry-run]" prefix is printed for each planned
@@ -73,15 +83,7 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 	if err != nil {
 		return err
 	}
-	// Determine hasClaudeTarget before the early-return check so
-	// we know whether to bail when there are only hooks.
-	hasClaudeTarget := false
-	for _, t := range tools {
-		if t.ID == "claude" {
-			hasClaudeTarget = true
-			break
-		}
-	}
+	hasClaudeTarget := a.isToolActive("claude", tools)
 
 	// SPEC-013 retired the claude-imports block in ~/.claude/CLAUDE.md:
 	// Claude Code loads ~/.claude/rules/*.md natively, so the block only
@@ -98,35 +100,24 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 		}
 	}
 
-	// regionBatches starts with every active region host, empty, so a
-	// region whose last passive rule was deleted is still regenerated
-	// (to markers and banner only) instead of keeping stale text.
-	regionBatches := map[string][]ConcatEntry{}
-	regionTools := map[string]Tool{}
-	for _, t := range tools {
-		if t.Region != nil {
-			host := filepath.Join(t.DirForScope(ScopeGlobal, parent), t.RegionFile)
-			regionBatches[host] = []ConcatEntry{}
-			regionTools[host] = t
-		}
+	run := ChannelRun{Scope: ScopeGlobal, Mode: ChannelMount, Explicit: opts.Targets, Tools: tools}
+	chans, _, err := a.bindChannels(run)
+	if err != nil {
+		return err
 	}
+	gates := artifactGates(chans)
 
 	if len(artifacts) == 0 {
-		// Only bail when there are truly no artifacts AND no hooks.
-		// Hooks aren't discovered as Artifacts (they batch-merge
-		// into settings.json), so an empty artifact slice doesn't
-		// mean nothing to do when .agents/hooks/ has content.
-		// Likewise an active region must still be emptied.
+		// Only bail when there are truly no artifacts AND no hooks AND
+		// no channel to deliver. Hooks aren't discovered as Artifacts
+		// (they batch-merge into settings.json), and a channel whose
+		// last passive rule was deleted must still be emptied.
 		hooksPending := hasClaudeTarget && dirExists(filepath.Join(root, "hooks"))
-		if !hooksPending && len(regionBatches) == 0 {
+		if !hooksPending && !anyMountable(chans) {
 			a.Info("no artifacts under " + root + "; nothing to sync")
 			return nil
 		}
 	}
-
-	// concatBatches accumulates entries per concat-Path so we can
-	// regenerate each target once after the artifact pass.
-	concatBatches := map[string][]ConcatEntry{}
 
 	// unmanaged collects destinations sync refused to overwrite
 	// because sync-agents did not create them, for the end-of-run
@@ -146,28 +137,25 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 		}
 
 		for _, tool := range tools {
+			gate := gates.of(tool.ID)
 			dest := TargetDestination(tool, art.Type, art.Name, sem, art.SourcePath, parent)
 			switch dest.Strategy {
 			case StrategySkip:
-				a.Warn(fmt.Sprintf("[%s] skip %s %q: %s", tool.ID, art.Type, art.Name, dest.SkipReason))
+				if gate.warn {
+					a.Warn(fmt.Sprintf("[%s] skip %s %q: %s", tool.ID, art.Type, art.Name, dest.SkipReason))
+				}
 
 			case StrategySymlink:
+				if !gate.link {
+					continue
+				}
 				if err := a.applySymlinkDestination(tool.ID, art, dest); err != nil {
 					a.Warn(fmt.Sprintf("[%s] %s %q: %v", tool.ID, art.Type, art.Name, err))
 					unmanaged = append(unmanaged, dest.Path)
 				}
 
-			case StrategyConcat:
-				concatBatches[dest.Path] = append(concatBatches[dest.Path], ConcatEntry{
-					Name:       art.Name,
-					SourcePath: concatSourcePath(art),
-				})
-
-			case StrategyRegion:
-				regionBatches[dest.Path] = append(regionBatches[dest.Path], ConcatEntry{
-					Name:       art.Name,
-					SourcePath: concatSourcePath(art),
-				})
+			case StrategyChannel:
+				// Delivered below, once per tool.
 			}
 		}
 	}
@@ -184,33 +172,10 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 		a.Warn("Re-run with --force to take these paths; each original is renamed to a timestamped sibling, never deleted.")
 	}
 
-	// Regenerate each concat target. Sort by path for deterministic
-	// log output across runs.
-	concatPaths := make([]string, 0, len(concatBatches))
-	for p := range concatBatches {
-		concatPaths = append(concatPaths, p)
+	results, err := a.deliverChannels(run)
+	if err != nil {
+		return err
 	}
-	sort.Strings(concatPaths)
-
-	for _, p := range concatPaths {
-		entries := concatBatches[p]
-		if a.DryRun {
-			a.Info(fmt.Sprintf("[dry-run] would regenerate concat %s with %d entries", p, len(entries)))
-			continue
-		}
-		changed, err := RegenerateConcat(p, entries)
-		if err != nil {
-			a.Warn(fmt.Sprintf("concat regen failed for %s: %v", p, err))
-			continue
-		}
-		if changed {
-			a.Info(fmt.Sprintf("regenerated %s (%d entries)", p, len(entries)))
-		} else {
-			a.Info(fmt.Sprintf("%s already current (%d entries)", p, len(entries)))
-		}
-	}
-
-	a.regenerateRegions(regionBatches, regionTools, parent)
 
 	// Merge .agents/hooks/ fragments into .claude/settings.json
 	// (SPEC-004 Part C). This runs after the per-artifact loop
@@ -233,10 +198,63 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 		}
 	}
 
+	if n := countState(results, ChannelConflict); n > 0 {
+		return fmt.Errorf("%d delivery channel(s) blocked by a file sync-agents did not create", n)
+	}
 	if !a.DryRun {
 		a.Info("global sync complete")
 	}
 	return nil
+}
+
+// artifactGate limits the per-artifact pass for one tool.
+type artifactGate struct {
+	// link: place symlinks (Windsurf workflows, opencode agents).
+	link bool
+
+	// warn: print skip reasons.
+	warn bool
+}
+
+// artifactGateMap holds the gate of each tool that has a global
+// channel, keyed by tool ID.
+type artifactGateMap map[string]artifactGate
+
+// artifactGates maps each tool with a global channel to its gate,
+// derived from the channel's binding so the per-artifact pass and
+// channel delivery agree about which tools this run serves.
+//
+// Links follow the home gate: they are placed when the tool's home
+// exists or the channel may be mounted (--targets), never into the
+// home of a tool the user does not have. Skip reasons are printed only
+// when the channel itself delivers this run; for a tool that is not
+// installed or has not consented (SPEC-012), global status explains
+// the channel instead. Tools without a global channel (Claude, Cursor)
+// are absent from the map and get the full pass, as before SPEC-013.
+func artifactGates(chans []Channel) artifactGateMap {
+	gates := artifactGateMap{}
+	for _, ch := range chans {
+		gates[ch.Tool] = artifactGate{link: ch.Mountable || isDir(ch.Home), warn: ch.Mountable}
+	}
+	return gates
+}
+
+// of returns toolID's gate; a tool without a channel is ungated.
+func (g artifactGateMap) of(toolID string) artifactGate {
+	if gate, ok := g[toolID]; ok {
+		return gate
+	}
+	return artifactGate{link: true, warn: true}
+}
+
+// anyMountable reports whether any channel would be delivered.
+func anyMountable(chans []Channel) bool {
+	for _, ch := range chans {
+		if ch.Mountable {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveSyncTools filters the Tools registry by the --targets list
@@ -246,8 +264,9 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 // progress is more useful than failing the whole sync.
 //
 // Every returned tool is bound (see bindTool): a tool with a resolved
-// global dir carries it as an absolute DirByScope entry, and a region
-// tool is present only when its host file can take the region.
+// global dir carries it as an absolute DirByScope entry. Whether a
+// tool is installed, and whether a file it reads may be edited, is
+// decided per channel by mayMount, not here.
 func (a *App) resolveSyncTools(targets []string) ([]Tool, error) {
 	if len(targets) == 0 {
 		// Default: all tools with a global mapping.
@@ -256,7 +275,7 @@ func (a *App) resolveSyncTools(targets []string) ([]Tool, error) {
 			if !t.HasScope(ScopeGlobal) {
 				continue
 			}
-			if bound, ok := a.bindTool(t, false); ok {
+			if bound, ok := a.bindTool(t); ok {
 				out = append(out, bound)
 			}
 		}
@@ -283,64 +302,18 @@ func (a *App) resolveSyncTools(targets []string) ([]Tool, error) {
 			continue
 		}
 		seen[tool.ID] = true
-		if bound, ok := a.bindTool(tool, true); ok {
+		if bound, ok := a.bindTool(tool); ok {
 			out = append(out, bound)
 		}
 	}
 	return out, nil
 }
 
-// regenerateRegions rewrites each region host once, in path order, and
-// warns when a host grows past the size its tool truncates at.
-func (a *App) regenerateRegions(batches map[string][]ConcatEntry, tools map[string]Tool, parent string) {
-	paths := make([]string, 0, len(batches))
-	for p := range batches {
-		paths = append(paths, p)
-	}
-	sort.Strings(paths)
-
-	for _, p := range paths {
-		t, entries := tools[p], batches[p]
-		if a.DryRun {
-			a.Info(fmt.Sprintf("[dry-run] [%s] would regenerate region %s in %s with %d entries", t.ID, t.Region.Name, p, len(entries)))
-			continue
-		}
-		changed, chars, err := RegenerateRegion(p, *t.Region, entries)
-		if err != nil {
-			a.Warn(fmt.Sprintf("[%s] region regen failed for %s: %v", t.ID, p, err))
-			continue
-		}
-		if changed {
-			a.Info(fmt.Sprintf("[%s] regenerated region %s in %s (%d entries)", t.ID, t.Region.Name, p, len(entries)))
-		} else {
-			a.Info(fmt.Sprintf("[%s] region %s in %s already current (%d entries)", t.ID, t.Region.Name, p, len(entries)))
-		}
-		if t.RegionCharCap == nil {
-			continue
-		}
-		limit, err := t.RegionCharCap(parent, a.ToolEnv)
-		if err != nil {
-			a.Warn(fmt.Sprintf("[%s] cannot read size cap: %v", t.ID, err))
-			continue
-		}
-		if chars > limit {
-			a.Warn(fmt.Sprintf("[%s] %s is %d chars, over the %d-char bootstrap cap (agents.defaults.bootstrapMaxChars); %s truncates the middle of the file. Trim passive rules or raise the cap.", t.ID, p, chars, limit, t.ID))
-		}
-	}
-}
-
-// bindTool resolves a tool's global dir when it has a resolver and
-// applies the region consent rule. ok=false drops the tool from this
-// run.
-//
-// Consent: a region tool writes into a file another program owns, so
-// registering it must not make a plain `global sync` start editing
-// that file. Without --targets it is included only when the host file
-// already carries the region markers (a previous explicit run put them
-// there), and dropped silently otherwise, so users without the tool
-// see nothing. Naming it in --targets is the consent; the host file
-// must still exist, because sync-agents never creates it.
-func (a *App) bindTool(t Tool, explicit bool) (Tool, bool) {
+// bindTool resolves a tool's global dir when it has a resolver
+// ($CODEX_HOME, the OpenClaw workspace) and pins it into DirByScope as
+// an absolute path. ok=false drops the tool from this run, after a
+// warning naming the resolver error.
+func (a *App) bindTool(t Tool) (Tool, bool) {
 	if t.ResolveGlobalDir == nil {
 		return t, true
 	}
@@ -355,23 +328,6 @@ func (a *App) bindTool(t Tool, explicit bool) (Tool, bool) {
 		bound.DirByScope[s] = seg
 	}
 	bound.DirByScope[ScopeGlobal] = dir
-	if t.Region == nil {
-		return bound, true
-	}
-
-	host := filepath.Join(dir, t.RegionFile)
-	data, err := os.ReadFile(host)
-	if err != nil {
-		if explicit {
-			a.Warn(fmt.Sprintf("[%s] no %s at %s; run %s once to create it (sync-agents never creates it); skipping", t.ID, t.RegionFile, host, t.ID))
-		}
-		return Tool{}, false
-	}
-	if !explicit {
-		if _, _, found := t.Region.locate(string(data)); !found {
-			return Tool{}, false
-		}
-	}
 	return bound, true
 }
 
@@ -530,9 +486,9 @@ func symlinkTarget(art Artifact) string {
 	return art.SourcePath
 }
 
-// concatSourcePath returns the path RegenerateConcat should read for
-// this artifact's body. Same shape as symlinkTarget — the skill's
-// content is in SKILL.md.
+// concatSourcePath returns the file whose body a channel inlines for
+// this artifact. Same shape as symlinkTarget — the skill's content is
+// in SKILL.md.
 func concatSourcePath(art Artifact) string {
 	if art.Type == ArtifactSkill {
 		return filepath.Join(art.SourcePath, "SKILL.md")

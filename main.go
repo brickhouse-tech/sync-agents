@@ -622,9 +622,11 @@ func main() {
 	// Routing happens via semantic (frontmatter → bucket default)
 	// rather than bucket name; see SPEC-002 §Semantic-aware routing
 	// and docs/architecture/semantic-routing.md. Per-tool destinations
-	// are computed by TargetDestination; concat targets (Windsurf
-	// memories, Copilot/Codex instructions.md) are regenerated atomically
-	// at the end of the sync.
+	// are computed by TargetDestination; passive rules then reach each
+	// installed tool through its delivery channel (SPEC-013): regions in
+	// ~/.codex/AGENTS.md, Windsurf's global_rules.md and the OpenClaw
+	// workspace AGENTS.md, a link in ~/.copilot/instructions/, and an
+	// entry in ~/.config/opencode/opencode.json.
 	var globalSyncTargets string
 	globalSyncCmd := &cobra.Command{
 		Use:   "sync",
@@ -635,7 +637,7 @@ func main() {
 			})
 		},
 	}
-	globalSyncCmd.Flags().StringVar(&globalSyncTargets, "targets", "", "Comma-separated tools to sync (default: all registered; openclaw only after an explicit --targets openclaw)")
+	globalSyncCmd.Flags().StringVar(&globalSyncTargets, "targets", "", "Comma-separated tools to sync (default: every installed tool; naming a tool also consents to editing a file of yours it reads)")
 	globalCmd.AddCommand(globalSyncCmd)
 
 	// global status — read-only report of every per-tool destination's
@@ -651,24 +653,24 @@ func main() {
 			})
 		},
 	}
-	globalStatusCmd.Flags().StringVar(&globalStatusTargets, "targets", "", "Comma-separated tools to report on (default: all registered; openclaw only after an explicit --targets openclaw)")
+	globalStatusCmd.Flags().StringVar(&globalStatusTargets, "targets", "", "Comma-separated tools to report on (default: all registered)")
 	globalCmd.AddCommand(globalStatusCmd)
 
-	// global clean — remove sync-agents-owned symlinks and concat
-	// files from per-tool global dirs. Safety-gated: user-owned
-	// files (without the banner) and user-owned symlinks (pointing
-	// outside ~/.agents/) are left alone with warnings.
+	// global clean — remove sync-agents-owned symlinks, regions, and
+	// config entries from per-tool global dirs. Safety-gated: user
+	// files, bytes outside our regions, and user-owned symlinks
+	// (pointing outside ~/.agents/) are left alone.
 	var globalCleanTargets string
 	globalCleanCmd := &cobra.Command{
 		Use:   "clean",
-		Short: "Remove sync-agents-owned global symlinks and concat files",
+		Short: "Remove sync-agents-owned global symlinks, regions, and config entries",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return app.CmdGlobalClean(agent.GlobalCleanOpts{
 				Targets: parseTargetList(globalCleanTargets),
 			})
 		},
 	}
-	globalCleanCmd.Flags().StringVar(&globalCleanTargets, "targets", "", "Comma-separated tools to clean (default: all registered; openclaw only after an explicit --targets openclaw)")
+	globalCleanCmd.Flags().StringVar(&globalCleanTargets, "targets", "", "Comma-separated tools to clean (default: all registered)")
 	globalCmd.AddCommand(globalCleanCmd)
 
 	rootCmd.AddCommand(globalCmd)

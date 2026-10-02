@@ -632,7 +632,7 @@ func (a *App) CmdClean() error {
 
 	// Delivery channels (SPEC-013): the native links, our opencode.json
 	// entry, and .agents/index/. AGENTS.md is never touched.
-	if _, err := a.cleanChannels(ScopeLocal, a.explicitTargets()); err != nil {
+	if _, err := a.cleanChannels(ChannelRun{Scope: ScopeLocal, Explicit: a.explicitTargets()}); err != nil {
 		a.Warn(fmt.Sprintf("clean delivery channels: %v", err))
 	}
 

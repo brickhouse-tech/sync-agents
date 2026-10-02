@@ -301,7 +301,7 @@ type MountFacts struct {
 // path; the sentences stay fixed so status output is stable.
 const (
 	whyNotInstalled = "tool not installed (its home directory is missing); run with --targets <tool> to create it"
-	whyHostOwned    = "the host file is created by the tool itself; run the tool once, then sync"
+	whyHostOwned    = "the host file is created by the tool itself; run <tool> once to create it, then sync"
 	whyNeedsConsent = "the file exists and is yours; run once with --targets <tool> to let sync-agents edit it"
 )
 
@@ -506,6 +506,10 @@ type Rendered struct {
 	Inlined  []string
 	Pointers []string
 
+	// Demoted is the part of Pointers the cap forced out: entries that
+	// are not OnDemand. Sync warns about these, naming the cap's knob.
+	Demoted []string
+
 	// Budget and Size back the over-cap warning. Size is Bytes measured
 	// in Budget.Cap.Unit, plus Budget.Reserved.
 	Budget Budget
@@ -569,6 +573,9 @@ func renderChannel(f Format, entries []Entry, fr Frame, b Budget) (Rendered, err
 		for _, s := range pointers {
 			buf.Write(s.Pointer)
 			r.Pointers = append(r.Pointers, s.Name)
+			if !s.OnDemand {
+				r.Demoted = append(r.Demoted, s.Name)
+			}
 		}
 	}
 	r.Bytes = buf.Bytes()

@@ -79,16 +79,17 @@ func TestCmdGlobalSync_EmptyTreeNoop(t *testing.T) {
 }
 
 // TestCmdGlobalSync_PassiveRuleFanout exercises the passive-rule
-// routing across every tool. A single rule with no frontmatter
-// should:
+// routing across every installed tool. A single rule with no
+// frontmatter should:
 //   - symlink at ~/.claude/rules/security.md
-//   - symlink at ~/.cursor/rules/security.md
-//   - concat into ~/.codeium/windsurf/memories/global_rules.md
-//   - concat into ~/.github/copilot/instructions.md
-//   - concat into ~/.codex/instructions.md
+//   - land in the codeium-rules region of global_rules.md
+//   - land in the codex-rules region of ~/.codex/AGENTS.md
+//   - reach Copilot through ~/.copilot/instructions/
+//   - never reach ~/.cursor/rules (Cursor has no user-rules file)
 func TestCmdGlobalSync_PassiveRuleFanout(t *testing.T) {
 	a, root, _ := newGlobalSyncTestApp(t)
 	seedRule(t, a.ResolveGlobalRoot(), "security", "be careful\n")
+	mkdirs(t, filepath.Join(root, ".codeium"), filepath.Join(root, ".codex"), filepath.Join(root, ".copilot"))
 
 	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
 		t.Fatalf("CmdGlobalSync: %v", err)
@@ -96,7 +97,7 @@ func TestCmdGlobalSync_PassiveRuleFanout(t *testing.T) {
 
 	wantSymlinks := []string{
 		filepath.Join(root, ".claude", "rules", "security.md"),
-		filepath.Join(root, ".cursor", "rules", "security.md"),
+		filepath.Join(root, ".copilot", "instructions", "sync-agents.instructions.md"),
 	}
 	for _, p := range wantSymlinks {
 		info, err := os.Lstat(p)
@@ -109,87 +110,70 @@ func TestCmdGlobalSync_PassiveRuleFanout(t *testing.T) {
 		}
 	}
 
-	wantConcat := []string{
+	wantContent := []string{
 		filepath.Join(root, ".codeium", "windsurf", "memories", "global_rules.md"),
-		filepath.Join(root, ".github", "copilot", "instructions.md"),
-		filepath.Join(root, ".codex", "instructions.md"),
+		filepath.Join(root, ".codex", "AGENTS.md"),
+		filepath.Join(root, ".copilot", "instructions", "sync-agents.instructions.md"),
 	}
-	for _, p := range wantConcat {
+	for _, p := range wantContent {
 		content, err := os.ReadFile(p)
 		if err != nil {
-			t.Errorf("missing concat %s: %v", p, err)
+			t.Errorf("missing %s: %v", p, err)
 			continue
 		}
-		if !bytes.Contains(content, []byte("## security")) {
-			t.Errorf("concat %s missing security heading:\n%s", p, content)
+		if !bytes.Contains(content, []byte("## security\n\nbe careful")) {
+			t.Errorf("%s missing the rule:\n%s", p, content)
 		}
-		if !bytes.Contains(content, []byte("be careful")) {
-			t.Errorf("concat %s missing rule body:\n%s", p, content)
-		}
+	}
+	if _, err := os.Lstat(filepath.Join(root, ".cursor", "rules")); err == nil {
+		t.Error("~/.cursor/rules created; Cursor reads no user-rules file")
 	}
 }
 
 // TestCmdGlobalSync_InvocableSkillRoutesPerTool is the semantic-
 // routing flagship test. A single-file invocable skill must land at
-// the right per-tool destination for each tool:
+// the right per-tool destination for each installed tool:
 //
 //   - claude:   ~/.claude/skills/cool/SKILL.md (symlink)
 //   - codeium:  ~/.codeium/windsurf/global_workflows/cool.md (symlink)
-//   - cursor:   ~/.cursor/rules/cool.md (symlink)
-//   - copilot:  concat into instructions.md
-//   - codex:    concat into instructions.md
+//   - codex:    skipped (Codex loads ~/.agents/skills natively)
+//   - copilot:  skipped (no user-scope skill surface)
+//
+// and never inside a channel, which carries passive content only.
 func TestCmdGlobalSync_InvocableSkillRoutesPerTool(t *testing.T) {
-	a, root, _ := newGlobalSyncTestApp(t)
+	a, root, stdout := newGlobalSyncTestApp(t)
 	seedSkill(t, a.ResolveGlobalRoot(), "cool", "# cool skill\nbody\n", nil)
+	mkdirs(t, filepath.Join(root, ".codeium"), filepath.Join(root, ".codex"), filepath.Join(root, ".copilot"))
 
 	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
 		t.Fatalf("CmdGlobalSync: %v", err)
 	}
 
-	cases := []struct {
-		path       string
-		isSymlink  bool
-		concatNeed string
-	}{
-		{filepath.Join(root, ".claude", "skills", "cool", "SKILL.md"), true, ""},
-		{filepath.Join(root, ".codeium", "windsurf", "global_workflows", "cool.md"), true, ""},
-		{filepath.Join(root, ".cursor", "rules", "cool.md"), true, ""},
-		{filepath.Join(root, ".github", "copilot", "instructions.md"), false, "## cool"},
-		{filepath.Join(root, ".codex", "instructions.md"), false, "## cool"},
-	}
-	for _, c := range cases {
-		t.Run(c.path, func(t *testing.T) {
-			if c.isSymlink {
-				info, err := os.Lstat(c.path)
-				if err != nil {
-					t.Fatalf("expected symlink at %s: %v", c.path, err)
-				}
-				if info.Mode()&os.ModeSymlink == 0 {
-					t.Errorf("%s is not a symlink", c.path)
-				}
-			} else {
-				content, err := os.ReadFile(c.path)
-				if err != nil {
-					t.Fatalf("expected concat at %s: %v", c.path, err)
-				}
-				if !bytes.Contains(content, []byte(c.concatNeed)) {
-					t.Errorf("concat %s missing %q:\n%s", c.path, c.concatNeed, content)
-				}
-			}
-		})
-	}
-
-	// Negative assertion: an invocable skill must NOT show up in
-	// the Windsurf memories concat (that's for passive artifacts).
-	memContent, err := os.ReadFile(filepath.Join(root, ".codeium", "windsurf", "memories", "global_rules.md"))
-	if err == nil {
-		if bytes.Contains(memContent, []byte("## cool")) {
-			t.Errorf("invocable skill leaked into Windsurf memories concat:\n%s", memContent)
+	for _, p := range []string{
+		filepath.Join(root, ".claude", "skills", "cool", "SKILL.md"),
+		filepath.Join(root, ".codeium", "windsurf", "global_workflows", "cool.md"),
+	} {
+		info, err := os.Lstat(p)
+		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+			t.Errorf("expected symlink at %s (err=%v)", p, err)
 		}
 	}
-	// (If the file doesn't exist at all, that's also acceptable —
-	// the sync skipped a memories concat because no passive
-	// artifacts targeted it.)
+	for _, want := range []string{
+		`[codex] skip skill "cool": Codex loads ~/.agents/skills natively`,
+		`[copilot] skip skill "cool": copilot has no user-scope skill surface`,
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("missing %q in:\n%s", want, stdout)
+		}
+	}
+	for _, p := range []string{
+		filepath.Join(root, ".codeium", "windsurf", "memories", "global_rules.md"),
+		filepath.Join(root, ".codex", "AGENTS.md"),
+	} {
+		if data, err := os.ReadFile(p); err == nil && bytes.Contains(data, []byte("## cool")) {
+			t.Errorf("invocable skill leaked into %s:\n%s", p, data)
+		}
+	}
 }
 
 // TestCmdGlobalSync_MultiFileSkillSkipsCodeium covers the SPEC-002
@@ -198,6 +182,7 @@ func TestCmdGlobalSync_InvocableSkillRoutesPerTool(t *testing.T) {
 // SKIPPED for codeium with a warning.
 func TestCmdGlobalSync_MultiFileSkillSkipsCodeium(t *testing.T) {
 	a, root, stdout := newGlobalSyncTestApp(t)
+	mkdirs(t, filepath.Join(root, ".codeium"))
 	seedSkill(t, a.ResolveGlobalRoot(), "big", "# big skill\n", map[string]string{
 		"helper.txt": "support",
 	})
@@ -259,21 +244,22 @@ func TestCmdGlobalSync_FrontmatterFlipsRoute(t *testing.T) {
 // TestCmdGlobalSync_Idempotent runs the sync twice and asserts the
 // second run is fast and doesn't rewrite anything. We check both
 // symlinks (existing symlink to same target = no recreate) and the
-// concat file's mtime preservation.
+// region host's mtime preservation.
 func TestCmdGlobalSync_Idempotent(t *testing.T) {
 	a, root, _ := newGlobalSyncTestApp(t)
 	seedRule(t, a.ResolveGlobalRoot(), "x", "body\n")
+	mkdirs(t, filepath.Join(root, ".codeium"))
 
 	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
 		t.Fatalf("first sync: %v", err)
 	}
 
-	// Grab mtime of the codeium concat (the most interesting
+	// Grab mtime of the codeium region host (the most interesting
 	// idempotency case — it's content-compared).
 	concatPath := filepath.Join(root, ".codeium", "windsurf", "memories", "global_rules.md")
 	firstInfo, err := os.Stat(concatPath)
 	if err != nil {
-		t.Fatalf("concat missing after first sync: %v", err)
+		t.Fatalf("region host missing after first sync: %v", err)
 	}
 
 	// Run sync again immediately.
@@ -283,10 +269,10 @@ func TestCmdGlobalSync_Idempotent(t *testing.T) {
 
 	secondInfo, err := os.Stat(concatPath)
 	if err != nil {
-		t.Fatalf("concat missing after second sync: %v", err)
+		t.Fatalf("region host missing after second sync: %v", err)
 	}
 	if !secondInfo.ModTime().Equal(firstInfo.ModTime()) {
-		t.Errorf("concat mtime changed despite idempotent sync: first=%v second=%v",
+		t.Errorf("region host mtime changed despite idempotent sync: first=%v second=%v",
 			firstInfo.ModTime(), secondInfo.ModTime())
 	}
 }
@@ -297,6 +283,7 @@ func TestCmdGlobalSync_Idempotent(t *testing.T) {
 func TestCmdGlobalSync_TargetsFilter(t *testing.T) {
 	a, root, _ := newGlobalSyncTestApp(t)
 	seedRule(t, a.ResolveGlobalRoot(), "x", "body\n")
+	mkdirs(t, filepath.Join(root, ".codex"))
 
 	if err := a.CmdGlobalSync(GlobalSyncOpts{Targets: []string{"claude"}}); err != nil {
 		t.Fatalf("sync: %v", err)
@@ -306,8 +293,11 @@ func TestCmdGlobalSync_TargetsFilter(t *testing.T) {
 	if _, err := os.Lstat(filepath.Join(root, ".claude", "rules", "x.md")); err != nil {
 		t.Errorf("claude target not touched: %v", err)
 	}
-	// Cursor and others should NOT.
-	for _, dir := range []string{".cursor", ".codeium", ".github", ".codex"} {
+	// Cursor and others should NOT, even an installed one.
+	if _, err := os.Stat(filepath.Join(root, ".codex", "AGENTS.md")); err == nil {
+		t.Error("codex delivered although --targets named only claude")
+	}
+	for _, dir := range []string{".cursor", ".codeium", ".github", ".copilot"} {
 		p := filepath.Join(root, dir)
 		if _, err := os.Stat(p); err == nil {
 			t.Errorf("unexpected dir created for unfiltered target: %s", p)
