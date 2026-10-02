@@ -616,139 +616,113 @@ func TestDiscoverArtifacts_FindsAllThreeBuckets(t *testing.T) {
 	}
 }
 
-// TestCmdGlobalSync_WritesClaudeImportsBlock verifies the bridge
-// between "sync placed the rule at ~/.claude/rules/X.md" and "Claude
-// actually loads rule X": a managed @-import block is regenerated in
-// ~/.claude/CLAUDE.md listing every passive rule routed to Claude.
-// See issue #46 — Claude does not auto-scan rules/*.md.
-func TestCmdGlobalSync_WritesClaudeImportsBlock(t *testing.T) {
-	a, root, _ := newGlobalSyncTestApp(t)
-	seedRule(t, a.ResolveGlobalRoot(), "security", "be careful\n")
-	seedRule(t, a.ResolveGlobalRoot(), "no-secrets", "no PII\n")
-	seedWorkflow(t, a.ResolveGlobalRoot(), "passive-wf", "`\n```\n")
-
-	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
-		t.Fatalf("CmdGlobalSync: %v", err)
+// legacyImportsBlock is a claude-imports block as global sync wrote it
+// before SPEC-013.
+func legacyImportsBlock(paths ...string) string {
+	b := legacyClaudeImportsRegion.Start() + "\n<!-- managed by sync-agents; do not edit between the markers -->\n"
+	for _, p := range paths {
+		b += "@" + p + "\n"
 	}
-
-	claudeMD := filepath.Join(root, ".claude", "CLAUDE.md")
-	data, err := os.ReadFile(claudeMD)
-	if err != nil {
-		t.Fatalf("read CLAUDE.md: %v", err)
-	}
-	content := string(data)
-
-	if !HasManagedImportBlock(content) {
-		t.Fatalf("missing managed block in CLAUDE.md:\n%s", content)
-	}
-
-	imports := ExtractManagedImports(content)
-	wantImports := map[string]bool{
-		filepath.Join(root, ".claude", "rules", "no-secrets.md"): true,
-		filepath.Join(root, ".claude", "rules", "security.md"):   true,
-	}
-	if len(imports) != len(wantImports) {
-		t.Errorf("got %d imports (%v), want %d: %v", len(imports), imports, len(wantImports), wantImports)
-	}
-	for _, imp := range imports {
-		if !wantImports[imp] {
-			t.Errorf("unexpected import %q", imp)
-		}
-	}
+	return b + legacyClaudeImportsRegion.End() + "\n"
 }
 
-// TestCmdGlobalSync_ClaudeImportsOmitsInvocables verifies that
-// invocable skills (which Claude auto-discovers at ~/.claude/skills/)
-// and invocable workflows (which Claude auto-registers at
-// ~/.claude/commands/) do NOT contribute to the @-import block — they
-// don't need it.
-func TestCmdGlobalSync_ClaudeImportsOmitsInvocables(t *testing.T) {
-	a, root, _ := newGlobalSyncTestApp(t)
-	seedSkill(t, a.ResolveGlobalRoot(), "cool", "skill MD\n", nil) // invocable by default
-	seedWorkflow(t, a.ResolveGlobalRoot(), "wf", "workflow MD\n")  // invocable by default
-
-	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
-		t.Fatalf("CmdGlobalSync: %v", err)
-	}
-
-	claudeMD := filepath.Join(root, ".claude", "CLAUDE.md")
-	// File may not exist if there were no passive rules — that's
-	// correct behavior; the sync shouldn't create an empty block
-	// when nothing needs it.
-	if _, err := os.Stat(claudeMD); err == nil {
-		t.Errorf("CLAUDE.md exists but should not (no passive rules):\n%s", func() string {
-			b, _ := os.ReadFile(claudeMD)
-			return string(b)
-		}())
-	}
-}
-
-// TestCmdGlobalSync_ClaudeImportsPreservesUserContent confirms that
-// any user-authored content at ~/.claude/CLAUDE.md survives the
-// managed-block rewrite.
-func TestCmdGlobalSync_ClaudeImportsPreservesUserContent(t *testing.T) {
-	a, root, _ := newGlobalSyncTestApp(t)
-	claudeDir := filepath.Join(root, ".claude")
-	if err := os.MkdirAll(claudeDir, 0o755); err != nil {
+// writeClaudeMD seeds ~/.claude/CLAUDE.md under root and returns its path.
+func writeClaudeMD(t *testing.T, root, content string) string {
+	t.Helper()
+	p := filepath.Join(root, ".claude", "CLAUDE.md")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	claudeMD := filepath.Join(claudeDir, "CLAUDE.md")
-	if err := os.WriteFile(claudeMD, []byte("# Custom Claude config\n\nUser keeps this.\n"), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
 		t.Fatalf("write CLAUDE.md: %v", err)
 	}
+	return p
+}
 
+// TestCmdGlobalSync_StripsClaudeImportsKeepsUserLines covers SPEC-013
+// §Migration step 2: the retired block goes, the user's own lines
+// (including their own @-imports) stay in order.
+func TestCmdGlobalSync_StripsClaudeImportsKeepsUserLines(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	seedRule(t, a.ResolveGlobalRoot(), "security", "rule body\n")
+	claudeMD := writeClaudeMD(t, root, "@~/.claude/pstack-models.md\n\n"+
+		legacyImportsBlock(filepath.Join(root, ".claude", "rules", "security.md"))+
+		"\nUser prose after.\n")
+
+	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
+		t.Fatalf("CmdGlobalSync: %v", err)
+	}
+
+	got := readFile(t, claudeMD)
+	if want := "@~/.claude/pstack-models.md\n\nUser prose after.\n"; got != want {
+		t.Errorf("CLAUDE.md = %q, want %q", got, want)
+	}
+}
+
+// TestCmdGlobalSync_RemovesClaudeMDThatWasOnlyTheBlock: a CLAUDE.md
+// sync-agents created holds nothing else, so it is removed.
+func TestCmdGlobalSync_RemovesClaudeMDThatWasOnlyTheBlock(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	seedRule(t, a.ResolveGlobalRoot(), "security", "rule body\n")
+	claudeMD := writeClaudeMD(t, root, legacyImportsBlock("/x/security.md"))
+
+	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
+		t.Fatalf("CmdGlobalSync: %v", err)
+	}
+	if _, err := os.Stat(claudeMD); !os.IsNotExist(err) {
+		t.Errorf("CLAUDE.md should be removed when it was only the block (stat err %v)", err)
+	}
+}
+
+// TestCmdGlobalSync_NeverCreatesClaudeMD: passive rules reach Claude
+// through ~/.claude/rules/, so sync no longer writes CLAUDE.md at all.
+func TestCmdGlobalSync_NeverCreatesClaudeMD(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
 	seedRule(t, a.ResolveGlobalRoot(), "security", "rule body\n")
 
 	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
 		t.Fatalf("CmdGlobalSync: %v", err)
 	}
-
-	content, _ := os.ReadFile(claudeMD)
-	s := string(content)
-
-	if !strings.Contains(s, "# Custom Claude config") {
-		t.Errorf("user content lost:\n%s", s)
+	if _, err := os.Stat(filepath.Join(root, ".claude", "CLAUDE.md")); !os.IsNotExist(err) {
+		t.Errorf("global sync created CLAUDE.md (stat err %v)", err)
 	}
-	if !HasManagedImportBlock(s) {
-		t.Errorf("managed block not added:\n%s", s)
+	if _, err := os.Lstat(filepath.Join(root, ".claude", "rules", "security.md")); err != nil {
+		t.Errorf("rule link missing: %v", err)
 	}
 }
 
-// TestCmdGlobalSync_ClaudeImportsDryRun verifies dry-run doesn't
-// touch the filesystem but still reports the plan.
-func TestCmdGlobalSync_ClaudeImportsDryRun(t *testing.T) {
+// TestCmdGlobalSync_ClaudeImportsStripDryRun: dry-run reports the strip
+// and leaves the file byte-identical.
+func TestCmdGlobalSync_ClaudeImportsStripDryRun(t *testing.T) {
 	a, root, stdout := newGlobalSyncTestApp(t)
 	seedRule(t, a.ResolveGlobalRoot(), "security", "body\n")
+	before := "# mine\n\n" + legacyImportsBlock("/x/security.md")
+	claudeMD := writeClaudeMD(t, root, before)
 	a.DryRun = true
 
 	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
 		t.Fatalf("CmdGlobalSync: %v", err)
 	}
-
-	claudeMD := filepath.Join(root, ".claude", "CLAUDE.md")
-	if _, err := os.Stat(claudeMD); err == nil {
-		t.Errorf("dry-run created CLAUDE.md")
+	if got := readFile(t, claudeMD); got != before {
+		t.Errorf("dry-run changed CLAUDE.md:\n%s", got)
 	}
-	if !strings.Contains(stdout.String(), "[dry-run]") {
-		t.Errorf("expected [dry-run] in output:\n%s", stdout.String())
+	if !strings.Contains(stdout.String(), "[dry-run] would scrub managed block") {
+		t.Errorf("expected the dry-run strip report:\n%s", stdout.String())
 	}
 }
 
-// TestCmdGlobalSync_ClaudeImportsTargetsFilter verifies that when
-// --targets excludes claude, no @-import block is written for
-// Claude.
-func TestCmdGlobalSync_ClaudeImportsTargetsFilter(t *testing.T) {
+// TestCmdGlobalSync_ClaudeImportsStripNeedsClaudeTarget: --targets
+// without claude leaves ~/.claude/CLAUDE.md alone.
+func TestCmdGlobalSync_ClaudeImportsStripNeedsClaudeTarget(t *testing.T) {
 	a, root, _ := newGlobalSyncTestApp(t)
 	seedRule(t, a.ResolveGlobalRoot(), "security", "body\n")
+	before := legacyImportsBlock("/x/security.md")
+	claudeMD := writeClaudeMD(t, root, before)
 
-	// Only sync cursor — claude should be skipped.
 	if err := a.CmdGlobalSync(GlobalSyncOpts{Targets: []string{"cursor"}}); err != nil {
 		t.Fatalf("CmdGlobalSync: %v", err)
 	}
-
-	claudeMD := filepath.Join(root, ".claude", "CLAUDE.md")
-	if _, err := os.Stat(claudeMD); err == nil {
-		data, _ := os.ReadFile(claudeMD)
-		t.Errorf("CLAUDE.md written when claude target filtered:\n%s", string(data))
+	if got := readFile(t, claudeMD); got != before {
+		t.Errorf("CLAUDE.md changed with claude filtered out:\n%s", got)
 	}
 }

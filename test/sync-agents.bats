@@ -108,13 +108,13 @@ teardown() {
   [[ "$(cat "$TEST_DIR/.agents/rules/state.md")" == *"STATE_\${CONTEXT_DESCRIPTION}"* ]]
 }
 
-@test "init creates AGENTS.md with expected content" {
+@test "init creates AGENTS.md as a short stub, not an index" {
   run "$SCRIPT" -d "$TEST_DIR" init
   [ "$status" -eq 0 ]
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"# AGENTS"* ]]
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"## Rules"* ]]
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"## Skills"* ]]
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"## Workflows"* ]]
+  [[ "$(head -1 "$TEST_DIR/AGENTS.md")" == "# AGENTS.md" ]]
+  grep -q '`.agents/rules/`' "$TEST_DIR/AGENTS.md"
+  ! grep -q "Auto-generated" "$TEST_DIR/AGENTS.md"
+  ! grep -q "## Rules" "$TEST_DIR/AGENTS.md"
 }
 
 @test "init is idempotent - does not overwrite existing files" {
@@ -139,10 +139,11 @@ teardown() {
   [ -f "$TEST_DIR/.agents/rules/no-eval.md" ]
 }
 
-@test "add rule updates AGENTS.md" {
+@test "add rule leaves AGENTS.md untouched" {
   "$SCRIPT" -d "$TEST_DIR" init
+  cp "$TEST_DIR/AGENTS.md" "$TEST_DIR/before.md"
   "$SCRIPT" -d "$TEST_DIR" add rule no-eval
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"no-eval"* ]]
+  cmp -s "$TEST_DIR/before.md" "$TEST_DIR/AGENTS.md"
 }
 
 @test "add rule file contains rule name" {
@@ -163,13 +164,6 @@ teardown() {
   [ -f "$TEST_DIR/.agents/skills/code-review/SKILL.md" ]
 }
 
-@test "add skill updates AGENTS.md with directory path" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  "$SCRIPT" -d "$TEST_DIR" add skill code-review
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"code-review"* ]]
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"skills/code-review/SKILL.md"* ]]
-}
-
 # --------------------------------------------------------------------------
 # add workflow
 # --------------------------------------------------------------------------
@@ -179,12 +173,6 @@ teardown() {
   run "$SCRIPT" -d "$TEST_DIR" add workflow deploy
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/.agents/workflows/deploy.md" ]
-}
-
-@test "add workflow updates AGENTS.md" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  "$SCRIPT" -d "$TEST_DIR" add workflow deploy
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"deploy"* ]]
 }
 
 # --------------------------------------------------------------------------
@@ -209,15 +197,33 @@ teardown() {
 # index
 # --------------------------------------------------------------------------
 
-@test "index regenerates AGENTS.md" {
+@test "index migrates a generated AGENTS.md once, with a backup" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  cp "$BATS_TEST_DIRNAME/../internal/agent/testdata/agentsmd/inherits-placeholders.md" "$TEST_DIR/AGENTS.md"
+  run "$SCRIPT" -d "$TEST_DIR" index
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sync-agents will not rewrite this file again"* ]]
+  [[ "$(head -1 "$TEST_DIR/AGENTS.md")" == "# AGENTS.md" ]]
+  grep -q "^## Inherits" "$TEST_DIR/AGENTS.md"
+  ! grep -q "^## Rules" "$TEST_DIR/AGENTS.md"
+  cmp -s "$BATS_TEST_DIRNAME/../internal/agent/testdata/agentsmd/inherits-placeholders.md" \
+    "$TEST_DIR/.agents/.sync/AGENTS.md.pre-spec013"
+  # second run: nothing to migrate
+  cp "$TEST_DIR/AGENTS.md" "$TEST_DIR/after.md"
+  run "$SCRIPT" -d "$TEST_DIR" index
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"AGENTS.md:"* ]]
+  cmp -s "$TEST_DIR/after.md" "$TEST_DIR/AGENTS.md"
+}
+
+@test "index leaves a user-owned AGENTS.md alone" {
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" add rule my-rule
-  # Overwrite AGENTS.md with junk
   echo "junk" > "$TEST_DIR/AGENTS.md"
   run "$SCRIPT" -d "$TEST_DIR" index
   [ "$status" -eq 0 ]
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"my-rule"* ]]
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"## Rules"* ]]
+  [[ "$(cat "$TEST_DIR/AGENTS.md")" == "junk" ]]
+  [ ! -e "$TEST_DIR/.agents/.sync/AGENTS.md.pre-spec013" ]
 }
 
 # --------------------------------------------------------------------------
@@ -735,90 +741,16 @@ teardown() {
 # Inheritance
 # --------------------------------------------------------------------------
 
-@test "inherit adds Inherits section to AGENTS.md" {
+@test "inherit is removed and points at the docs" {
   "$SCRIPT" -d "$TEST_DIR" init
+  cp "$TEST_DIR/AGENTS.md" "$TEST_DIR/before.md"
   run "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
-  [ "$status" -eq 0 ]
-  grep -q "## Inherits" "$TEST_DIR/AGENTS.md"
-  grep -q "\[global\](../../AGENTS.md)" "$TEST_DIR/AGENTS.md"
-}
-
-@test "inherit adds multiple entries" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
-  run "$SCRIPT" -d "$TEST_DIR" inherit team ../AGENTS.md
-  [ "$status" -eq 0 ]
-  grep -q "\[global\]" "$TEST_DIR/AGENTS.md"
-  grep -q "\[team\]" "$TEST_DIR/AGENTS.md"
-}
-
-@test "inherit --list shows entries" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
-  "$SCRIPT" -d "$TEST_DIR" inherit team ../AGENTS.md
-  run "$SCRIPT" -d "$TEST_DIR" inherit --list
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"global"* ]]
-  [[ "$output" == *"team"* ]]
-}
-
-@test "inherit --remove removes an entry" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
-  "$SCRIPT" -d "$TEST_DIR" inherit team ../AGENTS.md
-  run "$SCRIPT" -d "$TEST_DIR" inherit --remove global
-  [ "$status" -eq 0 ]
-  ! grep -q "\[global\]" "$TEST_DIR/AGENTS.md"
-  grep -q "\[team\]" "$TEST_DIR/AGENTS.md"
-}
-
-@test "inherit rejects duplicate labels" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
-  run "$SCRIPT" -d "$TEST_DIR" inherit global ../other/AGENTS.md
   [ "$status" -ne 0 ]
-  [[ "$output" == *"already exists"* ]]
-}
-
-@test "inherit without arguments fails" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  run "$SCRIPT" -d "$TEST_DIR" inherit
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"Usage"* ]]
-}
-
-@test "inherit section preserved across index regeneration" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
-  "$SCRIPT" -d "$TEST_DIR" add rule my-rule
-  # index regenerates AGENTS.md
-  "$SCRIPT" -d "$TEST_DIR" index
-  grep -q "## Inherits" "$TEST_DIR/AGENTS.md"
-  grep -q "\[global\](../../AGENTS.md)" "$TEST_DIR/AGENTS.md"
-  grep -q "my-rule" "$TEST_DIR/AGENTS.md"
-}
-
-@test "inherit Inherits section appears before Rules in AGENTS.md" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
-  local inherits_line rules_line
-  inherits_line=$(grep -n "## Inherits" "$TEST_DIR/AGENTS.md" | head -1 | cut -d: -f1)
-  rules_line=$(grep -n "## Rules" "$TEST_DIR/AGENTS.md" | head -1 | cut -d: -f1)
-  [ "$inherits_line" -lt "$rules_line" ]
-}
-
-@test "inherit --list with no inherits shows nothing" {
-  "$SCRIPT" -d "$TEST_DIR" init
+  [[ "$output" == *"docs/inheritance.md"* ]]
   run "$SCRIPT" -d "$TEST_DIR" inherit --list
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-}
-
-@test "inherit --remove nonexistent label warns" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  run "$SCRIPT" -d "$TEST_DIR" inherit --remove nonexistent
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"No inherit found"* ]]
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"edit ## Inherits by hand"* ]]
+  cmp -s "$TEST_DIR/before.md" "$TEST_DIR/AGENTS.md"
 }
 
 # --------------------------------------------------------------------------
@@ -1353,22 +1285,6 @@ CONF
   [ -f "$TEST_DIR/.agents/rules/state.md" ]
 }
 
-@test "AGENTS.md State section indexes only shared STATE_ files" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  # Per-engineer snapshot (no frontmatter) must stay out of the index
-  echo "state 1" > "$TEST_DIR/.agents/STATE_feature-work_20260425120000.md"
-  # Shared-task snapshot opts in via frontmatter
-  printf -- '---\nshared: true\n---\n\nstate 2\n' > "$TEST_DIR/.agents/STATE_bugfix_20260426080000.md"
-  "$SCRIPT" -d "$TEST_DIR" index
-  ! grep -q "STATE_feature-work_20260425120000" "$TEST_DIR/AGENTS.md"
-  grep -q "STATE_bugfix_20260426080000" "$TEST_DIR/AGENTS.md"
-}
-
-@test "AGENTS.md State section points at the state convention rule" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  grep -q "rules/state.md" "$TEST_DIR/AGENTS.md"
-}
-
 # --------------------------------------------------------------------------
 # agents bucket (SPEC-004 Part B)
 # --------------------------------------------------------------------------
@@ -1403,15 +1319,6 @@ CONF
   run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
   [ ! -e "$TEST_DIR/.claude/agents" ]
-}
-
-@test "index adds Agents section only when agents exist" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  run grep -q "## Agents" "$TEST_DIR/AGENTS.md"
-  [ "$status" -ne 0 ]
-  "$SCRIPT" -d "$TEST_DIR" add agent reviewer
-  grep -q "## Agents" "$TEST_DIR/AGENTS.md"
-  grep -q ".agents/agents/reviewer.md" "$TEST_DIR/AGENTS.md"
 }
 
 @test "clean removes the .claude/agents symlink" {
@@ -1449,22 +1356,6 @@ CONF
   [ ! -e "$TEST_DIR/.windsurf/specs" ]
 }
 
-@test "index lists plans and specs recursively with sections" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  mkdir -p "$TEST_DIR/.agents/plans/auth-effort"
-  printf -- '---\nname: rollout\ndescription: Rollout plan for the auth effort. Use when planning auth work.\n---\n\n# Rollout\n' \
-    > "$TEST_DIR/.agents/plans/auth-effort/rollout.md"
-  run "$SCRIPT" -d "$TEST_DIR" index
-  [ "$status" -eq 0 ]
-  grep -q "## Plans" "$TEST_DIR/AGENTS.md"
-  grep -q ".agents/plans/auth-effort/rollout.md" "$TEST_DIR/AGENTS.md"
-  # description suffix rendered
-  grep -q "Rollout plan for the auth effort" "$TEST_DIR/AGENTS.md"
-  # specs section absent when bucket empty
-  run grep -q "## Specs" "$TEST_DIR/AGENTS.md"
-  [ "$status" -ne 0 ]
-}
-
 # --------------------------------------------------------------------------
 # index backfill (skill frontmatter)
 # --------------------------------------------------------------------------
@@ -1477,8 +1368,6 @@ CONF
   [ "$status" -eq 0 ]
   grep -q "name: legacy-tool" "$TEST_DIR/.agents/skills/legacy-tool/SKILL.md"
   grep -q "description: Wraps the legacy tool when needed." "$TEST_DIR/.agents/skills/legacy-tool/SKILL.md"
-  # backfilled description flows into the AGENTS.md index line
-  grep -q "Wraps the legacy tool when needed" "$TEST_DIR/AGENTS.md"
 }
 
 @test "index --no-fix leaves skill headers untouched" {
@@ -1512,27 +1401,7 @@ CONF
   grep -q "status: proposed" "$TEST_DIR/.agents/adrs/proposed/use-postgres.md"
 }
 
-@test "index lists accepted+proposed ADRs, excludes denied, includes denied-dir note" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  mkdir -p "$TEST_DIR/.agents/adrs/accepted" "$TEST_DIR/.agents/adrs/proposed" "$TEST_DIR/.agents/adrs/denied"
-  printf -- '---\nname: use-postgres\ndescription: Adopt Postgres. Use when persisting relational data.\nstatus: accepted\n---\n' > "$TEST_DIR/.agents/adrs/accepted/use-postgres.md"
-  printf -- '---\nname: adopt-grpc\nstatus: proposed\n---\n' > "$TEST_DIR/.agents/adrs/proposed/adopt-grpc.md"
-  printf -- '---\nname: use-mongo\nstatus: denied\n---\n' > "$TEST_DIR/.agents/adrs/denied/use-mongo.md"
-
-  run "$SCRIPT" -d "$TEST_DIR" index
-  [ "$status" -eq 0 ]
-  grep -q "## ADRs" "$TEST_DIR/AGENTS.md"
-  grep -q "### Accepted" "$TEST_DIR/AGENTS.md"
-  grep -q "use-postgres" "$TEST_DIR/AGENTS.md"
-  grep -q "### Proposed" "$TEST_DIR/AGENTS.md"
-  grep -q "adopt-grpc" "$TEST_DIR/AGENTS.md"
-  # denied excluded from listings but the guidance note points at the dir
-  run grep -q "use-mongo" "$TEST_DIR/AGENTS.md"
-  [ "$status" -ne 0 ]
-  grep -q "adrs/denied" "$TEST_DIR/AGENTS.md"
-}
-
-@test "adr accept and deny move records and reindex" {
+@test "adr accept and deny move records" {
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" add adr use-postgres
   run "$SCRIPT" -d "$TEST_DIR" adr accept use-postgres
@@ -1544,8 +1413,6 @@ CONF
   run "$SCRIPT" -d "$TEST_DIR" adr deny use-postgres
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/.agents/adrs/denied/use-postgres.md" ]
-  run grep -q "use-postgres" "$TEST_DIR/AGENTS.md"
-  [ "$status" -ne 0 ]
 }
 
 @test "sync links adrs bucket into .claude only" {
@@ -1609,7 +1476,7 @@ _make_checkout() {
   return 0
 }
 
-@test "source add --link=<path> wires a relative symlink and indexes the skill" {
+@test "source add --link=<path> wires a relative symlink" {
   "$SCRIPT" -d "$TEST_DIR" init
   _make_checkout foo-skill ""
   run "$SCRIPT" -d "$TEST_DIR" source add --link="$TEST_DIR/foo-skill" skill:me/foo-skill
@@ -1621,8 +1488,6 @@ _make_checkout() {
   [[ "$target" != /* ]]
   # resolves to the real SKILL.md
   [ -f "$TEST_DIR/.agents/skills/foo-skill/SKILL.md" ]
-  # indexed in AGENTS.md
-  grep -q "foo-skill" "$TEST_DIR/AGENTS.md"
 }
 
 @test "linked source: lock and manifest contain no absolute paths" {

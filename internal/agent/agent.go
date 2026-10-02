@@ -285,13 +285,17 @@ func (a *App) CmdInit() error {
 		a.Warn(".agents/config already exists, skipping")
 	}
 
-	// AGENTS.md
+	// AGENTS.md is the user's file (SPEC-013): init writes a short stub
+	// only when there is none, and never touches an existing one.
 	agentsMD := filepath.Join(a.ProjectRoot, "AGENTS.md")
-	if _, err := os.Stat(agentsMD); os.IsNotExist(err) {
-		a.generateAgentsMD()
+	if _, err := os.Lstat(agentsMD); os.IsNotExist(err) {
+		if err := os.WriteFile(agentsMD, []byte(AgentsMDStub), 0o644); err != nil {
+			a.Error(fmt.Sprintf("write AGENTS.md: %v", err))
+			return err
+		}
 		a.Info("Created AGENTS.md")
 	} else {
-		a.Warn("AGENTS.md already exists, skipping (run 'sync-agents index' to regenerate)")
+		a.Warn("AGENTS.md already exists, skipping")
 	}
 
 	a.addDefaultGitignoreEntries()
@@ -311,8 +315,8 @@ func (a *App) CmdInit() error {
 //     elsewhere, either as a normalized copy or, with opts.Link, as a
 //     symlink that leaves the source owning its content.
 //
-// Both modes end at the same canonical path and regenerate AGENTS.md,
-// so nothing downstream needs to know which one ran.
+// Both modes end at the same canonical path, so nothing downstream
+// needs to know which one ran.
 func (a *App) CmdAdd(typ, name string, opts AddOpts) error {
 	if typ == "" || name == "" {
 		a.Error(fmt.Sprintf("Usage: sync-agents add <%s> <name>", strings.Join(ArtifactNames(), "|")))
@@ -370,8 +374,7 @@ func (a *App) CmdAdd(typ, name string, opts AddOpts) error {
 			}
 			a.Info(fmt.Sprintf("Imported %s: %s (from %s)", typ, fpath, srcPath))
 		}
-		a.generateAgentsMD()
-		a.Info("Updated AGENTS.md index")
+		a.migrateAgentsMDOrWarn()
 		return nil
 	}
 
@@ -381,8 +384,7 @@ func (a *App) CmdAdd(typ, name string, opts AddOpts) error {
 	os.WriteFile(fpath, []byte(content), 0644)
 	a.Info(fmt.Sprintf("Created %s: %s", typ, fpath))
 
-	a.generateAgentsMD()
-	a.Info("Updated AGENTS.md index")
+	a.migrateAgentsMDOrWarn()
 	return nil
 }
 
@@ -395,6 +397,7 @@ func (a *App) CmdSync() error {
 	a.deprecateForce()
 
 	a.Info("Syncing .agents/ to agent directories...")
+	a.migrateAgentsMDOrWarn()
 
 	conflicts := 0
 	for _, target := range a.ActiveTargets {
@@ -569,12 +572,18 @@ func (a *App) statusTargets() []string {
 	return targets
 }
 
+// CmdIndex runs the one-time AGENTS.md migration (SPEC-013). It no
+// longer writes a link index: no tool followed those links, and
+// AGENTS.md now belongs to the user. main.go runs the skill
+// frontmatter backfill before it unless --no-fix is given.
 func (a *App) CmdIndex() error {
 	if err := a.EnsureAgentsDir(); err != nil {
 		return err
 	}
-	a.generateAgentsMD()
-	a.Info("Regenerated AGENTS.md")
+	if _, err := a.migrateProjectAgentsMD(); err != nil {
+		a.Error(fmt.Sprintf("AGENTS.md migration: %v", err))
+		return err
+	}
 	return nil
 }
 
@@ -948,6 +957,7 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 	}
 	a.dropGlobalOnlyTargets()
 	a.deprecateForce()
+	a.migrateAgentsMDOrWarn()
 
 	var subdirs []string
 	if fixType == "all" || fixType == "" {
@@ -1236,193 +1246,6 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 	return nil
 }
 
-func (a *App) CmdInheritList() error {
-	agentsMD := filepath.Join(a.ProjectRoot, "AGENTS.md")
-	if _, err := os.Stat(agentsMD); os.IsNotExist(err) {
-		a.Info("No AGENTS.md found.")
-		return nil
-	}
-
-	data, err := os.ReadFile(agentsMD)
-	if err != nil {
-		return err
-	}
-
-	inSection := false
-	for _, line := range strings.Split(string(data), "\n") {
-		if regexp.MustCompile(`^##\s+Inherits`).MatchString(line) {
-			inSection = true
-			continue
-		}
-		if inSection && strings.HasPrefix(line, "## ") {
-			break
-		}
-		if inSection && regexp.MustCompile(`^-\s+\[`).MatchString(line) {
-			fmt.Fprintln(a.Stdout, line)
-		}
-	}
-	return nil
-}
-
-func (a *App) CmdInheritRemove(label string) error {
-	if label == "" {
-		a.Error("Usage: sync-agents inherit --remove <label>")
-		return fmt.Errorf("missing label")
-	}
-
-	agentsMD := filepath.Join(a.ProjectRoot, "AGENTS.md")
-	if _, err := os.Stat(agentsMD); os.IsNotExist(err) {
-		a.Error("No AGENTS.md found.")
-		return fmt.Errorf("no AGENTS.md")
-	}
-
-	data, err := os.ReadFile(agentsMD)
-	if err != nil {
-		return err
-	}
-
-	lines := strings.Split(string(data), "\n")
-	var result []string
-	inSection := false
-	removed := false
-
-	for _, line := range lines {
-		if regexp.MustCompile(`^##\s+Inherits`).MatchString(line) {
-			inSection = true
-			result = append(result, line)
-			continue
-		}
-		if inSection && strings.HasPrefix(line, "## ") {
-			inSection = false
-		}
-		if inSection && strings.Contains(line, "["+label+"](") {
-			removed = true
-			continue
-		}
-		result = append(result, line)
-	}
-
-	os.WriteFile(agentsMD, []byte(strings.Join(result, "\n")), 0644)
-	if removed {
-		a.Info(fmt.Sprintf("Removed inherit: %s", label))
-	} else {
-		a.Warn(fmt.Sprintf("No inherit found with label: %s", label))
-	}
-	return nil
-}
-
-func (a *App) CmdInheritAdd(label, path string) error {
-	if label == "" || path == "" {
-		a.Error("Usage: sync-agents inherit <label> <path>")
-		a.Error("       sync-agents inherit --list")
-		a.Error("       sync-agents inherit --remove <label>")
-		return fmt.Errorf("missing args")
-	}
-
-	// Validate path
-	resolvedPath := path
-	if strings.HasPrefix(path, "/") || strings.HasPrefix(path, "~") {
-		resolvedPath = strings.Replace(path, "~", os.Getenv("HOME"), 1)
-	} else {
-		resolvedPath = filepath.Join(a.ProjectRoot, path)
-	}
-	if _, err := os.Stat(resolvedPath); err != nil {
-		a.Warn(fmt.Sprintf("Path does not exist: %s (link will be added anyway)", path))
-	}
-
-	agentsMD := filepath.Join(a.ProjectRoot, "AGENTS.md")
-	if _, err := os.Stat(agentsMD); os.IsNotExist(err) {
-		a.Error("No AGENTS.md found. Run 'sync-agents init' first.")
-		return fmt.Errorf("no AGENTS.md")
-	}
-
-	data, err := os.ReadFile(agentsMD)
-	if err != nil {
-		return err
-	}
-	content := string(data)
-
-	// Check for duplicate
-	if strings.Contains(content, "["+label+"](") {
-		a.Warn(fmt.Sprintf("Inherit with label '%s' already exists. Use --remove first to update.", label))
-		return fmt.Errorf("duplicate")
-	}
-
-	lines := strings.Split(content, "\n")
-	entry := fmt.Sprintf("- [%s](%s)", label, path)
-
-	if !strings.Contains(content, "## Inherits") {
-		// Insert Inherits section after description
-		var result []string
-		headerDone := false
-		inheritsWritten := false
-		for _, line := range lines {
-			result = append(result, line)
-			if !headerDone && strings.HasPrefix(line, "This file indexes") {
-				headerDone = true
-				result = append(result, "")
-				result = append(result, "## Inherits")
-				result = append(result, "")
-				result = append(result, entry)
-				inheritsWritten = true
-			}
-		}
-		if !inheritsWritten {
-			// Fallback: insert before ## Rules
-			result = nil
-			for _, line := range lines {
-				if line == "## Rules" && !inheritsWritten {
-					result = append(result, "## Inherits")
-					result = append(result, "")
-					result = append(result, entry)
-					result = append(result, "")
-					inheritsWritten = true
-				}
-				result = append(result, line)
-			}
-		}
-		os.WriteFile(agentsMD, []byte(strings.Join(result, "\n")), 0644)
-	} else {
-		// Append to existing Inherits section
-		var result []string
-		inSection := false
-		added := false
-		for _, line := range lines {
-			if regexp.MustCompile(`^##\s+Inherits`).MatchString(line) {
-				inSection = true
-				result = append(result, line)
-				continue
-			}
-			if inSection && !added {
-				if strings.HasPrefix(line, "## ") {
-					result = append(result, entry)
-					result = append(result, "")
-					added = true
-					inSection = false
-				} else if regexp.MustCompile(`^-\s+\[`).MatchString(line) {
-					result = append(result, line)
-					continue
-				} else if line == "" {
-					result = append(result, entry)
-					added = true
-					inSection = false
-					result = append(result, line)
-					continue
-				}
-			}
-			result = append(result, line)
-		}
-		if !added {
-			result = append(result, entry)
-			result = append(result, "")
-		}
-		os.WriteFile(agentsMD, []byte(strings.Join(result, "\n")), 0644)
-	}
-
-	a.Info(fmt.Sprintf("Added inherit: [%s](%s)", label, path))
-	return nil
-}
-
 // -------------------------------------------------------------------------
 // Helpers
 // -------------------------------------------------------------------------
@@ -1458,406 +1281,20 @@ func (a *App) migrateLegacyState(agentsDir string) {
 	a.Info("Removed legacy .agents/STATE.md (replaced by rules/state.md pattern)")
 }
 
-func (a *App) generateAgentsMD() {
-	outfile := filepath.Join(a.ProjectRoot, "AGENTS.md")
-	agentsDir := filepath.Join(a.ProjectRoot, ".agents")
-
-	existing := ""
-	if data, err := os.ReadFile(outfile); err == nil {
-		existing = string(data)
-	}
-	foreign := foreignRegions(existing, ClaudeImportsRegion)
-	preserved := capturePreservedSections(existing, foreign)
-	inheritsBlock := preserved["Inherits"]
-
-	var b strings.Builder
-	b.WriteString("---\ntrigger: always_on\n---\n\n# AGENTS\n\n")
-	b.WriteString("> Auto-generated by [sync-agents](https://github.com/brickhouse-tech/sync-agents). Do not edit manually.\n")
-	b.WriteString("> Run `sync-agents index` to regenerate.\n\n")
-	b.WriteString("This file indexes all rules, skills, and workflows defined in `.agents/`.\n\n")
-
-	if inheritsBlock != "" {
-		// Trim captured trailing blank lines before re-adding the
-		// section separator — otherwise every regeneration appends
-		// one more blank line (index must be idempotent).
-		b.WriteString(strings.TrimRight(inheritsBlock, "\n"))
-		b.WriteString("\n\n")
-	}
-
-	// Rules
-	b.WriteString("## Rules\n\n")
-	rulesDir := filepath.Join(agentsDir, "rules")
-	ruleFiles := listMDFiles(rulesDir)
-	scopedRules := osScopedMDFiles(rulesDir)
-	if len(ruleFiles) > 0 || len(scopedRules) > 0 {
-		for _, name := range ruleFiles {
-			b.WriteString(indexEntry(name, ".agents/rules/"+name+".md", filepath.Join(rulesDir, name+".md")))
-		}
-		for _, se := range scopedRules {
-			rel := se.OS + "/" + se.Name
-			b.WriteString(indexEntryBadge(se.Name, ".agents/rules/"+rel+".md", filepath.Join(rulesDir, se.OS, se.Name+".md"), se.OS))
-		}
-	} else {
-		b.WriteString("_No rules defined yet. Add one with `sync-agents add rule <name>`._\n")
-	}
-	b.WriteString("\n")
-
-	// Skills
-	b.WriteString("## Skills\n\n")
-	hasSkills := false
-	skillsDir := filepath.Join(agentsDir, "skills")
-	if entries, err := os.ReadDir(skillsDir); err == nil {
-		for _, entry := range entries {
-			// Follow symlinks so a linked skill (SPEC-007) — a symlink
-			// to a checkout dir — is indexed like a vendored one.
-			if !entryIsDir(filepath.Join(skillsDir, entry.Name()), entry) {
-				continue
-			}
-			name := entry.Name()
-			skillFile := filepath.Join(skillsDir, name, "SKILL.md")
-			if _, err := os.Stat(skillFile); err == nil {
-				b.WriteString(indexEntry(name, ".agents/skills/"+name+"/SKILL.md", skillFile))
-				hasSkills = true
-			}
-		}
-		// Legacy flat skills
-		for _, entry := range entries {
-			if entryIsDir(filepath.Join(skillsDir, entry.Name()), entry) {
-				continue
-			}
-			name := entry.Name()
-			if strings.HasSuffix(name, ".md") {
-				baseName := strings.TrimSuffix(name, ".md")
-				b.WriteString(fmt.Sprintf("- [%s](.agents/skills/%s.md)\n", baseName, baseName))
-				hasSkills = true
-			}
-		}
-	}
-	for _, se := range osScopedSkills(skillsDir) {
-		rel := se.OS + "/" + se.Name
-		b.WriteString(indexEntryBadge(se.Name, ".agents/skills/"+rel+"/SKILL.md", filepath.Join(skillsDir, se.OS, se.Name, "SKILL.md"), se.OS))
-		hasSkills = true
-	}
-	if !hasSkills {
-		b.WriteString("_No skills defined yet. Add one with `sync-agents add skill <name>`._\n")
-	}
-	b.WriteString("\n")
-
-	// Workflows
-	b.WriteString("## Workflows\n\n")
-	workflowsDir := filepath.Join(agentsDir, "workflows")
-	wfFiles := listMDFiles(workflowsDir)
-	scopedWF := osScopedMDFiles(workflowsDir)
-	if len(wfFiles) > 0 || len(scopedWF) > 0 {
-		for _, name := range wfFiles {
-			b.WriteString(indexEntry(name, ".agents/workflows/"+name+".md", filepath.Join(workflowsDir, name+".md")))
-		}
-		for _, se := range scopedWF {
-			rel := se.OS + "/" + se.Name
-			b.WriteString(indexEntryBadge(se.Name, ".agents/workflows/"+rel+".md", filepath.Join(workflowsDir, se.OS, se.Name+".md"), se.OS))
-		}
-	} else {
-		b.WriteString("_No workflows defined yet. Add one with `sync-agents add workflow <name>`._\n")
-	}
-	b.WriteString("\n")
-
-	// Agents (subagents) — optional bucket, section appears only
-	// when at least one definition exists (SPEC-004 backwards
-	// compatibility: index gains sections only for present buckets).
-	agentsBucketDir := filepath.Join(agentsDir, "agents")
-	agentFiles := listMDFiles(agentsBucketDir)
-	scopedAgents := osScopedMDFiles(agentsBucketDir)
-	if len(agentFiles) > 0 || len(scopedAgents) > 0 {
-		b.WriteString("## Agents\n\n")
-		for _, name := range agentFiles {
-			b.WriteString(indexEntry(name, ".agents/agents/"+name+".md", filepath.Join(agentsBucketDir, name+".md")))
-		}
-		for _, se := range scopedAgents {
-			rel := se.OS + "/" + se.Name
-			b.WriteString(indexEntryBadge(se.Name, ".agents/agents/"+rel+".md", filepath.Join(agentsBucketDir, se.OS, se.Name+".md"), se.OS))
-		}
-		b.WriteString("\n")
-	}
-
-	// Reference-doc buckets (SPEC-004 Part D): plans and specs.
-	// Optional sections like Agents, but listed recursively because
-	// these documents are commonly grouped per effort in subdirs.
-	for _, ref := range []struct{ title, dir string }{
-		{"Plans", "plans"},
-		{"Specs", "specs"},
-	} {
-		refDir := filepath.Join(agentsDir, ref.dir)
-		files, warns := listMDFilesRecursive(refDir)
-		for _, w := range warns {
-			a.Warn(w)
-		}
-		if len(files) == 0 {
-			continue
-		}
-		b.WriteString("## " + ref.title + "\n\n")
-		for _, rel := range files {
-			link := ".agents/" + ref.dir + "/" + rel + ".md"
-			b.WriteString(indexEntry(rel, link, filepath.Join(refDir, filepath.FromSlash(rel)+".md")))
-		}
-		b.WriteString("\n")
-	}
-
-	// ADRs (SPEC-004 Part F). Status is encoded by subdirectory.
-	// Only accepted + proposed records are indexed; denied records
-	// are deliberately excluded but pointed at, so an agent (or
-	// human) checks past rejections before proposing a duplicate.
-	adrsDir := filepath.Join(agentsDir, "adrs")
-	adrFiles := map[string][]string{}
-	for _, status := range ADRStatuses {
-		files, warns := listMDFilesRecursive(filepath.Join(adrsDir, status))
-		for _, w := range warns {
-			a.Warn(w)
-		}
-		adrFiles[status] = files
-	}
-	if len(adrFiles[ADRStatusAccepted])+len(adrFiles[ADRStatusProposed])+len(adrFiles[ADRStatusDenied]) > 0 {
-		b.WriteString("## ADRs\n\n")
-		b.WriteString("Architecture Decision Records. Denied records are NOT listed here — before proposing a new ADR, check `.agents/adrs/denied/` so an already-rejected decision isn't re-proposed.\n\n")
-		for _, group := range []struct{ title, status string }{
-			{"Accepted", ADRStatusAccepted},
-			{"Proposed", ADRStatusProposed},
-		} {
-			files := adrFiles[group.status]
-			if len(files) == 0 {
-				continue
-			}
-			b.WriteString("### " + group.title + "\n\n")
-			for _, rel := range files {
-				link := ".agents/adrs/" + group.status + "/" + rel + ".md"
-				src := filepath.Join(adrsDir, group.status, filepath.FromSlash(rel)+".md")
-				b.WriteString(indexEntry(rel, link, src))
-			}
-			b.WriteString("\n")
-		}
-	}
-
-	// Hooks (SPEC-004 Part C)
-	// Hooks are indexed regardless of extension: .json files are
-	// settings-fragments the sync merges into .claude/settings.json;
-	// everything else (shell scripts, helpers) is a companion file
-	// that fragments reference by path. Filtering to .json here
-	// silently erased script-style hooks from the index on every
-	// regeneration — files that exist on disk must never disappear
-	// from AGENTS.md.
-	hooksBucketDir := filepath.Join(agentsDir, "hooks")
-	if entries, err := os.ReadDir(hooksBucketDir); err == nil {
-		var hookFiles []string
-		for _, e := range entries {
-			if !e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
-				hookFiles = append(hookFiles, e.Name())
-			}
-		}
-		if len(hookFiles) > 0 {
-			sort.Strings(hookFiles)
-			b.WriteString("## Hooks\n\n")
-			for _, name := range hookFiles {
-				link := ".agents/hooks/" + name
-				if filepath.Ext(name) == ".json" {
-					b.WriteString(fmt.Sprintf("- [%s](%s) — merged into `.claude/settings.json`\n", name, link))
-				} else {
-					b.WriteString(fmt.Sprintf("- [%s](%s) — companion file (not merged; reference it from a fragment)\n", name, link))
-				}
-			}
-			b.WriteString("\n")
-		}
-	}
-
-	// State — STATE_*.md snapshots are per-engineer working files, so
-	// the index must not enumerate them: that leaks one engineer's
-	// scratch state into the shared, committed AGENTS.md and churns it
-	// on every regeneration. The section is a pointer to the state
-	// convention rule; a snapshot appears here only when it opts in as
-	// a shared task via `shared: true` frontmatter (mirrors the
-	// `import: true` opt-in for reference docs).
-	b.WriteString("## State\n\n")
-	b.WriteString("Follow [rules/state.md](.agents/rules/state.md): record progress in `.agents/STATE_<context>_<timestamp>.md` snapshots. Snapshots are per-engineer and not indexed unless marked `shared: true` in frontmatter.\n")
-	hasState := false
-	if entries, err := os.ReadDir(agentsDir); err == nil {
-		for _, entry := range entries {
-			name := entry.Name()
-			if strings.HasPrefix(name, "STATE_") && strings.HasSuffix(name, ".md") {
-				if !stateSnapshotIsShared(filepath.Join(agentsDir, name)) {
-					continue
-				}
-				if !hasState {
-					b.WriteString("\n### Shared\n\n")
-				}
-				baseName := strings.TrimSuffix(name, ".md")
-				b.WriteString(fmt.Sprintf("- [%s](.agents/%s)\n", baseName, name))
-				hasState = true
-			}
-		}
-	}
-	legacyState := filepath.Join(agentsDir, "STATE.md")
-	if _, err := os.Stat(legacyState); err == nil {
-		if !hasState {
-			b.WriteString("\n### Shared\n\n")
-			hasState = true
-		}
-		b.WriteString("- [STATE.md](.agents/STATE.md)\n")
-	}
-	b.WriteString("\n")
-
-	// Managed @-import block for Claude. Claude doesn't auto-scan
-	// .claude/rules/*.md and doesn't follow markdown links in
-	// AGENTS.md/CLAUDE.md, so the only reliable mechanism to get
-	// rule content into Claude's context is the `@`-import syntax.
-	// The block is fully regenerated each index (stateless); same
-	// .agents/ state produces the same bytes — idempotent and safe
-	// to re-run on every `sync-agents index` / `sync-agents sync`.
-	//
-	// Paths are project-relative (.claude/rules/<name>.md) because
-	// AGENTS.md is checked into git; absolute paths wouldn't port
-	// across developers. Claude resolves @-import symlinks, so
-	// `.claude/rules/X.md` (which is a symlink to
-	// `.agents/rules/X.md`) loads the same content.
-	var localArts []ClaudeRoutedArtifact
-	for _, name := range ruleFiles {
-		localArts = append(localArts, ClaudeRoutedArtifact{
-			Type:     ArtifactRule,
-			Name:     name,
-			Semantic: Passive, // bucket default: rules are passive
-		})
-	}
-	for _, name := range wfFiles {
-		// Bucket default for workflows is Invocable, but
-		// Claude's workflow destination is commands/<name>.md
-		// which Claude already auto-registers — so passive
-		// workflows aren't relevant to local CLAUDE.md for the
-		// common case. We still include workflows that users
-		// have explicitly marked passive via frontmatter.
-		wfPath := filepath.Join(agentsDir, "workflows", name+".md")
-		sem, err := ResolveSemantic(wfPath, ArtifactWorkflow)
-		if err != nil || sem != Passive {
-			continue
-		}
-		localArts = append(localArts, ClaudeRoutedArtifact{
-			Type:     ArtifactWorkflow,
-			Name:     name,
-			Semantic: sem,
-		})
-	}
-	// Reference docs (plans/specs/adrs) opt into the local @-import
-	// block via `import: true` frontmatter (#65). Discovery is flat
-	// (top-level .md per bucket), matching DiscoverArtifacts.
-	for _, bk := range Buckets {
-		if !isReferenceImportType(bk.Artifact) {
-			continue
-		}
-		bkDir := filepath.Join(agentsDir, bk.Dir)
-		for _, name := range listMDFiles(bkDir) {
-			if artifactOptsIntoImport(filepath.Join(bkDir, name+".md"), bk.Artifact) {
-				localArts = append(localArts, ClaudeRoutedArtifact{
-					Type:        bk.Artifact,
-					Name:        name,
-					ImportOptIn: true,
-				})
-			}
-		}
-	}
-
-	if tools := preserved["Tools"]; tools != "" {
-		b.WriteString(strings.TrimRight(tools, "\n"))
-		b.WriteString("\n\n")
-	}
-
-	// Marker regions close the file, one blank line apart: ours first,
-	// then every region another writer (global sync's openclaw-rules)
-	// spliced in, verbatim and in document order. With no passive rules
-	// the claude-imports block is simply absent, so a deleted rule never
-	// leaves a dead @-import behind.
-	var regions []string
-	if importLines := ManagedImportBlockForLocal(localArts); len(importLines) > 0 {
-		regions = append(regions, claudeImportsBlock(importLines))
-	}
-	regions = append(regions, foreign...)
-	b.WriteString(strings.Join(regions, "\n"))
-
-	if _, err := writeIfChanged(outfile, []byte(b.String())); err != nil {
-		a.Warn(fmt.Sprintf("write %s: %v", outfile, err))
-	}
-}
-
-// preservedSectionTitles are the hand-kept H2 sections index carries
-// across a regeneration. Inherits sits right after the header, as it
-// always has. Tools is the section OpenClaw's doctor appends (or merges
-// into, matching the heading case-insensitively) when it folds TOOLS.md
-// into AGENTS.md; it goes after the generated sections.
-var preservedSectionTitles = []string{"Inherits", "Tools"}
-
-// capturePreservedSections returns each preserved section of existing
-// (heading line through the line before the next H2), keyed by its
-// canonical title. Marker regions, which carry their own `## ` headings,
-// are cut out first so they neither end a section early nor get
-// captured into one.
-func capturePreservedSections(existing string, foreign []string) map[string]string {
-	scan, _ := stripRegion(existing, ClaudeImportsRegion)
-	for _, r := range foreign {
-		scan = strings.Replace(scan, r, "", 1)
-	}
-
-	out := map[string]string{}
-	current := ""
-	for _, line := range strings.Split(scan, "\n") {
-		if strings.HasPrefix(line, "## ") {
-			current = ""
-			for _, title := range preservedSectionTitles {
-				if _, seen := out[title]; !seen && preservedHeading(title).MatchString(line) {
-					current = title
-				}
-			}
-		}
-		if current != "" {
-			out[current] += line + "\n"
-		}
-	}
-	return out
-}
-
-// preservedHeading matches an H2 line naming title, case-insensitively.
-func preservedHeading(title string) *regexp.Regexp {
-	return regexp.MustCompile(`(?i)^##\s+` + regexp.QuoteMeta(title) + `\b`)
-}
-
-func listMDFiles(dir string) []string {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	var names []string
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		if strings.HasSuffix(name, ".md") {
-			names = append(names, strings.TrimSuffix(name, ".md"))
-		}
-	}
-	sort.Strings(names)
-	return names
-}
-
 // listMDFilesRecursive returns the .md files under dir at any depth,
 // as slash-separated paths relative to dir with the extension
-// stripped ("effort-x/plan-a"). Reference buckets (plans/specs)
-// allow grouping documents per effort in subdirectories, so their
-// index sections list recursively (SPEC-004 Part D).
+// stripped ("effort-x/plan-a"). ADR status directories allow
+// grouping records in subdirectories (SPEC-004 Part F), so lookups by
+// name walk them recursively.
 //
 // The second return value is a slice of non-fatal warning messages
 // (permission errors, unreadable files) for the caller to surface.
 func listMDFilesRecursive(dir string) ([]string, []string) {
 	var names []string
 	var warns []string
-	// An absent directory is an empty, optional section — not a fault.
-	// The reference buckets (plans/specs) and every ADR status
-	// subdirectory (accepted/proposed/denied) are all optional, so a
-	// missing one must index as empty and stay silent rather than warn.
+	// An absent directory is empty, not a fault: every ADR status
+	// subdirectory (accepted/proposed/denied) is optional, so a missing
+	// one must list as empty and stay silent rather than warn.
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -1889,13 +1326,14 @@ func listMDFilesRecursive(dir string) ([]string, []string) {
 }
 
 // artifactDescription extracts the frontmatter `description` of the
-// markdown file at path for display in the AGENTS.md index. Returns
+// markdown file at path for a one-line listing. SPEC-013 keeps it for
+// the pointer lines of capped delivery bundles. Returns
 // "" (no suffix rendered) when the file has no frontmatter, the
 // description is empty, or it is an unfinished scaffold stub (starts
 // with "TODO"). Folded (`>`) and literal (`|`) multi-line
 // descriptions are resolved to their text and collapsed onto one line
 // (#95). Long descriptions are truncated so one artifact can't
-// dominate the index.
+// dominate a listing.
 func artifactDescription(path string) string {
 	const maxIndexDescription = 140
 	raw, err := os.ReadFile(path)
@@ -1917,79 +1355,9 @@ func artifactDescription(path string) string {
 	return desc
 }
 
-// indexEntry renders one AGENTS.md index line: `- [name](link)` with
-// an ` — description` suffix when the artifact declares one.
-func indexEntry(name, link, srcPath string) string {
-	return indexEntryBadge(name, link, srcPath, "")
-}
-
-// indexEntryBadge renders an index line with an optional OS badge
-// (SPEC-006): - [brew](.agents/rules/macos/brew.md) `[macos]` — desc
-func indexEntryBadge(name, link, srcPath, badge string) string {
-	line := fmt.Sprintf("- [%s](%s)", name, link)
-	if badge != "" {
-		line += " `[" + badge + "]`"
-	}
-	if desc := artifactDescription(srcPath); desc != "" {
-		line += " — " + desc
-	}
-	return line + "\n"
-}
-
-// osScopeOrder is the display order for OS-scoped index entries.
-var osScopeOrder = []string{"macos", "linux", "unix", "windows"}
-
-// scopedEntry is one artifact inside an OS-scoped subdirectory.
-type scopedEntry struct {
-	OS   string // "macos", "linux", "unix", "windows"
-	Name string // artifact name without the OS prefix
-}
-
-// osScopedMDFiles lists the flat .md artifacts inside every OS-scoped
-// subdirectory of a bucket dir, for ALL platforms. Unlike sync, the
-// index is a static file checked into the repo, so a Linux reader
-// must still see the [macos] entries (they just won't apply to them).
-func osScopedMDFiles(dir string) []scopedEntry {
-	var out []scopedEntry
-	for _, scope := range osScopeOrder {
-		for _, name := range listMDFiles(filepath.Join(dir, scope)) {
-			out = append(out, scopedEntry{OS: scope, Name: name})
-		}
-	}
-	return out
-}
-
-// osScopedSkills lists the skills (dirs containing SKILL.md) inside
-// every OS-scoped subdirectory of skills/, for all platforms.
-func osScopedSkills(skillsDir string) []scopedEntry {
-	var out []scopedEntry
-	for _, scope := range osScopeOrder {
-		scopeDir := filepath.Join(skillsDir, scope)
-		entries, err := os.ReadDir(scopeDir)
-		if err != nil {
-			continue
-		}
-		var names []string
-		for _, e := range entries {
-			if strings.HasPrefix(e.Name(), ".") || !entryIsDir(filepath.Join(scopeDir, e.Name()), e) {
-				continue
-			}
-			if _, err := os.Stat(filepath.Join(scopeDir, e.Name(), "SKILL.md")); err == nil {
-				names = append(names, e.Name())
-			}
-		}
-		sort.Strings(names)
-		for _, n := range names {
-			out = append(out, scopedEntry{OS: scope, Name: n})
-		}
-	}
-	return out
-}
-
-// stateSnapshotIsShared reports whether a STATE_*.md snapshot opts
-// into the AGENTS.md index as a shared task via `shared: true`
-// frontmatter. Snapshots are per-engineer by default and stay out of
-// the shared index.
+// stateSnapshotIsShared reports whether a STATE_*.md snapshot opts in
+// as a shared task via `shared: true` frontmatter. Snapshots are
+// per-engineer by default; only shared ones enter the integrity lock.
 func stateSnapshotIsShared(path string) bool {
 	raw, err := os.ReadFile(path)
 	if err != nil {

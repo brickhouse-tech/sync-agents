@@ -27,17 +27,13 @@ type ManagedRegion struct {
 	Name string
 }
 
-// ClaudeImportsRegion carries the @-import lines that make Claude load
-// passive rules (CLAUDE.md globally, AGENTS.md per project).
-var ClaudeImportsRegion = ManagedRegion{Name: "claude-imports"}
-
 // OpenClawRulesRegion carries the inlined passive rule text in the
 // OpenClaw workspace AGENTS.md. OpenClaw follows neither @-imports nor
 // links, so the rule bodies themselves must live in the file.
 var OpenClawRulesRegion = ManagedRegion{Name: "openclaw-rules"}
 
-// regionMarkerPrefix is shared by every region's markers; index uses
-// it to recognize regions written by writers it does not know about.
+// regionMarkerPrefix is shared by every region's markers; the AGENTS.md
+// migration uses it to keep regions written by any writer intact.
 const regionMarkerPrefix = "<!-- sync-agents:"
 
 // Start returns the opening marker line (without newline).
@@ -143,31 +139,6 @@ func RegenerateRegion(path string, r ManagedRegion, entries []ConcatEntry) (chan
 // name.
 var regionStartPattern = regexp.MustCompile(regexp.QuoteMeta(regionMarkerPrefix) + `([A-Za-z0-9_.-]+):start -->`)
 
-// foreignRegions returns every well-formed sync-agents region in text
-// other than own, verbatim (markers and one trailing newline included)
-// and in document order. A start marker with no matching end is not a
-// region and is skipped.
-func foreignRegions(text string, own ManagedRegion) []string {
-	var out []string
-	for pos := 0; pos < len(text); {
-		m := regionStartPattern.FindStringSubmatchIndex(text[pos:])
-		if m == nil {
-			break
-		}
-		r := ManagedRegion{Name: text[pos+m[2] : pos+m[3]]}
-		start, end, ok := r.locate(text[pos+m[0]:])
-		if !ok {
-			pos += m[1]
-			continue
-		}
-		if r != own {
-			out = append(out, text[pos+m[0]+start:pos+m[0]+end])
-		}
-		pos += m[0] + end
-	}
-	return out
-}
-
 // writeIfChanged atomically replaces path with content unless the file
 // already holds exactly those bytes, in which case nothing is written
 // and mtime is preserved. The parent directory must exist.
@@ -176,19 +147,35 @@ func foreignRegions(text string, own ManagedRegion) []string {
 // instead of replacing the link with a regular file. An existing
 // file's permission bits are kept; a new file is 0644.
 func writeIfChanged(path string, content []byte) (bool, error) {
+	return writeAtomic(path, content, nil)
+}
+
+// writeAtomic is writeIfChanged with an optional precondition. When
+// check is non-nil it is called with the file's current bytes (nil
+// when the file does not exist) before any write and again just
+// before the rename; an error from it aborts the write and is
+// returned unchanged. writeIfUnchanged uses it for compare-and-swap.
+func writeAtomic(path string, content []byte, check func(current []byte) error) (bool, error) {
 	if real, err := filepath.EvalSymlinks(path); err == nil {
 		path = real
 	}
 	mode := os.FileMode(0o644)
-	if existing, err := os.ReadFile(path); err == nil {
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return false, err
+	}
+	if check != nil {
+		if err := check(existing); err != nil {
+			return false, err
+		}
+	}
+	if err == nil {
 		if bytes.Equal(existing, content) {
 			return false, nil
 		}
 		if fi, err := os.Stat(path); err == nil {
 			mode = fi.Mode().Perm()
 		}
-	} else if !os.IsNotExist(err) {
-		return false, err
 	}
 
 	// Same directory keeps the rename on one filesystem, so it stays
@@ -214,6 +201,15 @@ func writeIfChanged(path string, content []byte) (bool, error) {
 	}
 	if err := tmp.Close(); err != nil {
 		return false, err
+	}
+	if check != nil {
+		current, err := os.ReadFile(path)
+		if err != nil && !os.IsNotExist(err) {
+			return false, err
+		}
+		if err := check(current); err != nil {
+			return false, err
+		}
 	}
 	if err := os.Rename(tmpName, path); err != nil {
 		return false, err

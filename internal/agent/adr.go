@@ -24,9 +24,9 @@ var ADRStatuses = []string{ADRStatusAccepted, ADRStatusProposed, ADRStatusDenied
 
 // CmdADR transitions an ADR between statuses: `sync-agents adr
 // <accept|deny|propose> <name>`. The record file moves between
-// status subdirectories, its frontmatter `status:` is updated, and
-// the AGENTS.md index is regenerated (which is what actually
-// adds/removes it from agent-visible context).
+// status subdirectories and its frontmatter `status:` is updated. The
+// status directory is what agents see; AGENTS.md no longer lists ADRs
+// (SPEC-013).
 func (a *App) CmdADR(action, name string) error {
 	var target string
 	switch action {
@@ -93,8 +93,7 @@ func (a *App) CmdADR(action, name string) error {
 	}
 
 	a.Info(fmt.Sprintf("ADR %q: %s -> %s", name, currentStatus, target))
-	a.generateAgentsMD()
-	a.Info("Updated AGENTS.md index")
+	a.migrateAgentsMDOrWarn()
 	return nil
 }
 

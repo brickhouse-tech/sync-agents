@@ -83,6 +83,21 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 		}
 	}
 
+	// SPEC-013 retired the claude-imports block in ~/.claude/CLAUDE.md:
+	// Claude Code loads ~/.claude/rules/*.md natively, so the block only
+	// duplicated that set. Strip it once, keep every other line, and
+	// remove the file only when nothing else is left. This runs before
+	// the empty-tree early return so a stale block goes either way.
+	if hasClaudeTarget {
+		claudeMDPath := filepath.Join(parent, ".claude", "CLAUDE.md")
+		n, _, err := a.scrubClaudeManagedBlock(claudeMDPath, a.DryRun)
+		if err != nil {
+			a.Warn(fmt.Sprintf("strip claude-imports block from %s: %v", claudeMDPath, err))
+		} else if n > 0 && !a.DryRun {
+			a.Info(fmt.Sprintf("removed the claude-imports block from %s (Claude loads ~/.claude/rules/ natively)", claudeMDPath))
+		}
+	}
+
 	// regionBatches starts with every active region host, empty, so a
 	// region whose last passive rule was deleted is still regenerated
 	// (to markers and banner only) instead of keeping stale text.
@@ -113,14 +128,6 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 	// regenerate each target once after the artifact pass.
 	concatBatches := map[string][]ConcatEntry{}
 
-	// claudeRouted collects every (name, sem, typ) that routed to
-	// Claude during this sync. The passive-rule subset drives the
-	// managed @-import block we write to ~/.claude/CLAUDE.md after
-	// the artifact pass — Claude doesn't auto-load rules/*.md, so
-	// the block is how passive rules actually reach Claude's
-	// context. See SPEC-002 §Claude rule loading (issue #46).
-	var claudeRouted []ClaudeRoutedArtifact
-
 	// unmanaged collects destinations sync refused to overwrite
 	// because sync-agents did not create them, for the end-of-run
 	// summary below.
@@ -145,14 +152,6 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 				a.Warn(fmt.Sprintf("[%s] skip %s %q: %s", tool.ID, art.Type, art.Name, dest.SkipReason))
 
 			case StrategySymlink:
-				if tool.ID == "claude" {
-					claudeRouted = append(claudeRouted, ClaudeRoutedArtifact{
-						Type:        art.Type,
-						Name:        art.Name,
-						Semantic:    sem,
-						ImportOptIn: artifactOptsIntoImport(art.SourcePath, art.Type),
-					})
-				}
 				if err := a.applySymlinkDestination(tool.ID, art, dest); err != nil {
 					a.Warn(fmt.Sprintf("[%s] %s %q: %v", tool.ID, art.Type, art.Name, err))
 					unmanaged = append(unmanaged, dest.Path)
@@ -183,32 +182,6 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 			a.Warn(fmt.Sprintf("  %s", p))
 		}
 		a.Warn("Re-run with --force to take these paths; each original is renamed to a timestamped sibling, never deleted.")
-	}
-
-	// After the per-artifact pass — and after concat regen below —
-	// write the managed @-import block for Claude. The block is the
-	// bridge between "sync placed the rule at ~/.claude/rules/X.md"
-	// and "Claude actually loads rule X into context." Without it,
-	// passive rules reach the filesystem but not the model.
-	if hasClaudeTarget && !a.DryRun {
-		claudeMDPath := filepath.Join(parent, ".claude", "CLAUDE.md")
-		importPaths := CollectClaudeRuleImportPaths(parent, claudeRouted)
-		if len(importPaths) > 0 {
-			changed, err := RegenerateClaudeImports(claudeMDPath, importPaths)
-			if err != nil {
-				a.Warn(fmt.Sprintf("claude imports regen failed for %s: %v", claudeMDPath, err))
-			} else if changed {
-				a.Info(fmt.Sprintf("regenerated %s (%d @-imports)", claudeMDPath, len(importPaths)))
-			} else {
-				a.Info(fmt.Sprintf("%s already current (%d @-imports)", claudeMDPath, len(importPaths)))
-			}
-		}
-	} else if hasClaudeTarget && a.DryRun {
-		claudeMDPath := filepath.Join(parent, ".claude", "CLAUDE.md")
-		importPaths := CollectClaudeRuleImportPaths(parent, claudeRouted)
-		if len(importPaths) > 0 {
-			a.Info(fmt.Sprintf("[dry-run] would regenerate %s with %d @-imports", claudeMDPath, len(importPaths)))
-		}
 	}
 
 	// Regenerate each concat target. Sort by path for deterministic

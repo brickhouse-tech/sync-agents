@@ -18,6 +18,15 @@ var openClawEnvKeys = []string{
 // App already ignores the environment; this also covers any test that
 // builds an App with OSToolEnv, so a developer's exports can never
 // point a test at a live workspace.
+// workspaceAgentsFixture is a representative OpenClaw workspace
+// AGENTS.md: old index output plus the `## Tools` section OpenClaw's
+// doctor appends at the end of the file. It doubles as an AGENTS.md
+// migration fixture.
+func workspaceAgentsFixture(t *testing.T) string {
+	t.Helper()
+	return readFile(t, filepath.Join("testdata", "agentsmd", "openclaw-workspace-tools.md"))
+}
+
 func TestMain(m *testing.M) {
 	for _, k := range openClawEnvKeys {
 		os.Unsetenv(k)

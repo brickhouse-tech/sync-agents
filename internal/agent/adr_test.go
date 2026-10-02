@@ -53,26 +53,6 @@ func TestCmdADR_AcceptMovesAndUpdatesStatus(t *testing.T) {
 	}
 }
 
-func TestCmdADR_DenyRemovesFromIndex(t *testing.T) {
-	a := newADRApp(t)
-	writeADR(t, a, ADRStatusProposed, "use-mongo.md", "---\nname: use-mongo\ndescription: Adopt Mongo. Use when persisting documents.\nstatus: proposed\n---\n")
-	writeADR(t, a, ADRStatusAccepted, "use-postgres.md", "---\nname: use-postgres\ndescription: Adopt Postgres. Use when persisting relational data.\nstatus: accepted\n---\n")
-
-	if err := a.CmdADR("deny", "use-mongo"); err != nil {
-		t.Fatalf("deny: %v", err)
-	}
-	idx := readFile(t, filepath.Join(a.ProjectRoot, "AGENTS.md"))
-	if !strings.Contains(idx, "## ADRs") || !strings.Contains(idx, "### Accepted") {
-		t.Fatalf("ADRs section missing:\n%s", idx)
-	}
-	if strings.Contains(idx, "use-mongo") {
-		t.Fatalf("denied ADR still indexed:\n%s", idx)
-	}
-	if !strings.Contains(idx, "adrs/denied") {
-		t.Fatalf("denied-dir guidance note missing:\n%s", idx)
-	}
-}
-
 func TestCmdADR_NestedAndErrors(t *testing.T) {
 	a := newADRApp(t)
 	// Nested grouping subdir resolves by basename.

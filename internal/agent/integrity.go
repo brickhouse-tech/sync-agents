@@ -222,8 +222,7 @@ func (st *integrityState) addArtifact(agentsDir string, b Bucket, dir string, e 
 	}
 
 	// STATE snapshots are per-engineer scratch unless they opt in with
-	// `shared: true` frontmatter (same convention as the AGENTS.md
-	// indexer). Applies to flat .md artifacts.
+	// `shared: true` frontmatter. Applies to flat .md artifacts.
 	if !b.DirPerArtifact && strings.HasPrefix(e.Name(), "STATE_") && strings.HasSuffix(e.Name(), ".md") {
 		if !stateSnapshotIsShared(abs) {
 			return nil

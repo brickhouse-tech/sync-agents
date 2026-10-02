@@ -201,7 +201,7 @@ func (a *App) cleanToolDir(toolID, dir, agentsRoot string) (int, error) {
 	// generated subdir like global_workflows/ that's now empty.
 	a.pruneEmptyDirs(toolID, pruneCandidates, dir)
 
-	// For Claude specifically, the managed @-import block lives in
+	// For Claude specifically, a legacy @-import block may live in
 	// <dir>/CLAUDE.md. This file is user-editable, so we don't
 	// remove it blindly during the walk (fileCarriesBanner would
 	// reject it because its first line is an HTML comment marker,
@@ -246,7 +246,11 @@ func (a *App) cleanToolDir(toolID, dir, agentsRoot string) (int, error) {
 //
 // When the file has content outside the markers, only the block is
 // stripped; the rest is preserved. This protects user-authored
-// frontmatter or prose that may co-exist with the managed region.
+// frontmatter or prose that may co-exist with the managed region. The
+// rewrite is a compare-and-swap, so a concurrent edit is never undone.
+//
+// Global sync calls it too: SPEC-013 retired the block, and stripping
+// it is the one-time migration for ~/.claude/CLAUDE.md.
 func (a *App) scrubClaudeManagedBlock(claudeMDPath string, dryRun bool) (int, bool, error) {
 	data, err := os.ReadFile(claudeMDPath)
 	if err != nil {
@@ -256,7 +260,7 @@ func (a *App) scrubClaudeManagedBlock(claudeMDPath string, dryRun bool) (int, bo
 		return 0, false, err
 	}
 
-	remaining, found := stripRegion(string(data), ClaudeImportsRegion)
+	remaining, found := stripRegion(string(data), legacyClaudeImportsRegion)
 	if !found {
 		return 0, false, nil
 	}
@@ -286,7 +290,7 @@ func (a *App) scrubClaudeManagedBlock(claudeMDPath string, dryRun bool) (int, bo
 	if !strings.HasSuffix(remaining, "\n") {
 		remaining += "\n"
 	}
-	if err := os.WriteFile(claudeMDPath, []byte(remaining), 0o644); err != nil {
+	if err := writeIfUnchanged(claudeMDPath, data, []byte(remaining)); err != nil {
 		return 0, false, err
 	}
 	return 1, false, nil

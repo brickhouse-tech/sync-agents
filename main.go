@@ -187,7 +187,7 @@ func main() {
 	var indexNoFix bool
 	indexCmd := &cobra.Command{
 		Use:   "index",
-		Short: "Regenerate AGENTS.md (backfills skill frontmatter first)",
+		Short: "Migrate a generated AGENTS.md once (backfills skill frontmatter first)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !indexNoFix {
 				app.CmdBackfillSkills()
@@ -521,31 +521,17 @@ func main() {
 	fixCmd.Flags().BoolVar(&noClobber, "no-clobber", false, "Skip items that already exist")
 	rootCmd.AddCommand(fixCmd)
 
-	// inherit
-	var inheritList bool
-	var inheritRemove string
-	inheritCmd := &cobra.Command{
-		Use:   "inherit [label] [path]",
-		Short: "Manage inheritance links",
+	// inherit — removed by SPEC-013; a hidden stub points at the docs.
+	// Flag parsing is off so old invocations (--list, --remove) reach
+	// the explanation instead of an unknown-flag error.
+	rootCmd.AddCommand(&cobra.Command{
+		Use:                "inherit",
+		Hidden:             true,
+		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if inheritList {
-				return app.CmdInheritList()
-			}
-			if inheritRemove != "" {
-				return app.CmdInheritRemove(inheritRemove)
-			}
-			if len(args) < 2 {
-				app.Error("Usage: sync-agents inherit <label> <path>")
-				app.Error("       sync-agents inherit --list")
-				app.Error("       sync-agents inherit --remove <label>")
-				return fmt.Errorf("missing args")
-			}
-			return app.CmdInheritAdd(args[0], args[1])
+			return app.CmdInherit()
 		},
-	}
-	inheritCmd.Flags().BoolVar(&inheritList, "list", false, "List inheritance links")
-	inheritCmd.Flags().StringVar(&inheritRemove, "remove", "", "Remove inheritance link by label")
-	rootCmd.AddCommand(inheritCmd)
+	})
 
 	// promote — copy a local .agents/ artifact into ~/.agents/.
 	//
