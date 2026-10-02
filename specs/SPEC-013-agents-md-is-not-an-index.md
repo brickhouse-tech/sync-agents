@@ -1,10 +1,10 @@
 ---
 id: SPEC-013
 title: "AGENTS.md is not an index (per-tool delivery channels, version-gated CLAUDE.md)"
-status: 📝 draft
+status: 🟡 implemented on feature/agents-md-regions; release gate (per-tool symlink canary) open
 owner: nmccready
 created: 2026-10-01
-updated: 2026-10-01
+updated: 2026-10-02
 related: SPEC-002, SPEC-004, SPEC-006, SPEC-010, SPEC-011, SPEC-012
 ---
 
@@ -21,6 +21,8 @@ This spec makes three changes:
 3. `CLAUDE.md -> AGENTS.md` is created only when the installed Claude Code needs it (< 2.1.281).
 
 It is a breaking release, 2.0.0. The reasoning is recorded here in full because the owner asked for it.
+
+**Status (2026-10-02).** U1–U7 are implemented on `feature/agents-md-regions`. Current behavior is documented in `docs/architecture/delivery-channels.md` and `docs/migration-v2.md`; where this spec and those docs differ, the docs and code win (see Implementation reconciliation). The release gate is open: see Remaining before ship.
 
 ## Problem
 
@@ -502,11 +504,81 @@ Each unit ends green (`GOTOOLCHAIN=local go test -mod=vendor ./...` plus the bat
   - Release gate: a manual canary per tool on a machine that has it (Cursor >= 2.5, Copilot VS Code and CLI, Codex, opencode). Each confirms the symlinked file loads; for Codex, also that Claude ignores `AGENTS.override.md`. A failing tool flips to the real-file fallback before tagging.
   - Then the `feat!:` commit, 2.0.0. On ship, delete this spec and update the ledger row.
 
+## Implementation reconciliation
+
+Accepted deviations from the plan above, per unit. The docs describe the result as current truth.
+
+**U1** (`7c4df3e`). As planned.
+
+**U2** (`1bba105`, migration and deletion).
+1. 11 representative fixtures (3 real, 2 from the pre-change binary, 6 hand-written) instead of 46 copies: the real workspace file carries PII. An uncommitted corpus check ran over 73 generated files on the author's machine; all reduce to stub, stub + Inherits, or stub + Inherits + Tools, and all are idempotent.
+2. Blank-line runs between kept blocks are normalized to one; kept blocks are byte for byte; the survival test checks non-blank lines.
+3. Removing a mid-file `claude-imports` block drops one adjacent blank line.
+4. The migration also runs in `sync` and `fix`. `init` writes the stub only when `AGENTS.md` is absent (Lstat).
+5. The `~/.claude/CLAUDE.md` strip runs before global sync's "no artifacts" early return.
+6. `artifactDescription` and `regionStartPattern` are kept (pointers, migration); `foreignRegions` is deleted.
+7. Limit: an `AGENTS.md` that is itself a symlink has its target rewritten (the backup holds the original).
+
+**U3** (`05737bb`, pure channel layer).
+1. Generated files end with `"\n\n"` so exact-fit size accounting holds.
+2. `fitBudget` tries a whole-fit fast path first, then greedy first fit with the pointer heading charged up front.
+3. `renderChannel` strips regions from `Frame.AgentsMD` itself; a missing or blank `AGENTS.md` means no copy and no override note.
+4. One `errJSONNotEditable` covers JSONC and wrong shapes.
+5. `removeJSONArrayEntry` drops the member when the array becomes empty, so ensure then remove round-trips exactly. Limit: a user's own empty `instructions: []` disappears on remove.
+6. `ensureJSONArrayEntry` creates a document from empty input.
+7. `codex.go` landed here; `resolveCodexHome` and the registry change moved to U6.
+
+**U4** (`8f34f57`, local wiring).
+1. The `!.cursor/rules` gitignore line is kept, so teams' committed `.mdc` rules stay visible; the exact `.cursor/rules/sync-agents.mdc` line ignores our link. `init`'s block: `.cursor/*`, `!.cursor/rules`, `.codex/*`, `.github/copilot/*`, `.agents/index/`.
+2. Per-target directory gitignore lines are unchanged. Under `index = commit`, the `.cursor/` line still ignores the `.mdc` link and sync re-adds it if removed. sync warns only about an `.agents/index/` line, not about `.cursor/`. Documented workaround: `git add -f .cursor/rules/sync-agents.mdc` once.
+3. `gitignoreEntries` takes the run's results, so a user's real file at a link path is never ignored.
+4. Local legacy cleanup is derived from the registry (`legacyFoldPaths`, the inverse of `linksBucket`); the sketch's `legacyPlacements` table was not built.
+5. `channelRows` returns `([]StatusEntry, error)`; extra row states `skipped` (sameTree) and `error` (render failure).
+6. A region mount at project scope errors with "delivered by global sync".
+7. `App.TargetsFromFlag` drives Explicit (consent).
+8. Dry-run passes to-be-removed legacy paths to mount, so it prints would-link instead of a false conflict.
+9. Known limits: `fix` does not count channel mounts in "Repaired N"; bucket-only `clean` ignores `--dry-run` (pre-existing).
+10. Real run on a temp copy of this repo: Cursor 12 rules (1 global), Copilot, Codex, and opencode 11; Codex 26,630 of 32,768 bytes; a second sync changed no mtime; `clean` restored the tree; the `AGENTS.md` sha was stable.
+
+**U5** (`65d0b4b`, CLAUDE.md policy).
+1. `decideClaudeMD(claudeMDFacts, probe func() ClaudeProbe)` takes a struct, because `CLAUDE.local.md` added an input.
+2. The decision is computed once per command and passed to `updateGitignore`; no memo on `App`.
+3. `ClaudeMDDecision` gains `Current` and `Managed`; `applyClaudeMD` returns `(changed, error)`.
+4. "Our link" is any symlink that resolves to `AGENTS.md`.
+5. An invalid `claude-md` value warns and changes nothing.
+6. Bats setup puts a fake `claude` (2.1.286) first on `PATH`.
+7. `fix` no longer relinks a foreign `CLAUDE.md` symlink and `clean` no longer removes one (in the BREAKING footer).
+8. The old hook's `git add AGENTS.md CLAUDE.md ...` failed when `CLAUDE.md` was absent; fixed in U4.
+
+**U6** (`f83cda4` split of deliver.go, `fd70c66` global wiring).
+1. The home gate also covers per-artifact links for tools with a global channel, so global sync no longer creates `~/.codeium` or `~/.config/opencode` for an uninstalled tool. Skip warnings print only when the channel delivers.
+2. Undeliverable global channels are silent unless `--targets` names the tool; `global status` shows `unmounted` with the reason.
+3. The global Copilot link and the opencode entry use absolute paths (SPEC-002 convention).
+4. `global clean` removes an emptied region host only where sync may create it (Codex, Windsurf); the OpenClaw host is always kept.
+5. Passive skills enter channels for every tool; Cursor's passive content routes through the channel (gap row); `Rendered.Demoted` names only cap-forced rules; a channel link conflict makes global sync exit non-zero.
+6. Known limits: `global clean` still removes an emptied tool home (pre-existing); the non-bannered legacy "left …" line repeats each run; a rule with broken frontmatter warns twice.
+
+**U7** (`1c6c08d` lint; docs, spec, and ledger in the following commit).
+1. `lint` and `lint all` report W201 for `import: true` on plans, specs, and ADRs (recursive). The spec's suggested remedy, `add rule <n> --from <doc> --link`, is refused for a doc already inside `.agents/` (cycle guard), so the docs suggest `git mv` into `rules/`, or `add rule --from` without `--link` to copy.
+2. The Windsurf project 12,000-char per-file lint warning was not built; the docs mark the limit as not checked.
+3. The embedded state rule template no longer says `index` lists snapshots; `shared: true` is described by what it still does (the integrity lock, for snapshots inside a bucket).
+4. Open question 3 is answered by the Claude Code memory docs (checked 2026-10-02): `@path` imports inside an `AGENTS.md` that Claude reads natively are expanded.
+5. CHANGELOG.md is generated by `commit-and-tag-version` at release and is not hand-edited; the 2.0.0 entry comes from the `feat!`/`BREAKING CHANGE` footers.
+
+**Size outcome** (measured `7c4df3e..fd70c66`). Production Go +4,240 / −1,932 (net +2,308); tests +3,318 / −1,553. The plan estimated net −450 to −580. Deletions were counted correctly; the new delivery work was under-counted: five tools that received nothing now receive content (Cursor, Copilot, Codex, and opencode at both scopes, OpenClaw through its channel), plus the migration (~330), the CLAUDE.md policy (~400), and JSON byte-range editing (~290). `agent.go` went from 2,177 to 1,605 lines. A simplify pass over `deliver*.go` and `channel.go` is recommended.
+
+## Remaining before ship
+
+- [ ] Per-tool symlink canary on a machine that has each tool: Cursor >= 2.5 (`.cursor/rules/sync-agents.mdc` symlink loads), Copilot in VS Code and the CLI (`.github/instructions/` and `~/.copilot/instructions/` links load), Codex (`AGENTS.override.md` symlink loads, and Claude ignores the override), opencode (symlinked `instructions` entry loads; a missing entry from a fresh clone is a no-op). A failing tool flips its `channelSpecs` row to the real-file fallback (T1) before tagging.
+- [ ] Simplify pass over `deliver*.go` and `channel.go` (size outcome above).
+- [ ] Release 2.0.0 from a `feat!:` commit whose `BREAKING CHANGE:` footer lists the breaking changes and links `docs/migration-v2.md`.
+- [ ] On ship, per `.agents/rules/specs.md`: confirm the durable content is in `docs/` (delivery-channels.md, migration-v2.md), delete this file, and update the ledger row (status, retire commit, doc destinations).
+
 ## Open questions
 
 1. **Canary results** (U7 gate). Does each of Cursor, Copilot (VS Code and CLI), Codex, and opencode follow a symlink at its read path? Does opencode treat a missing `instructions` file (fresh clone with a committed `opencode.json`) as a no-op?
 2. **Copilot and `CLAUDE.md`.** The Copilot coding agent may also read a root `CLAUDE.md`. If it does, `CLAUDE.md -> AGENTS.md` (created for Claude < 2.1.281) gives Copilot `AGENTS.md` twice. Unverified.
-3. Does Claude's native `AGENTS.md` read resolve `@imports`? The workspace's `@SOUL.md` lines depend on it when no `CLAUDE.md` link exists.
+3. ~~Does Claude's native `AGENTS.md` read resolve `@imports`?~~ Answered: yes, per the Claude Code memory docs (checked 2026-10-02). The workspace's `@SOUL.md` lines load without a `CLAUDE.md` link.
 4. Should `index = commit` be suggested by `init` for repos whose teams use cloud agents?
 5. Should `codex` join `init`'s default targets, now that it has a working channel? The override then appears in every new project.
 6. A follow-up spec for skills: `.agents/skills` is native to Codex, Cursor, and opencode, so `.cursor/skills` and `.codex/skills` links may double-register skills.

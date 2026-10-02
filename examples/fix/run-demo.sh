@@ -9,7 +9,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-SYNC_AGENTS="$REPO_ROOT/src/sh/sync-agents.sh"
+SYNC_AGENTS="${SYNC_AGENTS_BIN:-$REPO_ROOT/bin/sync-agents}"
 FIXTURE="$SCRIPT_DIR/fixture"
 TMP="$SCRIPT_DIR/tmp"
 
@@ -44,7 +44,7 @@ ls -la "$TMP/.windsurf/" 2>/dev/null || echo "  .windsurf/ does not exist"
 
 # Run fix
 banner "Running: sync-agents fix skills"
-bash "$SYNC_AGENTS" -d "$TMP" fix skills
+"$SYNC_AGENTS" -d "$TMP" fix skills
 echo ""
 
 # Show the fixed state
@@ -63,10 +63,8 @@ for target in .claude .windsurf .cursor ".github/copilot"; do
 done
 echo ""
 
-# Run index to show AGENTS.md picks up the skill
-bash "$SYNC_AGENTS" -d "$TMP" index >/dev/null 2>&1
-echo -e "${GREEN}AGENTS.md now lists the skill correctly:${RESET}"
-grep -A2 "## Skills" "$TMP/AGENTS.md"
+echo -e "${GREEN}Status after fix:${RESET}"
+"$SYNC_AGENTS" -d "$TMP" status
 
 banner "Demo complete"
 echo "To reset: rm -rf $TMP"

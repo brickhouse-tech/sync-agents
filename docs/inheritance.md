@@ -1,148 +1,78 @@
 # Inheritance
 
-Convention-based hierarchical rule sharing: projects link upward to team, org, and global `AGENTS.md` files instead of duplicating rules.
+How rules from a team, an org, or your whole machine reach a project,
+and what the `## Inherits` section in `AGENTS.md` does and does not do.
 
-## How it works
+## What layers content
 
-Add an `## Inherits` section to your project's `AGENTS.md` that links
-to parent-level agent configs:
+Two mechanisms deliver rule content from outside a project. Both put
+the rule bodies where each tool reads them.
 
-```markdown
-## Inherits
-- [global](../../AGENTS.md)
-- [team](../AGENTS.md)
-```
+1. **The user-level tree, `~/.agents/`.** Rules here apply to every
+   project on the machine. `sync-agents global sync` delivers them:
+   Claude through `~/.claude/rules/`, the other tools through their
+   user-level channels, and Cursor through each project's `cursor.mdc`.
+   Copy a project rule there with [`promote`](commands/promote.md).
+2. **Sources, `.agents/sources.yaml`.** A project declares rules,
+   skills, or whole trees from another repo. `sync-agents pull` installs
+   them SHA-pinned, and `sync` delivers them like local rules. A linked
+   source keeps a live checkout authoritative. See
+   [sources.md](sources.md) and [linked-sources.md](linked-sources.md).
 
-AI agents (Claude, Codex, etc.) follow markdown links natively — when
-they read your project's `AGENTS.md`, they'll traverse the inheritance
-chain and apply rules from all levels.
-
-## Hierarchy example
-
-```
-~/code/                     # Global: security norms, universal rules
-  ├── .agents/
-  ├── AGENTS.md
-  └── org/                  # Org-level: coding standards, shared workflows
-      ├── .agents/
-      ├── AGENTS.md
-      └── team/             # Team-level: language-specific rules
-          ├── .agents/
-          ├── AGENTS.md
-          └── project/      # Project: project-specific rules + inherits
-              ├── .agents/
-              └── AGENTS.md  → ## Inherits links to team, org, global
-```
-
-**Inheritance is upward-only.** A project declares what it inherits
-from. Parent directories don't need to know about their children — when
-an agent works at the org level, it already has access to org-level
-rules.
-
-## Managing inheritance
+For an org or team layer, keep the shared rules in a repo and declare
+it as a source in each project, or link it with a linked source.
 
 ```bash
-# Add an inheritance link
-sync-agents inherit global ../../AGENTS.md
-sync-agents inherit team ../AGENTS.md
+sync-agents promote rule security          # project rule -> ~/.agents/rules/
+sync-agents global sync                    # deliver ~/.agents/ to every tool
 
-# List current inheritance links
-sync-agents inherit --list
-
-# Remove an inheritance link
-sync-agents inherit --remove global
-```
-
-The `## Inherits` section is preserved across `sync-agents index`
-regenerations.
-
-## Full example
-
-Set up a three-level hierarchy: global rules → org standards → project
-config.
-
-```bash
-# 1. Create global rules (e.g. ~/code/.agents/)
-cd ~/code
-sync-agents init
-sync-agents add rule security
-cat > .agents/rules/security.md << 'EOF'
----
-trigger: always_on
----
-# Security
-- Never commit secrets or API keys
-- Validate all external input
-- Use parameterized queries for database access
-EOF
-
-# 2. Create org-level rules (e.g. ~/code/myorg/.agents/)
-cd ~/code/myorg
-sync-agents init
-sync-agents add rule go-standards
-cat > .agents/rules/go-standards.md << 'EOF'
----
-trigger: always_on
----
-# Go Standards
-- Use `gofmt` and `golangci-lint` on all Go files
-- Prefer table-driven tests
-- Export only what consumers need
-EOF
-
-# 3. Create project with inheritance
-cd ~/code/myorg/api-service
-sync-agents init
-sync-agents add rule api-conventions
-
-# Link to parent levels
-sync-agents inherit org ../AGENTS.md
-sync-agents inherit global ../../AGENTS.md
-
-# Sync to agent directories
+sync-agents source add rule:myorg/agent-rules@v2/rules/go-standards
+sync-agents pull
 sync-agents sync
 ```
 
-The project's `AGENTS.md` now looks like:
+## `## Inherits` is plain text
+
+Before 2.0, `AGENTS.md` was generated, `sync-agents inherit` managed an
+`## Inherits` list of links to parent `AGENTS.md` files, and the
+generator preserved that section. The links delivered nothing: no tool
+follows Markdown links in `AGENTS.md`.
+
+- Codex, opencode, and OpenClaw read `AGENTS.md` as plain text.
+- Claude does not follow links. It does expand `@path` imports in an
+  `AGENTS.md` it reads natively (Claude Code docs, "AGENTS.md").
+
+In 2.0:
+
+- `AGENTS.md` is your file. The migration keeps an existing
+  `## Inherits` section byte for byte (see
+  [migration-v2.md](migration-v2.md)).
+- The `inherit` command is removed. Running it prints a pointer here.
+- An `## Inherits` section is ordinary text. Edit it by hand, keep it as
+  a note for humans, or delete it.
+
+If you want Claude to load a parent file, write an `@` import instead of
+a link. This works for Claude only:
 
 ```markdown
 ## Inherits
-- [org](../AGENTS.md)
-- [global](../../AGENTS.md)
 
-## Rules
-- [api-conventions](.agents/rules/api-conventions.md)
-
-## Skills
-_No skills defined yet._
-
-## Workflows
-_No workflows defined yet._
+@../AGENTS.md
 ```
 
-When an AI agent reads this file, it follows the `## Inherits` links
-and applies rules from all three levels — project-specific API
-conventions, org-wide Go standards, and global security rules.
+## Why upward links did not work
 
-## Verifying inheritance
-
-```bash
-# Check what's inherited
-sync-agents inherit --list
-# Output:
-# - [org](../AGENTS.md)
-# - [global](../../AGENTS.md)
-
-# Remove a link if no longer needed
-sync-agents inherit --remove global
-
-# Re-add with a different path
-sync-agents inherit global ../../AGENTS.md
-```
+A Markdown link is a pointer an agent may or may not open. A rule that
+must apply in every session has to be in a file the tool loads. That is
+what the two mechanisms above do: they put the rule bodies into each
+tool's native read path.
 
 ## See also
 
-- [`sync-agents index`](./commands/index.md)
-- [Global root resolution](./architecture/global-root-resolution.md)
-- [`sync-agents promote`](./commands/promote.md) — the other way to
-  share rules across projects (via the user-level `~/.agents/`)
+- [`promote`](commands/promote.md) and
+  [`global sync`](commands/global-sync.md)
+- [sources.md](sources.md) and [linked-sources.md](linked-sources.md)
+- [delivery-channels.md](architecture/delivery-channels.md)
+- [Global root resolution](architecture/global-root-resolution.md)
+- SPEC-013 (AGENTS.md is not an index), SPEC-002 (global scope),
+  SPEC-003 (sources)

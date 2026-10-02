@@ -462,7 +462,7 @@ func main() {
 	// adr — transition Architecture Decision Records between statuses
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "adr <accept|deny|propose> <name>",
-		Short: "Move an ADR between proposed/accepted/denied and reindex",
+		Short: "Move an ADR between proposed/accepted/denied",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var action, name string
 			if len(args) >= 1 {

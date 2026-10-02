@@ -31,8 +31,12 @@ form that's easier to read end-to-end than scattered code comments.
 - [Linked (editable) sources](./linked-sources.md) — `npm link` for
   agent context: symlink a source at a live local checkout; edits flow
   both ways; recorded declaratively in the manifest.
-- [Inheritance](./inheritance.md) — hierarchical rule sharing via
-  `## Inherits` links in `AGENTS.md` (project → team → org → global).
+- [Migrating to 2.0](./migration-v2.md) — the breaking changes from
+  1.x, the one-time `AGENTS.md` rewrite and its backup, legacy files
+  removed, and how to opt out or adjust.
+- [Inheritance](./inheritance.md) — what layers rule content from
+  outside a project (`~/.agents/`, sources), and why `## Inherits` in
+  `AGENTS.md` is plain text.
 - [ADRs](./adrs.md) — Architecture Decision Records with status
   encoded by subdirectory; denied records stay on disk so they aren't
   re-proposed.
@@ -42,6 +46,10 @@ form that's easier to read end-to-end than scattered code comments.
 
 ### Architecture
 
+- [Delivery channels](./architecture/delivery-channels.md) — how each
+  tool receives rule content at project and user scope: the per-tool
+  table, mounts and consent, size budgets, `index = local|commit`,
+  `.gitignore`, the CLAUDE.md policy, and which read paths are verified.
 - [Scope and target directories](./architecture/scope-and-targets.md) —
   How project scope (local) and user scope (global) compose with the
   per-tool target directories (`.claude/`, `.windsurf/`, `.cursor/`,
@@ -65,11 +73,12 @@ form that's easier to read end-to-end than scattered code comments.
 - [`sync-agents add`](./commands/add.md) — create an artifact from a
   template, or import one that already exists by copy (`--from`) or by
   symlink (`--from --link`).
-- [`sync-agents index`](./commands/index.md) — AGENTS.md regeneration,
-  section-by-section, including the skill frontmatter backfill.
+- [`sync-agents index`](./commands/index.md) — regenerates the
+  per-tool delivery files in `.agents/index/`, including the skill
+  frontmatter backfill.
 - [`sync-agents lint`](./commands/lint.md) — SKILL.md compliance
   checks against Claude's authoring rules, with the full finding
-  table.
+  table, plus the W201 warning for inert `import: true`.
 - [`sync-agents sync`](./commands/sync.md). Per-bucket fold or
   drill into tool directories, the never-delete guarantee,
   `--overwrite`, and the conflict exit code.
@@ -86,8 +95,8 @@ form that's easier to read end-to-end than scattered code comments.
   read-only, grep-friendly report of every per-tool destination's
   state.
 - [`sync-agents global clean`](./commands/global-clean.md) — remove
-  sync-agents-owned symlinks and concat files from per-tool global
-  dirs.
+  sync-agents-owned symlinks, regions, and config entries from per-tool
+  global dirs.
 
 ### Specs
 
@@ -107,6 +116,10 @@ durable content lives), so IDs stay resolvable after the file is gone.
 - [SPEC-011](../specs/SPEC-011-agent-bucket-import-routing.md) — agent
   bucket: import (`add --from`) and multi-tool subagent routing
   shipped; per-agent selective load (Part D) open.
+- [SPEC-013](../specs/SPEC-013-agents-md-is-not-an-index.md) — AGENTS.md
+  is not an index: per-tool delivery channels and the version-gated
+  CLAUDE.md link. Implemented; the per-tool symlink canary is the open
+  release gate.
 
 ## Conventions
 

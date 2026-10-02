@@ -17,12 +17,33 @@ A target name maps to `.<name>/` at the project root (`copilot` maps to
 `.github/copilot/`), so a custom target such as `wave` syncs into
 `.wave/`.
 
+Before the buckets, sync migrates a 1.x generated `AGENTS.md` once
+(see [migration-v2.md](../migration-v2.md)). It never writes
+`AGENTS.md` otherwise.
+
+The passive `rules` bucket is not folded into Cursor, Copilot, Codex, or
+opencode directories: those tools have a delivery channel instead. sync
+removes the 1.x `.cursor/rules`, `.github/copilot/rules`,
+`.codex/rules`, and `.opencode/rules` links when they point into
+`.agents/rules`.
+
 After the buckets, sync also:
 
-1. Links `CLAUDE.md` to `AGENTS.md`.
-2. Merges `.agents/hooks/*.json` into `.claude/settings.json` (when the
+1. Renders `.agents/index/<tool>` for each active tool that has a
+   project channel and mounts it: `.cursor/rules/sync-agents.mdc`,
+   `.github/instructions/sync-agents.instructions.md`,
+   `AGENTS.override.md`, and an `opencode.json` entry. An existing
+   `opencode.json` is edited only after one run with
+   `--targets opencode`. See
+   [delivery channels](../architecture/delivery-channels.md).
+2. Applies the `CLAUDE.md` policy: creates `CLAUDE.md -> AGENTS.md`
+   only when the installed Claude Code needs it, or when
+   `claude-md = link`. See the
+   [CLAUDE.md policy](../architecture/delivery-channels.md#claudemd-policy).
+3. Merges `.agents/hooks/*.json` into `.claude/settings.json` (when the
    `claude` target is active).
-3. Updates `.gitignore`.
+4. Updates `.gitignore` (see
+   [.gitignore](../architecture/delivery-channels.md#gitignore)).
 
 These steps run even when a bucket reported a conflict.
 
@@ -72,7 +93,7 @@ To recover a backup, see [Recovering a backup](#recovering-a-backup).
 
 | Flag | Default | Effect |
 |---|---|---|
-| `--targets <list>` | `.agents/config`, else `claude,windsurf,cursor,copilot` | Comma-separated targets to sync. |
+| `--targets <list>` | `.agents/config`, else `claude,windsurf,cursor,copilot` | Comma-separated targets to sync. Naming a tool also consents to editing a file of yours it reads (an existing `opencode.json`). |
 | `--dry-run` | false | Print each planned link without writing. |
 | `--overwrite` | false | Rename each conflicting entry to `<path>.replaced-by-sync-agents` and link in its place. Never deletes. |
 | `--force` | false | **Deprecated on `sync`.** Prints a deprecation warning and behaves as `--overwrite`. Nothing is deleted. Will be removed from `sync` in a later release. |
@@ -86,16 +107,16 @@ All five are persistent flags inherited from the root command.
 
 | Code | Meaning |
 |---|---|
-| `0` | Every bucket and target synced with no conflicts. Last line is `Sync complete.` |
-| non-zero | At least one conflict. Sync still processes every other bucket and target, merges hooks, and updates `.gitignore`. Last line is `Sync finished with N conflict(s); nothing was deleted`. |
+| `0` | Every bucket, target, and delivery link synced with no conflicts. Last line is `Sync complete.` |
+| non-zero | At least one conflict, including a real file at a delivery link path such as `AGENTS.override.md`. Sync still processes every other bucket and target, merges hooks, and updates `.gitignore`. Last line is `Sync finished with N conflict(s); nothing was deleted`. |
 | non-zero | `.agents/` does not exist. |
 
 `--dry-run` reports the same conflicts a real run would and exits
 non-zero on them, so a dry run predicts the real run's exit code.
 
-A hand-written `CLAUDE.md` at the project root is reported with the
-same conflict warning but does not affect the exit code. It has always
-been a warn-and-continue case and is not a bucket conflict.
+A hand-written `CLAUDE.md` at the project root is kept and reported
+with a warning (Claude reads it instead of `AGENTS.md`; add
+`@AGENTS.md` to it to load both). It does not affect the exit code.
 
 CI jobs and scripted installs can treat a non-zero exit as "a tool
 directory needs attention", then rerun with `--overwrite` or resolve by
@@ -112,6 +133,12 @@ hand.
 | `[merged] <bucket> (<linked>/<total> linked, N conflict(s))` | Same, with N real entries shadowing claimed artifacts. |
 | `[local] <bucket> (not symlinked)` | Real directory with no sync-agents entry symlinks. |
 | `[missing] <bucket>` | Nothing at the bucket path. |
+
+`status` also prints an `AGENTS.md` line (`[ok]` yours, `[migrate]`
+still the 1.x index, or `[missing]`),
+the `CLAUDE.md` decision, and one row per delivery channel. The channel
+states are listed in
+[delivery channels](../architecture/delivery-channels.md#status-states).
 
 ## Examples
 
@@ -213,4 +240,6 @@ symlink per bucket.
 - [`sync-agents global clean`](./global-clean.md)
 - [Command reference](./README.md)
 - [Topology & configuration](../topology.md)
-- [SPEC-010](../../specs/SPEC-010-conformance-audit-unified-sync.md) (ownership taxonomy, fold/drill design)
+- [Delivery channels](../architecture/delivery-channels.md)
+- [Migrating to 2.0](../migration-v2.md)
+- [SPEC-010](../../specs/SPEC-010-conformance-audit-unified-sync.md) (ownership taxonomy, fold/drill design), SPEC-013 (delivery channels)

@@ -11,16 +11,17 @@ sync-agents global status [--targets t1,t2] [--global-root PATH]
 
 ## Output format
 
-One header line then one row per destination plus one row per concat
-target:
+One header line, one row per per-artifact destination, then one row per
+delivery channel:
 
 ```text
-[info] global status (3 artifacts, 5 tool(s)):
+[info] global status (1 artifacts, 7 tool(s)):
 [synced] claude/rule/security -> /home/u/.claude/rules/security.md
-[drifted] cursor/rule/security -> /home/u/.cursor/rules/security.md  (points at /elsewhere.md, want /home/u/.agents/rules/security.md)
-[missing] copilot/skill/cool -> /home/u/.github/copilot/skills/cool/SKILL.md
-[concat ok]     /home/u/.codeium/windsurf/memories/global_rules.md  (2 entries)
-[concat stale]  /home/u/.codex/instructions.md  (2 entries)
+[unmounted] codeium -> /home/u/.codeium/windsurf/memories/global_rules.md  (tool not installed (its home directory is missing); run with --targets codeium to create it)
+[synced] copilot -> /home/u/.copilot/instructions/sync-agents.instructions.md  (.copilot/instructions/sync-agents.instructions.md -> .agents/index/copilot.md)
+[unmounted] codex -> /home/u/.codex/AGENTS.md  (the file exists and is yours; run once with --targets codex to let sync-agents edit it)
+[gap] cursor  (Cursor keeps user rules in app settings, not in files; global rules reach Cursor through each project's .cursor/rules/sync-agents.mdc when index = local)
+[info] audit: 1 gap, 2 synced, 2 unmounted
 ```
 
 The bracketed state at the start of each line is parseable — useful
@@ -39,14 +40,26 @@ for shell pipelines that want to grep for `[drifted]` or `[stale]`.
 | `[skipped]` | The (artifact, tool) pair is intentionally not routable — e.g. a multi-file invocable skill targeting Windsurf workflows. The Detail field explains. |
 | `[folded]` | The exact per-artifact link is absent, but the path *resolves* to the canonical artifact through an ancestor symlink (e.g. a dir-level `.claude/skills/<name>` link). Conformant at a coarser granularity — no action needed. (SPEC-010) |
 
-### Concat destinations
+### Channel rows
+
+Each tool with a user-level delivery channel gets one row: Windsurf
+(`codeium`), Copilot, Codex, opencode, and OpenClaw. Cursor gets one
+`[gap]` row, because it has no user-rules file. The row compares the
+rendered bytes with what is on disk, so `[synced]` means `global sync`
+would write nothing.
 
 | State | Meaning |
 |---|---|
-| `[concat ok]` | The file exists, carries the sync-agents banner, and its content matches what regeneration would produce. |
-| `[concat stale]` | The file exists with the banner but content differs from what regeneration would produce. `global sync` will rewrite it. |
-| `[concat missing]` | No file at the destination. `global sync` will create it. |
-| `[concat foreign]` | A file exists at the destination but lacks the sync-agents banner — likely user-owned. `global sync` will overwrite (concat targets are sync-agents-owned by design); `global clean` will leave it alone with a warning. |
+| `[synced]` | The index file, region, or entry matches the render and the mount reaches it. |
+| `[stale]` | The sources changed since the last `global sync`. |
+| `[unmounted]` | The mount is absent. The detail says why: the tool is not installed, the file is yours and needs one `--targets` run, or the tool creates the host itself (OpenClaw). |
+| `[conflict]` | A real file holds the link path. |
+| `[shadowed]` | The mount is in place, but the tool reads another file first (a non-empty `$CODEX_HOME/AGENTS.override.md`). |
+| `[manual]` | `opencode.json` is JSONC or unparseable; the detail holds the entry to add by hand. |
+| `[gap]` | The tool has no file to deliver to (Cursor). |
+| `[error]` | Rendering failed; the detail holds the error. |
+
+See [Delivery channels](../architecture/delivery-channels.md).
 
 ### Audit sweep (SPEC-010)
 
@@ -64,17 +77,6 @@ state (credentials, sessions, caches) and is never enumerated.
 
 The report ends with a one-line summary counting every state, e.g.
 `audit: 4 synced, 1 folded, 2 foreign, 1 orphaned`.
-
-### Region states
-
-A region tool (`openclaw`) gets one row for its host file, e.g.
-`[region synced] ~/.openclaw/workspace/AGENTS.md  (region openclaw-rules, 12 entries)`.
-
-| State | Meaning |
-|---|---|
-| `[region synced]` | The region matches what `global sync` would write. |
-| `[region stale]` | The region exists but differs; `global sync` rewrites it. |
-| `[region missing]` | The host file has no region markers. |
 
 ### Special states
 
@@ -126,4 +128,7 @@ sync-agents global status --global-root /tmp/.agents
 - SPEC-002 §Requirement: Global status (shipped; spec retired to git history)
 - [`sync-agents global sync`](./global-sync.md)
 - [`sync-agents global clean`](./global-clean.md)
-- `internal/agent/globalstatus.go` — the implementation.
+- [Delivery channels](../architecture/delivery-channels.md)
+- SPEC-013 (delivery channels)
+- `internal/agent/globalstatus.go`, `internal/agent/deliver_status.go`
+  — the implementation.

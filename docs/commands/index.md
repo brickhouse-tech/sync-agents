@@ -1,50 +1,65 @@
 # `sync-agents index [--no-fix]`
 
-Regenerates `AGENTS.md` from the contents of `.agents/`.
+Regenerates the per-tool delivery files in `.agents/index/` from the
+contents of `.agents/`. It does not write `AGENTS.md`.
 
-## Sections
+## What it writes
 
-- **Rules / Skills / Workflows** — always present (with "none yet"
-  placeholders when empty).
-- **Agents / Plans / Specs** — appear only when the optional bucket has
-  content. Plans and specs are listed **recursively**, so documents
-  grouped per effort in subdirectories (`plans/auth-effort/rollout.md`)
-  index correctly.
-- **State** — a pointer to the state convention rule
-  (`.agents/rules/state.md`). `STATE_*.md` snapshots are per-engineer
-  working files and are **not** listed; a snapshot that represents a
-  shared task opts into the index with `shared: true` frontmatter.
-- **Inherits** — preserved verbatim across regenerations, right after
-  the header.
-- **Tools** — a `## Tools` section (heading matched case-insensitively,
-  the one OpenClaw's doctor adds) is preserved verbatim, after the
-  generated sections.
-- **Managed Claude import block** — `@`-imports for passive rules (and
-  explicitly-passive workflows) so Claude actually loads them; fully
-  regenerated each run, removed when no passive rules remain.
-- **Other sync-agents regions** — any other
-  `<!-- sync-agents:<name>:start -->` … `end -->` block (for example the
-  `openclaw-rules` region `global sync` writes into an OpenClaw
-  workspace) is kept verbatim, in order, at the end of the file.
+One file per active tool that has a project channel:
 
-Everything else in an existing `AGENTS.md` is regenerated. If the
-result equals the file on disk, it is not rewritten.
+| File | Tool | Read through |
+|---|---|---|
+| `.agents/index/cursor.mdc` | Cursor | `.cursor/rules/sync-agents.mdc` |
+| `.agents/index/copilot.md` | Copilot | `.github/instructions/sync-agents.instructions.md` |
+| `.agents/index/codex.md` | Codex | `AGENTS.override.md` |
+| `.agents/index/opencode.md` | opencode | `opencode.json` `instructions` |
 
-Every entry renders as `- [name](path) — <description>` when the
-artifact declares a frontmatter `description`. Scaffold TODO stubs and
-multi-line YAML scalars are suppressed; display is truncated at 140
-characters.
+Each file carries the bodies of your passive rules, workflows, and
+skills, in name order, inside the frame the tool's format needs. The
+format, budget, and mount of each file are in
+[delivery-channels.md](../architecture/delivery-channels.md). A file
+whose rendered bytes equal the file on disk is not rewritten.
+
+`index` refreshes only. It rewrites files inside `.agents/index/` and
+re-splices regions and config entries that already exist. It does not
+create a link, a region, or a config entry in a tool directory, and it
+does not remove legacy placements. `sync` does that.
+
+Claude and Windsurf have no file here: they read `.agents/rules`
+through the `.claude/rules` and `.windsurf/rules` links.
+
+## AGENTS.md
+
+`AGENTS.md` is your file. `index` runs the one-time migration of a
+1.x generated `AGENTS.md` (see [migration-v2.md](../migration-v2.md)),
+then never writes it again. A file that is not generated, or is already
+migrated, is left byte-identical.
+
+The Codex index copies `AGENTS.md` (with every `sync-agents:*` region
+removed), because Codex reads `AGENTS.override.md` instead of
+`AGENTS.md`. After you edit `AGENTS.md`, run `index` or `sync`, or keep
+`watch` running; until then `status` reports the Codex channel as
+`stale`.
 
 ## Skill frontmatter backfill
 
-Before indexing, `index` runs the [`lint --fix`](lint.md) engine over
-the skills bucket: missing frontmatter blocks are injected, `name` is
-derived from the skill directory, `description` from the first body
-paragraph. Backfilled descriptions flow straight into the regenerated
-index in the same run.
+Before regenerating, `index` runs the [`lint --fix`](lint.md) engine
+over the skills bucket: missing frontmatter blocks are injected, `name`
+is derived from the skill directory, `description` from the first body
+paragraph.
 
 - Unfixable findings (reserved-word names, unterminated frontmatter)
-  are warned about but **never fail indexing**.
-- `--no-fix` skips the backfill entirely.
-- The `watch` and `import` code paths regenerate the index **without**
-  backfill, so nothing rewrites a file while you're editing it.
+  are warned about but never fail `index`.
+- `--no-fix` skips the backfill.
+- `watch`, `add`, `adr`, `import`, and the source commands refresh the
+  index without the backfill, so nothing rewrites a file while you are
+  editing it.
+
+## See also
+
+- [delivery-channels.md](../architecture/delivery-channels.md): what
+  each tool receives, budgets, and the index policy
+- [`sync`](sync.md): mounts the index files and removes legacy links
+- [`lint`](lint.md): the strict, CI-gating version of the backfill
+- [migration-v2.md](../migration-v2.md)
+- SPEC-013 (AGENTS.md is not an index)

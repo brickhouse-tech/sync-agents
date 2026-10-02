@@ -13,7 +13,7 @@ Every artifact has one of three semantics:
 |---|---|
 | **`invocable`** | Loaded only when triggered by name — a user slash command, or an AI model's tool-call decision based on the artifact's description. Not in baseline context. |
 | **`passive`** | Always part of baseline context for every conversation. No trigger logic; always loaded. |
-| **`reference`** | Neither preloaded nor trigger-dispatched: indexed in `AGENTS.md` and read on demand (@-mention, file read). Used by the `plans/` and `specs/` buckets (SPEC-004 Part D). Never enters the managed import block or any invocable surface. |
+| **`reference`** | Neither preloaded nor trigger-dispatched: read on demand (@-mention, file read). Used by the `plans/`, `specs/`, and `adrs/` buckets (SPEC-004 Part D). Never enters a delivery channel or any invocable surface; `import: true` has no effect (SPEC-013). |
 
 These are independent of the bucket directory the artifact lives in.
 
@@ -24,17 +24,17 @@ semantic:
 
 | Bucket | Claude | Windsurf / Codeium | Cursor | Copilot / Codex |
 |---|---|---|---|---|
-| `rules/` | passive | passive (concat → `memories/global_rules.md`) | passive | passive (concat → `instructions.md`) |
+| `rules/` | passive | passive (region in `memories/global_rules.md`) | passive (`.mdc` channel) | passive (instructions channel) |
 | `skills/` | **invocable** | **passive** (auto-loaded as memory) | passive | passive |
 | `workflows/` | passive (reference doc) | **invocable** (slash flow) | passive | passive |
 | `agents/` | **invocable** (`agents/<name>.md` subagent) | — (skip: no subagent surface) | — (skip) | — (skip) |
-| `plans/` | reference (`plans/<name>.md`) | — (skip: read via AGENTS.md index) | — (skip) | — (skip) |
-| `specs/` | reference (`specs/<name>.md`) | — (skip: read via AGENTS.md index) | — (skip) | — (skip) |
+| `plans/` | reference (`plans/<name>.md`) | — (skip: opened from `.agents/plans/` when asked) | — (skip) | — (skip) |
+| `specs/` | reference (`specs/<name>.md`) | — (skip: opened from `.agents/specs/` when asked) | — (skip) | — (skip) |
 
 Agents, plans, and specs route **independently of semantic** — the
 per-tool destination is a property of the bucket (Claude-only), so a
 frontmatter `invocable:` override never reroutes them into commands/
-or a concat file. In particular, reference docs are never concatenated
+or a delivery channel. In particular, reference docs are never inlined
 into always-on instruction files; that would preload reference
 material into baseline context.
 
@@ -102,14 +102,15 @@ one when:
   routes it to passive destinations so it stays as reference text
   rather than a slash command.
 
-## What about Cursor / Copilot / Codex?
+## What about Cursor, Copilot, Codex, and opencode?
 
-Cursor, Copilot, and Codex do not distinguish invocable from passive
-at the filesystem level (Cursor uses a flat `rules/` directory;
-Copilot and Codex merge everything into a single `instructions.md`).
-The routing map still computes the destination by semantic for
-consistency, but for these tools both semantics resolve to the same
-path. No fan-out, no duplication.
+These tools read aggregated rule text, not a rules directory of
+per-artifact files that sync-agents can link. Passive content reaches
+them through one generated file per tool: the delivery channel (see
+[Delivery channels](./delivery-channels.md)). At user scope they have
+no command surface that sync-agents writes, so invocable rules and
+workflows are skipped. Codex, Cursor, opencode, and OpenClaw load
+`~/.agents/skills` natively, so skills are not linked into their trees.
 
 ## Multi-file invocable skills
 
@@ -117,29 +118,25 @@ Windsurf workflows are single `.md` files. A Claude skill that's a
 *directory* with supporting files cannot cleanly become a Windsurf
 workflow. When `global sync` encounters one targeting codeium, it
 prints a warning naming the skill and the reason, then skips that
-target only — the other tools (Claude, Cursor, Copilot, Codex) still
-receive the skill normally and the overall exit code stays 0.
+target only. Claude still receives the skill, and the overall exit code
+stays 0.
 
-## Concat targets
+## Delivery channels
 
-Three destinations are *concat* rather than per-artifact symlinks:
-
-- `~/.codeium/windsurf/memories/global_rules.md` — Windsurf's passive
-  memory file. All passive artifacts targeting codeium are merged
-  here, alphabetized by name, with `## <name>` headings and a
-  generated-by banner.
-- `~/.github/copilot/instructions.md` — Copilot's only file.
-- `~/.codex/instructions.md` — Codex's only file.
-
-These files are regenerated atomically (tmp file + rename) on every
-`global sync` so partial writes can never leave a half-merged file.
-Source artifacts in `~/.agents/rules/` stay authoritative; the concat
-output is a derived artifact.
+Passive content for Windsurf (user scope), Cursor, Copilot, Codex,
+opencode, and OpenClaw is not linked per artifact. Each tool gets one
+generated file in `.agents/index/` or `~/.agents/index/`, mounted as a
+link, a marked region, or a config entry at the path the tool reads,
+and sized to the tool's limit. Source artifacts stay authoritative; the
+generated files are derived and rewritten only when their bytes change.
+The full table is in [Delivery channels](./delivery-channels.md).
 
 ## See also
 
 - SPEC-002 §Semantic categories (bucket ≠ semantic) (shipped; spec retired to git history)
 - SPEC-002 §Requirement: Semantic-aware routing (shipped; spec retired to git history)
 - [Scope and target directories](./scope-and-targets.md)
+- [Delivery channels](./delivery-channels.md)
+- SPEC-013 (delivery channels)
 - `internal/agent/semantic.go` — `Semantic`, `BucketDefaultSemantic`,
   `ParseFrontmatterInvocable`, `ResolveSemantic`.

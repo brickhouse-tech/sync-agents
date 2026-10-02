@@ -25,10 +25,11 @@ Be sure to indicate whats left and what done via - [ ] checkboxes in state file
 
 ## Sharing
 
-STATE_* snapshots are per-engineer working files. `sync-agents index` does
-not list them in AGENTS.md; only the pointer to this rule appears there.
-If a snapshot tracks a shared task the whole team should see, opt it into
-the index with frontmatter:
+STATE_* snapshots are per-engineer working files. The save location
+above is outside the bucket directories, so sync-agents does not deliver
+snapshots to any tool. A snapshot kept inside a bucket directory is left
+out of the integrity lock (`sync-agents lock`) unless it tracks a shared
+task and opts in with frontmatter:
 
 ```yaml
 ---

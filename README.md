@@ -2,7 +2,7 @@
 
 **One `.agents/` directory. Every AI coding assistant. Always in sync.**
 
-`sync-agents` is a package manager and sync engine for AI-agent context — the rules, skills, workflows, subagents, plans, specs, and ADRs you feed to Claude, Cursor, Windsurf, Copilot, Codex, opencode, and OpenClaw. Write everything once in `.agents/`, and `sync-agents` fans it out to every tool via symlinks, keeps an `AGENTS.md` index current, and lets you pull shared context from other repos as safely and reproducibly as you'd install an npm package.
+`sync-agents` is a package manager and sync engine for AI-agent context — the rules, skills, workflows, subagents, plans, specs, and ADRs you feed to Claude, Cursor, Windsurf, Copilot, Codex, opencode, and OpenClaw. Write everything once in `.agents/`, and `sync-agents` delivers it to every tool at the path that tool reads, and lets you pull shared context from other repos as safely and reproducibly as you'd install an npm package.
 
 ## Why you want this
 
@@ -10,7 +10,7 @@ If you use more than one AI coding tool — or more than one repo — you alread
 
 `sync-agents` fixes all three:
 
-- **Zero drift.** `.agents/` is the single source of truth; tool directories are symlinks into it. Edit once, every tool sees it instantly. If a tool already created its own directory (say `.wave/skills/`), sync links each artifact into it and leaves the tool's entries alone. Existing tool directories are merged, never deleted. [Sync →](docs/commands/sync.md)
+- **Zero drift.** `.agents/` is the single source of truth. Tool directories are symlinks into it, and the per-tool files in `.agents/index/` are rebuilt from it by `sync`, `index`, and `watch`. Edit once, every tool gets the change. If a tool already created its own directory (say `.wave/skills/`), sync links each artifact into it and leaves the tool's entries alone. Existing tool directories are merged, never deleted. [Sync →](docs/commands/sync.md)
 - **Real distribution.** Declare upstream rules/skills/whole trees in `sources.yaml`, get SHA-pinned, lockfile-verified installs — a package manager, not a copy-paste culture.
 - **Supply-chain safety by default.** Everything fetched remotely is statically scanned and quarantined until you approve it. Your agent's instructions are an attack surface; treat them like one.
 
@@ -45,14 +45,14 @@ Pre-built archives (with SHA-256 checksums) are also on the [Releases page](http
 ```bash
 cd your-project
 
-# 1. Create .agents/ (rules/, skills/, workflows/, STATE.md) + AGENTS.md index
+# 1. Create .agents/ (rules/, skills/, workflows/), .agents/config, and an AGENTS.md stub if you have none
 sync-agents init
 
 # 2. Add your first rule and skill
 sync-agents add rule no-secrets
 sync-agents add skill code-review
 
-# 3. Fan everything out to .claude/, .windsurf/, .cursor/, .github/copilot/
+# 3. Deliver to every tool: rules folders for Claude and Windsurf, .agents/index/ for the rest
 sync-agents sync
 
 # 4. Install a shared skill from another repo (SHA-pinned + scanned + quarantined)
@@ -66,7 +66,7 @@ sync-agents status
 
 If `sync` finds a real file or directory where one of your artifacts belongs, it warns, leaves it untouched, and exits non-zero. Rerun with `--overwrite` to move it aside as `<path>.replaced-by-sync-agents`.
 
-That's it — every supported tool now reads the same rules, and `AGENTS.md` (symlinked to `CLAUDE.md`) indexes it all automatically.
+That's it. Every supported tool is now wired to load the same rules. `AGENTS.md` stays yours: sync-agents never writes it after creating the stub.
 
 ## Killer features
 
@@ -91,11 +91,11 @@ Remote installs are treated like a hostile supply chain. Fetched artifacts are s
 ### 🖥️ OS-scoped routing
 Drop rules into `rules/macos/`, `rules/linux/`, or `rules/unix/` and they only sync on matching machines. One committed tree, no brew-rules noise on your Linux box. [OS routing →](docs/os-scoped-routing.md)
 
-### 🗂️ AGENTS.md auto-index
-Every artifact is indexed into a generated `AGENTS.md` (symlinked to `CLAUDE.md`), with descriptions pulled from frontmatter, passive rules `@`-imported for Claude, and an `## Inherits` section for org → team → project rule hierarchies. [Index →](docs/commands/index.md) · [Inheritance →](docs/inheritance.md)
+### 📬 Rule content for every tool — *new in 2.0.0*
+Each tool gets your rule bodies at a path its vendor documents. Claude and Windsurf read the linked rules folder. Cursor, Copilot, Codex, and opencode each get one generated file in `.agents/index/`, linked or listed where the tool looks, sized to the tool's limit. `CLAUDE.md -> AGENTS.md` is created only for Claude Code older than 2.1.281. Upgrading from 1.x? Read [the migration guide](docs/migration-v2.md). [Delivery channels →](docs/architecture/delivery-channels.md)
 
 ### ✅ Lint for skill compliance
-`sync-agents lint` validates every `SKILL.md` against Claude's published authoring rules (name format, description quality, reserved words) and `--fix` mechanically repairs what it can. CI-friendly exit codes. [Lint →](docs/commands/lint.md)
+`sync-agents lint` validates every `SKILL.md` against Claude's published authoring rules (name format, description quality, reserved words) and `--fix` mechanically repairs what it can. It also flags `import: true` frontmatter, which has no effect since 2.0. CI-friendly exit codes. [Lint →](docs/commands/lint.md)
 
 ### 🌍 Global scope too
 `promote` an artifact from a project to your user-level `~/.agents/`, then `global sync` fans it out to every tool's *user* config dir with semantic-aware routing. [Global commands →](docs/commands/global-sync.md)
@@ -107,6 +107,7 @@ The full manual lives in [`docs/`](docs/README.md):
 - [Command reference](docs/commands/README.md) — every command and flag
 - [Topology & configuration](docs/topology.md) — the `.agents/` tree, `config`, `STATE.md`
 - [Sources, lockfile & provenance](docs/sources.md) · [Quarantine](docs/quarantine.md) · [Linked sources](docs/linked-sources.md) · [Integrity lock](docs/integrity.md)
+- [Delivery channels](docs/architecture/delivery-channels.md) · [Migrating to 2.0](docs/migration-v2.md)
 - [Inheritance](docs/inheritance.md) · [ADRs](docs/adrs.md) · [OS-scoped routing](docs/os-scoped-routing.md)
 - [Architecture](docs/README.md#architecture) — scope resolution, semantic routing, global roots
 - [Examples](examples/README.md) — ready-to-import rules, skills, and workflows
