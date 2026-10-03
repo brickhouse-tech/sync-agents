@@ -32,8 +32,8 @@ Purpose:
 - Keep STATE.md current with any configuration state changes
 - Document any new file types or structure changes
 
-### src/ Documentation
-- Keep `src/md/` templates (RULE_TEMPLATE.md, SKILL_TEMPLATE.md, etc.) aligned with actual implementation
+### Templates
+- Keep the embedded templates in `internal/agent/templates/` (rule.md, skill.md, etc.) aligned with actual implementation
 - Update template frontmatter if new trigger types or fields are introduced
 - Ensure template examples reflect current best practices
 
@@ -52,7 +52,7 @@ Before committing changes to `.agents/` or core implementation:
 - [ ] Run `sync-agents sync` if `.agents/` structure changed (refreshes `.agents/index/`)
 - [ ] Review README.md for outdated commands or topology descriptions
 - [ ] Check examples/ directory for alignment with new patterns
-- [ ] Verify template files in src/md/ match current format standards
+- [ ] Verify template files in internal/agent/templates/ match current format standards
 - [ ] Use conventional commit messages; CHANGELOG.md is generated from them at release (`commit-and-tag-version`), so do not edit it by hand
 - [ ] Ensure doc comments in `internal/` and help strings in `main.go` are current
 - [ ] Test examples work with current implementation
