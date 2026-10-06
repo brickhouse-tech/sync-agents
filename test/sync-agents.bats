@@ -1329,7 +1329,7 @@ fake_claude() {
 
   run "$SCRIPT" -d "$TEST_DIR" --dry-run fix skills
   [ "$status" -eq 0 ]
-  [[ "$output" == *"would create"* ]]
+  [[ "$output" == *"would link"* ]]
   # Nothing actually created
   [ ! -e "$TEST_DIR/.claude/skills" ]
 }
