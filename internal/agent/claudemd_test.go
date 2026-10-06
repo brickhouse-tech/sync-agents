@@ -169,7 +169,12 @@ func TestDecideClaudeMD_Rows(t *testing.T) {
 		{"old version, our link", with(func(f *claudeMDFacts) { f.Current = ClaudeMDOurLink }), probeOld, ClaudeMDLinkIt, false, true, true, "2.1.276"},
 		{"2.1.281, absent", base, probeNative, ClaudeMDKeep, false, true, true, "not created"},
 		{"new version, absent", base, probeNew, ClaudeMDKeep, false, true, true, "not created: Claude Code 2.1.286"},
-		{"new version, our link stays", with(func(f *claudeMDFacts) { f.Current = ClaudeMDOurLink }), probeNew, ClaudeMDKeep, false, true, true, "not needed"},
+		{"new version, our link is removed", with(func(f *claudeMDFacts) { f.Current = ClaudeMDOurLink }), probeNew, ClaudeMDUnlink, false, true, true, "removed"},
+		{"2.1.281, our link is removed", with(func(f *claudeMDFacts) { f.Current = ClaudeMDOurLink }), probeNative, ClaudeMDUnlink, false, true, true, "subdirectories"},
+		{"parent CLAUDE.md, new version", with(func(f *claudeMDFacts) { f.Shadowing = "/home/u/CLAUDE.md" }), probeNew, ClaudeMDLinkIt, false, true, false, "/home/u/CLAUDE.md stops"},
+		{"parent CLAUDE.md, unknown version", with(func(f *claudeMDFacts) { f.Shadowing = "/home/u/CLAUDE.md" }), probeUnknown, ClaudeMDLinkIt, false, true, false, "/home/u/CLAUDE.md"},
+		{"parent CLAUDE.md keeps our link", with(func(f *claudeMDFacts) { f.Shadowing = "/w/CLAUDE.local.md"; f.Current = ClaudeMDOurLink }), probeNew, ClaudeMDLinkIt, false, true, false, "CLAUDE.local.md"},
+		{"parent CLAUDE.md, off", with(func(f *claudeMDFacts) { f.Shadowing = "/w/CLAUDE.md"; f.Mode = ClaudeMDOff }), probeNew, ClaudeMDKeep, false, false, false, "claude-md = off"},
 		{"unknown version, absent", base, probeUnknown, ClaudeMDKeep, true, true, true, "claude-md = link"},
 		{"unknown version, our link", with(func(f *claudeMDFacts) { f.Current = ClaudeMDOurLink }), probeUnknown, ClaudeMDKeep, true, true, true, "exit status 1"},
 	}
@@ -203,46 +208,57 @@ func TestDecideClaudeMD_TruthTable(t *testing.T) {
 		for _, active := range bools {
 			for _, agentsMD := range bools {
 				for _, local := range bools {
-					for _, cur := range states {
-						for _, p := range probes {
-							n++
-							f := claudeMDFacts{Mode: mode, ClaudeActive: active, AgentsMD: agentsMD, LocalMD: local, Current: cur}
-							probed := false
-							d := decideClaudeMD(f, func() ClaudeProbe { probed = true; return p })
-							label := fmt.Sprintf("%+v probe=%+v -> %+v", f, p, d)
+					for _, shadowed := range bools {
+						for _, cur := range states {
+							for _, p := range probes {
+								n++
+								f := claudeMDFacts{Mode: mode, ClaudeActive: active, AgentsMD: agentsMD, LocalMD: local, Current: cur}
+								if shadowed {
+									f.Shadowing = "/parent/CLAUDE.md"
+								}
+								probed := false
+								d := decideClaudeMD(f, func() ClaudeProbe { probed = true; return p })
+								label := fmt.Sprintf("%+v probe=%+v -> %+v", f, p, d)
 
-							userOwned := cur == ClaudeMDRealFile || cur == ClaudeMDForeignLink
-							mayLink := active && mode != ClaudeMDOff && !userOwned && agentsMD
-							wantProbe := mayLink && mode == ClaudeMDAuto && !local
-							if probed != wantProbe {
-								t.Errorf("probed=%v, want %v: %s", probed, wantProbe, label)
-							}
-							if d.Action == ClaudeMDLinkIt && !mayLink {
-								t.Errorf("links where it may not: %s", label)
-							}
-							if d.Managed != (active && mode != ClaudeMDOff) {
-								t.Errorf("managed wrong: %s", label)
-							}
-							if d.Warn && d.Action != ClaudeMDKeep {
-								t.Errorf("warns but acts: %s", label)
-							}
-							wantWarn := d.Managed && (userOwned || (wantProbe && !p.Known))
-							if d.Warn != wantWarn {
-								t.Errorf("warn=%v, want %v: %s", d.Warn, wantWarn, label)
-							}
-							var wantLink bool
-							switch {
-							case !mayLink:
-							case mode == ClaudeMDLink, local:
-								wantLink = true
-							default:
-								wantLink = p.Known && p.Version.Less(ClaudeNativeAgentsMD)
-							}
-							if (d.Action == ClaudeMDLinkIt) != wantLink {
-								t.Errorf("link=%v, want %v: %s", d.Action == ClaudeMDLinkIt, wantLink, label)
-							}
-							if d.Reason == "" {
-								t.Errorf("empty reason: %s", label)
+								userOwned := cur == ClaudeMDRealFile || cur == ClaudeMDForeignLink
+								mayLink := active && mode != ClaudeMDOff && !userOwned && agentsMD
+								wantProbe := mayLink && mode == ClaudeMDAuto && !local && !shadowed
+								if probed != wantProbe {
+									t.Errorf("probed=%v, want %v: %s", probed, wantProbe, label)
+								}
+								if d.Action == ClaudeMDLinkIt && !mayLink {
+									t.Errorf("links where it may not: %s", label)
+								}
+								if d.Managed != (active && mode != ClaudeMDOff) {
+									t.Errorf("managed wrong: %s", label)
+								}
+								if d.Warn && d.Action != ClaudeMDKeep {
+									t.Errorf("warns but acts: %s", label)
+								}
+								wantWarn := d.Managed && (userOwned || (wantProbe && !p.Known))
+								if d.Warn != wantWarn {
+									t.Errorf("warn=%v, want %v: %s", d.Warn, wantWarn, label)
+								}
+								var wantLink bool
+								switch {
+								case !mayLink:
+								case mode == ClaudeMDLink, local, shadowed:
+									wantLink = true
+								default:
+									wantLink = p.Known && p.Version.Less(ClaudeNativeAgentsMD)
+								}
+								if (d.Action == ClaudeMDLinkIt) != wantLink {
+									t.Errorf("link=%v, want %v: %s", d.Action == ClaudeMDLinkIt, wantLink, label)
+								}
+								// Only our own link is ever removed, and only when
+								// a native Claude Code would read AGENTS.md here.
+								wantUnlink := wantProbe && p.Known && !p.Version.Less(ClaudeNativeAgentsMD) && cur == ClaudeMDOurLink
+								if (d.Action == ClaudeMDUnlink) != wantUnlink {
+									t.Errorf("unlink=%v, want %v: %s", d.Action == ClaudeMDUnlink, wantUnlink, label)
+								}
+								if d.Reason == "" {
+									t.Errorf("empty reason: %s", label)
+								}
 							}
 						}
 					}
@@ -250,8 +266,8 @@ func TestDecideClaudeMD_TruthTable(t *testing.T) {
 			}
 		}
 	}
-	if n != 480 {
-		t.Fatalf("walked %d combinations, want 480", n)
+	if n != 960 {
+		t.Fatalf("walked %d combinations, want 960", n)
 	}
 }
 
@@ -367,8 +383,28 @@ func TestCmdSync_ClaudeMD(t *testing.T) {
 		}
 	})
 
-	t.Run("new claude keeps an existing link", func(t *testing.T) {
-		app, dir, _ := newClaudeMDApp(t, fakeClaude("2.1.286 (Claude Code)\n", nil))
+	t.Run("new claude removes our link", func(t *testing.T) {
+		app, dir, out := newClaudeMDApp(t, fakeClaude("2.1.286 (Claude Code)\n", nil))
+		if err := os.Symlink("AGENTS.md", filepath.Join(dir, "CLAUDE.md")); err != nil {
+			t.Fatal(err)
+		}
+		if err := app.CmdSync(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Lstat(filepath.Join(dir, "CLAUDE.md")); !os.IsNotExist(err) {
+			t.Fatalf("CLAUDE.md still exists (err %v)", err)
+		}
+		if gi, _ := os.ReadFile(filepath.Join(dir, ".gitignore")); containsExactLine(string(gi), "CLAUDE.md") {
+			t.Errorf(".gitignore lists CLAUDE.md after the link was removed:\n%s", gi)
+		}
+		if !strings.Contains(out.String(), "CLAUDE.md -> AGENTS.md removed") {
+			t.Errorf("missing removal line:\n%s", out)
+		}
+	})
+
+	t.Run("dry run reports but keeps our link", func(t *testing.T) {
+		app, dir, out := newClaudeMDApp(t, fakeClaude("2.1.286 (Claude Code)\n", nil))
+		app.DryRun = true
 		if err := os.Symlink("AGENTS.md", filepath.Join(dir, "CLAUDE.md")); err != nil {
 			t.Fatal(err)
 		}
@@ -376,10 +412,28 @@ func TestCmdSync_ClaudeMD(t *testing.T) {
 			t.Fatal(err)
 		}
 		if got := readLinkOrEmpty(filepath.Join(dir, "CLAUDE.md")); got != "AGENTS.md" {
+			t.Fatalf("dry run removed CLAUDE.md (-> %q)", got)
+		}
+		if !strings.Contains(out.String(), "would remove CLAUDE.md") {
+			t.Errorf("missing dry-run line:\n%s", out)
+		}
+	})
+
+	t.Run("a CLAUDE.md in a parent directory forces the link", func(t *testing.T) {
+		app, dir, out := newClaudeMDApp(t, fakeClaude("2.1.286 (Claude Code)\n", nil))
+		parentMD := filepath.Join(filepath.Dir(dir), "CLAUDE.md")
+		if err := os.WriteFile(parentMD, []byte("# parent\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Remove(parentMD) })
+		if err := app.CmdSync(); err != nil {
+			t.Fatal(err)
+		}
+		if got := readLinkOrEmpty(filepath.Join(dir, "CLAUDE.md")); got != "AGENTS.md" {
 			t.Fatalf("CLAUDE.md -> %q, want AGENTS.md", got)
 		}
-		if gi, _ := os.ReadFile(filepath.Join(dir, ".gitignore")); !containsExactLine(string(gi), "CLAUDE.md") {
-			t.Errorf(".gitignore lacks CLAUDE.md for our link:\n%s", gi)
+		if !strings.Contains(out.String(), parentMD+" stops Claude Code") {
+			t.Errorf("reason does not name the parent file:\n%s", out)
 		}
 	})
 
@@ -570,7 +624,7 @@ func TestCmdStatus_ClaudeMD(t *testing.T) {
 	}{
 		{"old, missing", fakeClaude("2.1.276 (Claude Code)", nil), false, "[missing] CLAUDE.md -> AGENTS.md: Claude Code 2.1.276"},
 		{"old, linked", fakeClaude("2.1.276 (Claude Code)", nil), true, "[ok] CLAUDE.md -> AGENTS.md: Claude Code 2.1.276"},
-		{"new, linked", fakeClaude("2.1.286 (Claude Code)", nil), true, "[ok] CLAUDE.md -> AGENTS.md is not needed"},
+		{"new, linked", fakeClaude("2.1.286 (Claude Code)", nil), true, "[stale] CLAUDE.md -> AGENTS.md removed"},
 		{"new, absent", fakeClaude("2.1.286 (Claude Code)", nil), false, "[info] CLAUDE.md not created"},
 		{"unknown", fakeClaude("", errors.New("exit status 1")), false, "[warn] CLAUDE.md left unchanged"},
 	}
@@ -615,6 +669,54 @@ func TestCmdClean_ClaudeMD(t *testing.T) {
 			_, err := os.Lstat(claudeMD)
 			if gone := os.IsNotExist(err); gone != tt.wantGone {
 				t.Fatalf("CLAUDE.md gone=%v, want %v", gone, tt.wantGone)
+			}
+		})
+	}
+}
+
+func TestShadowingClaudeMD(t *testing.T) {
+	write := func(t *testing.T, path string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tests := []struct {
+		name  string
+		files []string // relative to the temp root; the project is root/home/code/proj
+		want  string   // relative to the temp root, "" for none
+	}{
+		{"none", nil, ""},
+		{"home CLAUDE.md", []string{"home/CLAUDE.md"}, "home/CLAUDE.md"},
+		{"user-level home/.claude/CLAUDE.md does not count", []string{"home/.claude/CLAUDE.md"}, ""},
+		{"nested .claude/CLAUDE.md counts", []string{"home/code/.claude/CLAUDE.md"}, "home/code/.claude/CLAUDE.md"},
+		{"CLAUDE.local.md counts", []string{"home/code/CLAUDE.local.md"}, "home/code/CLAUDE.local.md"},
+		{"nearest wins", []string{"home/CLAUDE.md", "home/code/CLAUDE.md"}, "home/code/CLAUDE.md"},
+		{"the project's own CLAUDE.md is not a parent", []string{"home/code/proj/CLAUDE.md"}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			for _, f := range tt.files {
+				write(t, filepath.Join(root, f))
+			}
+			proj := filepath.Join(root, "home", "code", "proj")
+			if err := os.MkdirAll(proj, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			got, err := shadowingClaudeMD(proj, filepath.Join(root, "home"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := ""
+			if tt.want != "" {
+				want = filepath.Join(root, tt.want)
+			}
+			if got != want {
+				t.Errorf("got %q, want %q", got, want)
 			}
 		})
 	}

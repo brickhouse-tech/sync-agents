@@ -178,7 +178,8 @@ const (
 )
 
 // ClaudeMDAction is what sync does to <project>/CLAUDE.md. Sync never
-// removes CLAUDE.md; only `clean` removes our symlink.
+// touches a real CLAUDE.md or a foreign symlink; it creates our symlink
+// when Claude Code needs it and removes it when it is in the way.
 type ClaudeMDAction int
 
 const (
@@ -187,6 +188,12 @@ const (
 
 	// ClaudeMDLinkIt creates or repairs CLAUDE.md -> AGENTS.md.
 	ClaudeMDLinkIt
+
+	// ClaudeMDUnlink removes our CLAUDE.md -> AGENTS.md symlink. On a
+	// Claude Code that reads AGENTS.md natively the link is not just
+	// redundant: any CLAUDE.md stops Claude from reading AGENTS.md in
+	// every directory below it, so nested AGENTS.md files go dark.
+	ClaudeMDUnlink
 )
 
 // ClaudeMDDecision is an action, the sentence status prints for it, and
@@ -211,7 +218,7 @@ type ClaudeMDDecision struct {
 // linked reports whether CLAUDE.md is, or after this run will be, our
 // symlink. Only then does sync gitignore it.
 func (d ClaudeMDDecision) linked() bool {
-	return d.Action == ClaudeMDLinkIt || d.Current == ClaudeMDOurLink
+	return d.Action == ClaudeMDLinkIt || (d.Current == ClaudeMDOurLink && d.Action != ClaudeMDUnlink)
 }
 
 // claudeMDFacts is everything decideClaudeMD reads besides the probe.
@@ -221,6 +228,11 @@ type claudeMDFacts struct {
 	AgentsMD     bool // <project>/AGENTS.md exists
 	LocalMD      bool // <project>/CLAUDE.local.md exists
 	Current      ClaudeMDState
+
+	// Shadowing is the nearest instruction file in a directory above the
+	// project that stops Claude Code from reading AGENTS.md here (see
+	// shadowingClaudeMD), or "" when there is none.
+	Shadowing string
 }
 
 // decideClaudeMD is the CLAUDE.md policy (SPEC-013 §CLAUDE.md policy).
@@ -235,9 +247,10 @@ type claudeMDFacts struct {
 //	no AGENTS.md                       -> Keep (a link would dangle)
 //	claude-md = link                   -> LinkIt
 //	auto, CLAUDE.local.md present      -> LinkIt: it suppresses native AGENTS.md reading
+//	auto, CLAUDE.md in a parent dir    -> LinkIt: it suppresses native AGENTS.md reading
 //	auto, version < 2.1.281            -> LinkIt: that version needs CLAUDE.md
-//	auto, version >= 2.1.281           -> Keep: none created; an existing link of ours
-//	                                      stays and status says "not needed"
+//	auto, version >= 2.1.281, our link -> Unlink: it hides nested AGENTS.md files
+//	auto, version >= 2.1.281, absent   -> Keep: none created
 //	auto, version unknown              -> Keep, Warn, naming probe.Err and the claude-md key
 //
 // "Unknown changes nothing" is deliberate: claude is often on a
@@ -272,6 +285,8 @@ func decideClaudeMD(f claudeMDFacts, probe func() ClaudeProbe) ClaudeMDDecision 
 		return link("-> AGENTS.md (claude-md = link)")
 	case f.LocalMD:
 		return link("-> AGENTS.md: CLAUDE.local.md stops Claude Code from reading AGENTS.md on its own")
+	case f.Shadowing != "":
+		return link(fmt.Sprintf("-> AGENTS.md: %s stops Claude Code from reading AGENTS.md on its own here", f.Shadowing))
 	}
 
 	p := probe()
@@ -283,8 +298,10 @@ func decideClaudeMD(f claudeMDFacts, probe func() ClaudeProbe) ClaudeMDDecision 
 		return link(fmt.Sprintf("-> AGENTS.md: Claude Code %s reads CLAUDE.md, not AGENTS.md (native from %s)",
 			p.Version, ClaudeNativeAgentsMD))
 	case f.Current == ClaudeMDOurLink:
-		return keep(fmt.Sprintf("-> AGENTS.md is not needed: Claude Code %s reads AGENTS.md natively (>= %s); keeping the link",
-			p.Version, ClaudeNativeAgentsMD), false)
+		d.Action = ClaudeMDUnlink
+		d.Reason = fmt.Sprintf("-> AGENTS.md removed: Claude Code %s reads AGENTS.md natively (>= %s), "+
+			"and the link would stop it reading AGENTS.md in subdirectories", p.Version, ClaudeNativeAgentsMD)
+		return d
 	default:
 		return keep(fmt.Sprintf("not created: Claude Code %s reads AGENTS.md natively (>= %s)",
 			p.Version, ClaudeNativeAgentsMD), false)
@@ -322,6 +339,41 @@ func pathExists(path string) (bool, error) {
 	return err == nil, err
 }
 
+// shadowingClaudeMD returns the nearest CLAUDE.md, .claude/CLAUDE.md,
+// or CLAUDE.local.md in a directory above root, walking up to the
+// filesystem root. Claude Code reads AGENTS.md on its own only when none
+// of these exists in the working directory or above it. The user-level
+// home/.claude/CLAUDE.md does not count (Claude Code docs, "AGENTS.md").
+// A home directory that is itself a project with CLAUDE.md -> AGENTS.md
+// therefore hides AGENTS.md from every project below it.
+func shadowingClaudeMD(root, home string) (string, error) {
+	userLevel := ""
+	if home != "" {
+		userLevel = filepath.Join(home, ".claude", "CLAUDE.md")
+	}
+	dir := filepath.Clean(root)
+	for {
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", nil
+		}
+		dir = parent
+		for _, rel := range []string{"CLAUDE.md", filepath.Join(".claude", "CLAUDE.md"), "CLAUDE.local.md"} {
+			path := filepath.Join(dir, rel)
+			if path == userLevel {
+				continue
+			}
+			ok, err := pathExists(path)
+			if err != nil {
+				return "", err
+			}
+			if ok {
+				return path, nil
+			}
+		}
+	}
+}
+
 // claudeMDDecision reads the mode and the project state and decides for
 // this run. Each command calls it once, so `claude --version` runs at
 // most once per process and an unknown-version warning prints once.
@@ -348,12 +400,18 @@ func (a *App) claudeMDDecision() ClaudeMDDecision {
 	if err != nil {
 		return unchanged(err)
 	}
+	home, _ := os.UserHomeDir()
+	shadowing, err := shadowingClaudeMD(a.ProjectRoot, home)
+	if err != nil {
+		return unchanged(err)
+	}
 	facts := claudeMDFacts{
 		Mode:         mode,
 		ClaudeActive: a.isBucketActive("claude"),
 		AgentsMD:     agentsMD,
 		LocalMD:      localMD,
 		Current:      cur,
+		Shadowing:    shadowing,
 	}
 	return decideClaudeMD(facts, func() ClaudeProbe {
 		return probeClaude(context.Background(), a.ToolEnv.Run)
@@ -372,6 +430,9 @@ func (a *App) applyClaudeMD(d ClaudeMDDecision) (bool, error) {
 		a.Warn("CLAUDE.md " + d.Reason)
 		return false, nil
 	}
+	if d.Action == ClaudeMDUnlink {
+		return a.unlinkClaudeMD(d)
+	}
 	if d.Action != ClaudeMDLinkIt {
 		a.Info("CLAUDE.md " + d.Reason)
 		return false, nil
@@ -380,7 +441,32 @@ func (a *App) applyClaudeMD(d ClaudeMDDecision) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("link CLAUDE.md -> AGENTS.md: %w", err)
 	}
+	if outcome != linkNoop {
+		a.Info("CLAUDE.md " + d.Reason)
+	}
 	return outcome != linkNoop, nil
+}
+
+// unlinkClaudeMD removes our CLAUDE.md symlink. It re-checks that the
+// path is still a symlink resolving to AGENTS.md, so a file the user
+// put there since the decision is never removed.
+func (a *App) unlinkClaudeMD(d ClaudeMDDecision) (bool, error) {
+	cur, err := classifyClaudeMD(a.ProjectRoot)
+	if err != nil {
+		return false, err
+	}
+	if cur != ClaudeMDOurLink {
+		return false, nil
+	}
+	if a.DryRun {
+		a.Info("would remove CLAUDE.md " + d.Reason)
+		return true, nil
+	}
+	if err := os.Remove(filepath.Join(a.ProjectRoot, "CLAUDE.md")); err != nil {
+		return false, fmt.Errorf("remove CLAUDE.md symlink: %w", err)
+	}
+	a.Info("CLAUDE.md " + d.Reason)
+	return true, nil
 }
 
 // statusLine renders d for `sync-agents status`.
@@ -389,6 +475,8 @@ func (d ClaudeMDDecision) statusLine() string {
 	switch {
 	case d.Warn:
 		tag = "warn"
+	case d.Action == ClaudeMDUnlink:
+		tag = "stale"
 	case d.Current == ClaudeMDOurLink:
 		tag = "ok"
 	case d.Action == ClaudeMDLinkIt:

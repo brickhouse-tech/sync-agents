@@ -50,8 +50,13 @@ its vendor documents. See
    `rules/`.
 5. **`CLAUDE.md -> AGENTS.md` is version-gated.** sync creates it only
    when `claude` is an active target and the installed Claude Code is
-   older than 2.1.281, or when `CLAUDE.local.md` exists. An existing link
-   stays. A real `CLAUDE.md` is never moved aside, `--overwrite`
+   older than 2.1.281, or when a `CLAUDE.local.md` in the project or any
+   `CLAUDE.md`/`CLAUDE.local.md` in a parent directory would stop Claude
+   reading `AGENTS.md`. On 2.1.281 and later an existing link of ours is
+   removed: it hid nested `AGENTS.md` files. If your home directory is a
+   sync-agents project with `~/CLAUDE.md -> AGENTS.md`, the next sync
+   there removes it, and projects below `~` start loading their own
+   `AGENTS.md`. Set `claude-md = link` to keep the old behavior. A real `CLAUDE.md` is never moved aside, `--overwrite`
    included. `fix` no longer relinks a `CLAUDE.md` symlink that points
    elsewhere, and `clean` no longer removes one.
 6. **Rules are no longer folded into Cursor, Copilot, Codex, or

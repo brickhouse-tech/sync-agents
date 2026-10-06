@@ -284,14 +284,23 @@ fake_claude() {
   ! grep -qxF "CLAUDE.md" "$TEST_DIR/.gitignore"
 }
 
-@test "an existing CLAUDE.md link survives sync under Claude Code 2.1.286" {
+@test "sync removes our CLAUDE.md link under Claude Code 2.1.286" {
   "$SCRIPT" -d "$TEST_DIR" init
   ln -s AGENTS.md "$TEST_DIR/CLAUDE.md"
   run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
-  [[ "$(readlink "$TEST_DIR/CLAUDE.md")" == "AGENTS.md" ]]
-  run "$SCRIPT" -d "$TEST_DIR" status
-  [[ "$output" == *"[ok] CLAUDE.md -> AGENTS.md is not needed"* ]]
+  [[ "$output" == *"CLAUDE.md -> AGENTS.md removed"* ]] || return 1
+  [ ! -e "$TEST_DIR/CLAUDE.md" ] && [ ! -L "$TEST_DIR/CLAUDE.md" ]
+}
+
+@test "a CLAUDE.md in a parent directory forces the link under Claude Code 2.1.286" {
+  mkdir -p "$TEST_DIR/proj"
+  echo "# parent" > "$TEST_DIR/CLAUDE.md"
+  "$SCRIPT" -d "$TEST_DIR/proj" init
+  run "$SCRIPT" -d "$TEST_DIR/proj" sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$TEST_DIR/CLAUDE.md stops Claude Code"* ]] || return 1
+  [ "$(readlink "$TEST_DIR/proj/CLAUDE.md")" = "AGENTS.md" ]
 }
 
 @test "sync changes nothing and warns once when claude --version fails" {

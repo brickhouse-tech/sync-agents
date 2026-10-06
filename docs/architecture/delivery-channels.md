@@ -191,8 +191,10 @@ Rows are checked in order.
 | no `AGENTS.md` | nothing (a link would dangle) |
 | `claude-md = link` | ensure `CLAUDE.md -> AGENTS.md` |
 | `auto`, `CLAUDE.local.md` exists in the project root | ensure the link |
+| `auto`, a `CLAUDE.md`, `.claude/CLAUDE.md`, or `CLAUDE.local.md` in a parent directory (not `~/.claude/CLAUDE.md`) | ensure the link; the reason names the parent file |
 | `auto`, `claude --version` < 2.1.281 | ensure the link |
-| `auto`, version >= 2.1.281 | create nothing; an existing link of ours stays and status says "not needed" |
+| `auto`, version >= 2.1.281, our link exists | remove our link (status `[stale]` until sync runs) |
+| `auto`, version >= 2.1.281, no link | create nothing |
 | `auto`, version unknown | change nothing; warn once, naming the error and the `claude-md` key |
 
 - The probe runs `claude --version` with a 5 s timeout, once per
@@ -200,8 +202,14 @@ Rows are checked in order.
 - "Unknown changes nothing" is deliberate. `claude` is often on a
   terminal's `PATH` but not on a git hook's. Acting on unknown would make
   the two runs undo each other.
-- sync never moves or deletes a real `CLAUDE.md`, `--overwrite`
-  included. `clean` removes only our link.
+- sync never moves or deletes a real `CLAUDE.md` or a foreign symlink,
+  `--overwrite` included. The only `CLAUDE.md` sync removes is its own
+  link to `AGENTS.md`, re-checked just before removal.
+- Why remove our link on a native Claude: any `CLAUDE.md` stops Claude
+  from reading `AGENTS.md` in that directory and every directory below
+  it. A `CLAUDE.md -> AGENTS.md` link at the project root hides nested
+  `AGENTS.md` files in subdirectories; one in a home directory that is
+  itself a project hides `AGENTS.md` in every project under it.
 
 ### What Claude reads
 
@@ -217,6 +225,11 @@ From the Claude Code memory docs
   Claude from reading `AGENTS.md`. That is why `auto` links when one
   exists. The Claude setting **Project instructions** =
   `claude-md-and-agents-md` is the alternative.
+- The check walks up the tree, so a `CLAUDE.md` in any parent directory
+  also stops Claude reading a project's `AGENTS.md`. Verified live on
+  2026-10-06: an `AGENTS.md` under a home directory holding
+  `CLAUDE.md -> AGENTS.md` was not loaded; the same file under `/tmp`
+  was. That is why `auto` links when a parent directory has one.
 - `~/.claude/CLAUDE.md`, a managed `CLAUDE.md`, and `.claude/rules/`
   files do not count, and load alongside `AGENTS.md`.
 - `@path` imports inside an `AGENTS.md` are expanded.
