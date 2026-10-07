@@ -18,9 +18,11 @@ import (
 // The header lines mirror the comment style of the project-level
 // .agents/config so users who have seen one recognize the other.
 const GlobalConfigContent = `# sync-agents global configuration
-# Comma-separated list of sync targets (available: claude, codeium, cursor, copilot, codex)
+# Comma-separated list of sync targets (available: claude, codeium, cursor, copilot, codex, opencode, openclaw)
 # Note: 'codeium' is the user-scope name for Windsurf; the project-scope dir is .windsurf/
+# Note: global sync does not read this line; it serves every tool whose home directory exists.
 # Override per-command with: sync-agents global sync --targets claude,cursor
+# Naming a tool in --targets also consents to editing a file of yours that it reads.
 targets = claude,codeium,cursor,copilot,codex
 `
 

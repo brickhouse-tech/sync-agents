@@ -79,16 +79,17 @@ func TestCmdGlobalSync_EmptyTreeNoop(t *testing.T) {
 }
 
 // TestCmdGlobalSync_PassiveRuleFanout exercises the passive-rule
-// routing across every tool. A single rule with no frontmatter
-// should:
+// routing across every installed tool. A single rule with no
+// frontmatter should:
 //   - symlink at ~/.claude/rules/security.md
-//   - symlink at ~/.cursor/rules/security.md
-//   - concat into ~/.codeium/windsurf/memories/global_rules.md
-//   - concat into ~/.github/copilot/instructions.md
-//   - concat into ~/.codex/instructions.md
+//   - land in the codeium-rules region of global_rules.md
+//   - land in the codex-rules region of ~/.codex/AGENTS.md
+//   - reach Copilot through ~/.copilot/instructions/
+//   - never reach ~/.cursor/rules (Cursor has no user-rules file)
 func TestCmdGlobalSync_PassiveRuleFanout(t *testing.T) {
 	a, root, _ := newGlobalSyncTestApp(t)
 	seedRule(t, a.ResolveGlobalRoot(), "security", "be careful\n")
+	mkdirs(t, filepath.Join(root, ".codeium"), filepath.Join(root, ".codex"), filepath.Join(root, ".copilot"))
 
 	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
 		t.Fatalf("CmdGlobalSync: %v", err)
@@ -96,7 +97,7 @@ func TestCmdGlobalSync_PassiveRuleFanout(t *testing.T) {
 
 	wantSymlinks := []string{
 		filepath.Join(root, ".claude", "rules", "security.md"),
-		filepath.Join(root, ".cursor", "rules", "security.md"),
+		filepath.Join(root, ".copilot", "instructions", "sync-agents.instructions.md"),
 	}
 	for _, p := range wantSymlinks {
 		info, err := os.Lstat(p)
@@ -109,87 +110,70 @@ func TestCmdGlobalSync_PassiveRuleFanout(t *testing.T) {
 		}
 	}
 
-	wantConcat := []string{
+	wantContent := []string{
 		filepath.Join(root, ".codeium", "windsurf", "memories", "global_rules.md"),
-		filepath.Join(root, ".github", "copilot", "instructions.md"),
-		filepath.Join(root, ".codex", "instructions.md"),
+		filepath.Join(root, ".codex", "AGENTS.md"),
+		filepath.Join(root, ".copilot", "instructions", "sync-agents.instructions.md"),
 	}
-	for _, p := range wantConcat {
+	for _, p := range wantContent {
 		content, err := os.ReadFile(p)
 		if err != nil {
-			t.Errorf("missing concat %s: %v", p, err)
+			t.Errorf("missing %s: %v", p, err)
 			continue
 		}
-		if !bytes.Contains(content, []byte("## security")) {
-			t.Errorf("concat %s missing security heading:\n%s", p, content)
+		if !bytes.Contains(content, []byte("## security\n\nbe careful")) {
+			t.Errorf("%s missing the rule:\n%s", p, content)
 		}
-		if !bytes.Contains(content, []byte("be careful")) {
-			t.Errorf("concat %s missing rule body:\n%s", p, content)
-		}
+	}
+	if _, err := os.Lstat(filepath.Join(root, ".cursor", "rules")); err == nil {
+		t.Error("~/.cursor/rules created; Cursor reads no user-rules file")
 	}
 }
 
 // TestCmdGlobalSync_InvocableSkillRoutesPerTool is the semantic-
 // routing flagship test. A single-file invocable skill must land at
-// the right per-tool destination for each tool:
+// the right per-tool destination for each installed tool:
 //
 //   - claude:   ~/.claude/skills/cool/SKILL.md (symlink)
 //   - codeium:  ~/.codeium/windsurf/global_workflows/cool.md (symlink)
-//   - cursor:   ~/.cursor/rules/cool.md (symlink)
-//   - copilot:  concat into instructions.md
-//   - codex:    concat into instructions.md
+//   - codex:    skipped (Codex loads ~/.agents/skills natively)
+//   - copilot:  skipped (no user-scope skill surface)
+//
+// and never inside a channel, which carries passive content only.
 func TestCmdGlobalSync_InvocableSkillRoutesPerTool(t *testing.T) {
-	a, root, _ := newGlobalSyncTestApp(t)
+	a, root, stdout := newGlobalSyncTestApp(t)
 	seedSkill(t, a.ResolveGlobalRoot(), "cool", "# cool skill\nbody\n", nil)
+	mkdirs(t, filepath.Join(root, ".codeium"), filepath.Join(root, ".codex"), filepath.Join(root, ".copilot"))
 
 	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
 		t.Fatalf("CmdGlobalSync: %v", err)
 	}
 
-	cases := []struct {
-		path       string
-		isSymlink  bool
-		concatNeed string
-	}{
-		{filepath.Join(root, ".claude", "skills", "cool", "SKILL.md"), true, ""},
-		{filepath.Join(root, ".codeium", "windsurf", "global_workflows", "cool.md"), true, ""},
-		{filepath.Join(root, ".cursor", "rules", "cool.md"), true, ""},
-		{filepath.Join(root, ".github", "copilot", "instructions.md"), false, "## cool"},
-		{filepath.Join(root, ".codex", "instructions.md"), false, "## cool"},
-	}
-	for _, c := range cases {
-		t.Run(c.path, func(t *testing.T) {
-			if c.isSymlink {
-				info, err := os.Lstat(c.path)
-				if err != nil {
-					t.Fatalf("expected symlink at %s: %v", c.path, err)
-				}
-				if info.Mode()&os.ModeSymlink == 0 {
-					t.Errorf("%s is not a symlink", c.path)
-				}
-			} else {
-				content, err := os.ReadFile(c.path)
-				if err != nil {
-					t.Fatalf("expected concat at %s: %v", c.path, err)
-				}
-				if !bytes.Contains(content, []byte(c.concatNeed)) {
-					t.Errorf("concat %s missing %q:\n%s", c.path, c.concatNeed, content)
-				}
-			}
-		})
-	}
-
-	// Negative assertion: an invocable skill must NOT show up in
-	// the Windsurf memories concat (that's for passive artifacts).
-	memContent, err := os.ReadFile(filepath.Join(root, ".codeium", "windsurf", "memories", "global_rules.md"))
-	if err == nil {
-		if bytes.Contains(memContent, []byte("## cool")) {
-			t.Errorf("invocable skill leaked into Windsurf memories concat:\n%s", memContent)
+	for _, p := range []string{
+		filepath.Join(root, ".claude", "skills", "cool", "SKILL.md"),
+		filepath.Join(root, ".codeium", "windsurf", "global_workflows", "cool.md"),
+	} {
+		info, err := os.Lstat(p)
+		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+			t.Errorf("expected symlink at %s (err=%v)", p, err)
 		}
 	}
-	// (If the file doesn't exist at all, that's also acceptable —
-	// the sync skipped a memories concat because no passive
-	// artifacts targeted it.)
+	for _, want := range []string{
+		`[codex] skip skill "cool": Codex loads ~/.agents/skills natively`,
+		`[copilot] skip skill "cool": copilot has no user-scope skill surface`,
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("missing %q in:\n%s", want, stdout)
+		}
+	}
+	for _, p := range []string{
+		filepath.Join(root, ".codeium", "windsurf", "memories", "global_rules.md"),
+		filepath.Join(root, ".codex", "AGENTS.md"),
+	} {
+		if data, err := os.ReadFile(p); err == nil && bytes.Contains(data, []byte("## cool")) {
+			t.Errorf("invocable skill leaked into %s:\n%s", p, data)
+		}
+	}
 }
 
 // TestCmdGlobalSync_MultiFileSkillSkipsCodeium covers the SPEC-002
@@ -198,6 +182,7 @@ func TestCmdGlobalSync_InvocableSkillRoutesPerTool(t *testing.T) {
 // SKIPPED for codeium with a warning.
 func TestCmdGlobalSync_MultiFileSkillSkipsCodeium(t *testing.T) {
 	a, root, stdout := newGlobalSyncTestApp(t)
+	mkdirs(t, filepath.Join(root, ".codeium"))
 	seedSkill(t, a.ResolveGlobalRoot(), "big", "# big skill\n", map[string]string{
 		"helper.txt": "support",
 	})
@@ -259,21 +244,22 @@ func TestCmdGlobalSync_FrontmatterFlipsRoute(t *testing.T) {
 // TestCmdGlobalSync_Idempotent runs the sync twice and asserts the
 // second run is fast and doesn't rewrite anything. We check both
 // symlinks (existing symlink to same target = no recreate) and the
-// concat file's mtime preservation.
+// region host's mtime preservation.
 func TestCmdGlobalSync_Idempotent(t *testing.T) {
 	a, root, _ := newGlobalSyncTestApp(t)
 	seedRule(t, a.ResolveGlobalRoot(), "x", "body\n")
+	mkdirs(t, filepath.Join(root, ".codeium"))
 
 	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
 		t.Fatalf("first sync: %v", err)
 	}
 
-	// Grab mtime of the codeium concat (the most interesting
+	// Grab mtime of the codeium region host (the most interesting
 	// idempotency case — it's content-compared).
 	concatPath := filepath.Join(root, ".codeium", "windsurf", "memories", "global_rules.md")
 	firstInfo, err := os.Stat(concatPath)
 	if err != nil {
-		t.Fatalf("concat missing after first sync: %v", err)
+		t.Fatalf("region host missing after first sync: %v", err)
 	}
 
 	// Run sync again immediately.
@@ -283,10 +269,10 @@ func TestCmdGlobalSync_Idempotent(t *testing.T) {
 
 	secondInfo, err := os.Stat(concatPath)
 	if err != nil {
-		t.Fatalf("concat missing after second sync: %v", err)
+		t.Fatalf("region host missing after second sync: %v", err)
 	}
 	if !secondInfo.ModTime().Equal(firstInfo.ModTime()) {
-		t.Errorf("concat mtime changed despite idempotent sync: first=%v second=%v",
+		t.Errorf("region host mtime changed despite idempotent sync: first=%v second=%v",
 			firstInfo.ModTime(), secondInfo.ModTime())
 	}
 }
@@ -297,6 +283,7 @@ func TestCmdGlobalSync_Idempotent(t *testing.T) {
 func TestCmdGlobalSync_TargetsFilter(t *testing.T) {
 	a, root, _ := newGlobalSyncTestApp(t)
 	seedRule(t, a.ResolveGlobalRoot(), "x", "body\n")
+	mkdirs(t, filepath.Join(root, ".codex"))
 
 	if err := a.CmdGlobalSync(GlobalSyncOpts{Targets: []string{"claude"}}); err != nil {
 		t.Fatalf("sync: %v", err)
@@ -306,8 +293,11 @@ func TestCmdGlobalSync_TargetsFilter(t *testing.T) {
 	if _, err := os.Lstat(filepath.Join(root, ".claude", "rules", "x.md")); err != nil {
 		t.Errorf("claude target not touched: %v", err)
 	}
-	// Cursor and others should NOT.
-	for _, dir := range []string{".cursor", ".codeium", ".github", ".codex"} {
+	// Cursor and others should NOT, even an installed one.
+	if _, err := os.Stat(filepath.Join(root, ".codex", "AGENTS.md")); err == nil {
+		t.Error("codex delivered although --targets named only claude")
+	}
+	for _, dir := range []string{".cursor", ".codeium", ".github", ".copilot"} {
 		p := filepath.Join(root, dir)
 		if _, err := os.Stat(p); err == nil {
 			t.Errorf("unexpected dir created for unfiltered target: %s", p)
@@ -616,139 +606,113 @@ func TestDiscoverArtifacts_FindsAllThreeBuckets(t *testing.T) {
 	}
 }
 
-// TestCmdGlobalSync_WritesClaudeImportsBlock verifies the bridge
-// between "sync placed the rule at ~/.claude/rules/X.md" and "Claude
-// actually loads rule X": a managed @-import block is regenerated in
-// ~/.claude/CLAUDE.md listing every passive rule routed to Claude.
-// See issue #46 — Claude does not auto-scan rules/*.md.
-func TestCmdGlobalSync_WritesClaudeImportsBlock(t *testing.T) {
-	a, root, _ := newGlobalSyncTestApp(t)
-	seedRule(t, a.ResolveGlobalRoot(), "security", "be careful\n")
-	seedRule(t, a.ResolveGlobalRoot(), "no-secrets", "no PII\n")
-	seedWorkflow(t, a.ResolveGlobalRoot(), "passive-wf", "`\n```\n")
-
-	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
-		t.Fatalf("CmdGlobalSync: %v", err)
+// legacyImportsBlock is a claude-imports block as global sync wrote it
+// before SPEC-013.
+func legacyImportsBlock(paths ...string) string {
+	b := legacyClaudeImportsRegion.Start() + "\n<!-- managed by sync-agents; do not edit between the markers -->\n"
+	for _, p := range paths {
+		b += "@" + p + "\n"
 	}
-
-	claudeMD := filepath.Join(root, ".claude", "CLAUDE.md")
-	data, err := os.ReadFile(claudeMD)
-	if err != nil {
-		t.Fatalf("read CLAUDE.md: %v", err)
-	}
-	content := string(data)
-
-	if !HasManagedImportBlock(content) {
-		t.Fatalf("missing managed block in CLAUDE.md:\n%s", content)
-	}
-
-	imports := ExtractManagedImports(content)
-	wantImports := map[string]bool{
-		filepath.Join(root, ".claude", "rules", "no-secrets.md"): true,
-		filepath.Join(root, ".claude", "rules", "security.md"):   true,
-	}
-	if len(imports) != len(wantImports) {
-		t.Errorf("got %d imports (%v), want %d: %v", len(imports), imports, len(wantImports), wantImports)
-	}
-	for _, imp := range imports {
-		if !wantImports[imp] {
-			t.Errorf("unexpected import %q", imp)
-		}
-	}
+	return b + legacyClaudeImportsRegion.End() + "\n"
 }
 
-// TestCmdGlobalSync_ClaudeImportsOmitsInvocables verifies that
-// invocable skills (which Claude auto-discovers at ~/.claude/skills/)
-// and invocable workflows (which Claude auto-registers at
-// ~/.claude/commands/) do NOT contribute to the @-import block — they
-// don't need it.
-func TestCmdGlobalSync_ClaudeImportsOmitsInvocables(t *testing.T) {
-	a, root, _ := newGlobalSyncTestApp(t)
-	seedSkill(t, a.ResolveGlobalRoot(), "cool", "skill MD\n", nil) // invocable by default
-	seedWorkflow(t, a.ResolveGlobalRoot(), "wf", "workflow MD\n")  // invocable by default
-
-	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
-		t.Fatalf("CmdGlobalSync: %v", err)
-	}
-
-	claudeMD := filepath.Join(root, ".claude", "CLAUDE.md")
-	// File may not exist if there were no passive rules — that's
-	// correct behavior; the sync shouldn't create an empty block
-	// when nothing needs it.
-	if _, err := os.Stat(claudeMD); err == nil {
-		t.Errorf("CLAUDE.md exists but should not (no passive rules):\n%s", func() string {
-			b, _ := os.ReadFile(claudeMD)
-			return string(b)
-		}())
-	}
-}
-
-// TestCmdGlobalSync_ClaudeImportsPreservesUserContent confirms that
-// any user-authored content at ~/.claude/CLAUDE.md survives the
-// managed-block rewrite.
-func TestCmdGlobalSync_ClaudeImportsPreservesUserContent(t *testing.T) {
-	a, root, _ := newGlobalSyncTestApp(t)
-	claudeDir := filepath.Join(root, ".claude")
-	if err := os.MkdirAll(claudeDir, 0o755); err != nil {
+// writeClaudeMD seeds ~/.claude/CLAUDE.md under root and returns its path.
+func writeClaudeMD(t *testing.T, root, content string) string {
+	t.Helper()
+	p := filepath.Join(root, ".claude", "CLAUDE.md")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	claudeMD := filepath.Join(claudeDir, "CLAUDE.md")
-	if err := os.WriteFile(claudeMD, []byte("# Custom Claude config\n\nUser keeps this.\n"), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
 		t.Fatalf("write CLAUDE.md: %v", err)
 	}
+	return p
+}
 
+// TestCmdGlobalSync_StripsClaudeImportsKeepsUserLines covers SPEC-013
+// §Migration step 2: the retired block goes, the user's own lines
+// (including their own @-imports) stay in order.
+func TestCmdGlobalSync_StripsClaudeImportsKeepsUserLines(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	seedRule(t, a.ResolveGlobalRoot(), "security", "rule body\n")
+	claudeMD := writeClaudeMD(t, root, "@~/.claude/pstack-models.md\n\n"+
+		legacyImportsBlock(filepath.Join(root, ".claude", "rules", "security.md"))+
+		"\nUser prose after.\n")
+
+	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
+		t.Fatalf("CmdGlobalSync: %v", err)
+	}
+
+	got := readFile(t, claudeMD)
+	if want := "@~/.claude/pstack-models.md\n\nUser prose after.\n"; got != want {
+		t.Errorf("CLAUDE.md = %q, want %q", got, want)
+	}
+}
+
+// TestCmdGlobalSync_RemovesClaudeMDThatWasOnlyTheBlock: a CLAUDE.md
+// sync-agents created holds nothing else, so it is removed.
+func TestCmdGlobalSync_RemovesClaudeMDThatWasOnlyTheBlock(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	seedRule(t, a.ResolveGlobalRoot(), "security", "rule body\n")
+	claudeMD := writeClaudeMD(t, root, legacyImportsBlock("/x/security.md"))
+
+	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
+		t.Fatalf("CmdGlobalSync: %v", err)
+	}
+	if _, err := os.Stat(claudeMD); !os.IsNotExist(err) {
+		t.Errorf("CLAUDE.md should be removed when it was only the block (stat err %v)", err)
+	}
+}
+
+// TestCmdGlobalSync_NeverCreatesClaudeMD: passive rules reach Claude
+// through ~/.claude/rules/, so sync no longer writes CLAUDE.md at all.
+func TestCmdGlobalSync_NeverCreatesClaudeMD(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
 	seedRule(t, a.ResolveGlobalRoot(), "security", "rule body\n")
 
 	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
 		t.Fatalf("CmdGlobalSync: %v", err)
 	}
-
-	content, _ := os.ReadFile(claudeMD)
-	s := string(content)
-
-	if !strings.Contains(s, "# Custom Claude config") {
-		t.Errorf("user content lost:\n%s", s)
+	if _, err := os.Stat(filepath.Join(root, ".claude", "CLAUDE.md")); !os.IsNotExist(err) {
+		t.Errorf("global sync created CLAUDE.md (stat err %v)", err)
 	}
-	if !HasManagedImportBlock(s) {
-		t.Errorf("managed block not added:\n%s", s)
+	if _, err := os.Lstat(filepath.Join(root, ".claude", "rules", "security.md")); err != nil {
+		t.Errorf("rule link missing: %v", err)
 	}
 }
 
-// TestCmdGlobalSync_ClaudeImportsDryRun verifies dry-run doesn't
-// touch the filesystem but still reports the plan.
-func TestCmdGlobalSync_ClaudeImportsDryRun(t *testing.T) {
+// TestCmdGlobalSync_ClaudeImportsStripDryRun: dry-run reports the strip
+// and leaves the file byte-identical.
+func TestCmdGlobalSync_ClaudeImportsStripDryRun(t *testing.T) {
 	a, root, stdout := newGlobalSyncTestApp(t)
 	seedRule(t, a.ResolveGlobalRoot(), "security", "body\n")
+	before := "# mine\n\n" + legacyImportsBlock("/x/security.md")
+	claudeMD := writeClaudeMD(t, root, before)
 	a.DryRun = true
 
 	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
 		t.Fatalf("CmdGlobalSync: %v", err)
 	}
-
-	claudeMD := filepath.Join(root, ".claude", "CLAUDE.md")
-	if _, err := os.Stat(claudeMD); err == nil {
-		t.Errorf("dry-run created CLAUDE.md")
+	if got := readFile(t, claudeMD); got != before {
+		t.Errorf("dry-run changed CLAUDE.md:\n%s", got)
 	}
-	if !strings.Contains(stdout.String(), "[dry-run]") {
-		t.Errorf("expected [dry-run] in output:\n%s", stdout.String())
+	if !strings.Contains(stdout.String(), "[dry-run] would scrub managed block") {
+		t.Errorf("expected the dry-run strip report:\n%s", stdout.String())
 	}
 }
 
-// TestCmdGlobalSync_ClaudeImportsTargetsFilter verifies that when
-// --targets excludes claude, no @-import block is written for
-// Claude.
-func TestCmdGlobalSync_ClaudeImportsTargetsFilter(t *testing.T) {
+// TestCmdGlobalSync_ClaudeImportsStripNeedsClaudeTarget: --targets
+// without claude leaves ~/.claude/CLAUDE.md alone.
+func TestCmdGlobalSync_ClaudeImportsStripNeedsClaudeTarget(t *testing.T) {
 	a, root, _ := newGlobalSyncTestApp(t)
 	seedRule(t, a.ResolveGlobalRoot(), "security", "body\n")
+	before := legacyImportsBlock("/x/security.md")
+	claudeMD := writeClaudeMD(t, root, before)
 
-	// Only sync cursor — claude should be skipped.
 	if err := a.CmdGlobalSync(GlobalSyncOpts{Targets: []string{"cursor"}}); err != nil {
 		t.Fatalf("CmdGlobalSync: %v", err)
 	}
-
-	claudeMD := filepath.Join(root, ".claude", "CLAUDE.md")
-	if _, err := os.Stat(claudeMD); err == nil {
-		data, _ := os.ReadFile(claudeMD)
-		t.Errorf("CLAUDE.md written when claude target filtered:\n%s", string(data))
+	if got := readFile(t, claudeMD); got != before {
+		t.Errorf("CLAUDE.md changed with claude filtered out:\n%s", got)
 	}
 }

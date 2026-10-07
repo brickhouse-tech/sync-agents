@@ -222,8 +222,7 @@ func (st *integrityState) addArtifact(agentsDir string, b Bucket, dir string, e 
 	}
 
 	// STATE snapshots are per-engineer scratch unless they opt in with
-	// `shared: true` frontmatter (same convention as the AGENTS.md
-	// indexer). Applies to flat .md artifacts.
+	// `shared: true` frontmatter. Applies to flat .md artifacts.
 	if !b.DirPerArtifact && strings.HasPrefix(e.Name(), "STATE_") && strings.HasSuffix(e.Name(), ".md") {
 		if !stateSnapshotIsShared(abs) {
 			return nil
@@ -903,7 +902,7 @@ func short(s string) string {
 }
 
 // writeFileAtomicAgent writes via temp file + rename in the target's
-// directory (mirrors concat.go's helper; kept local to avoid widening
+// directory (mirrors region.go's writeIfChanged; kept local to avoid widening
 // any package's API surface).
 func writeFileAtomicAgent(target string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {

@@ -15,8 +15,8 @@ import (
 // (SPEC-003). The orchestration lives in internal/agent/source —
 // scope-agnostic, testable without an App; this file only resolves
 // scope (--global → ResolveGlobalRoot), adapts the bucket registry,
-// renders reports through Info/Warn/Error, and regenerates AGENTS.md
-// after successful writes (SPEC-003 Q4).
+// renders reports through Info/Warn/Error, and runs the one-time
+// AGENTS.md migration after successful writes (SPEC-003 Q4, SPEC-013).
 
 // SourceCmdOpts carries the source-command flags that aren't already
 // persistent App fields (Force/DryRun live on App like every other
@@ -123,15 +123,15 @@ func shortRef(sha string) string {
 	return sha
 }
 
-// finishSourceWrite regenerates AGENTS.md after a source command that
-// changed the tree. Only at project scope — the global tree's fan-out
-// is `global sync`'s job, and there is no AGENTS.md contract there.
+// finishSourceWrite refreshes .agents/index/ (and runs the one-time
+// AGENTS.md migration, SPEC-013) after a source command that changed
+// the tree. Only at project scope: the global tree's fan-out is
+// `global sync`'s job.
 func (a *App) finishSourceWrite(changed bool, opts SourceCmdOpts) {
 	if !changed || opts.Global || a.DryRun {
 		return
 	}
-	a.generateAgentsMD()
-	a.Info("Updated AGENTS.md index")
+	a.refreshIndex()
 }
 
 // CmdPull implements `sync-agents pull`.

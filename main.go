@@ -72,6 +72,7 @@ func main() {
 					}
 				}
 				app.ActiveTargets = targets
+				app.TargetsFromFlag = true
 			} else {
 				app.ActiveTargets = agent.ReadConfigTargets(app.ProjectRoot)
 			}
@@ -187,7 +188,7 @@ func main() {
 	var indexNoFix bool
 	indexCmd := &cobra.Command{
 		Use:   "index",
-		Short: "Regenerate AGENTS.md (backfills skill frontmatter first)",
+		Short: "Regenerate .agents/index/ for each tool (backfills skill frontmatter first)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !indexNoFix {
 				app.CmdBackfillSkills()
@@ -461,7 +462,7 @@ func main() {
 	// adr — transition Architecture Decision Records between statuses
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "adr <accept|deny|propose> <name>",
-		Short: "Move an ADR between proposed/accepted/denied and reindex",
+		Short: "Move an ADR between proposed/accepted/denied",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var action, name string
 			if len(args) >= 1 {
@@ -477,8 +478,8 @@ func main() {
 	// lint
 	var lintFix bool
 	lintCmd := &cobra.Command{
-		Use:   "lint [type]",
-		Short: "Validate skill frontmatter against Claude authoring rules",
+		Use:   "lint [skills|all]",
+		Short: "Validate skill frontmatter; flag inert import: true on plans, specs and ADRs",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			lintType := ""
 			if len(args) > 0 {
@@ -496,7 +497,7 @@ func main() {
 	rootCmd.AddCommand(&cobra.Command{
 		Use:     "git-hook",
 		Aliases: []string{"hook"},
-		Short:   "Install git pre-commit hook that syncs + indexes on commit",
+		Short:   "Install git pre-commit hook that syncs on commit",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if cmd.CalledAs() == "hook" {
 				fmt.Fprintln(os.Stderr, "[warn] `sync-agents hook` is deprecated; use `sync-agents git-hook` (same behavior).")
@@ -521,31 +522,17 @@ func main() {
 	fixCmd.Flags().BoolVar(&noClobber, "no-clobber", false, "Skip items that already exist")
 	rootCmd.AddCommand(fixCmd)
 
-	// inherit
-	var inheritList bool
-	var inheritRemove string
-	inheritCmd := &cobra.Command{
-		Use:   "inherit [label] [path]",
-		Short: "Manage inheritance links",
+	// inherit — removed by SPEC-013; a hidden stub points at the docs.
+	// Flag parsing is off so old invocations (--list, --remove) reach
+	// the explanation instead of an unknown-flag error.
+	rootCmd.AddCommand(&cobra.Command{
+		Use:                "inherit",
+		Hidden:             true,
+		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if inheritList {
-				return app.CmdInheritList()
-			}
-			if inheritRemove != "" {
-				return app.CmdInheritRemove(inheritRemove)
-			}
-			if len(args) < 2 {
-				app.Error("Usage: sync-agents inherit <label> <path>")
-				app.Error("       sync-agents inherit --list")
-				app.Error("       sync-agents inherit --remove <label>")
-				return fmt.Errorf("missing args")
-			}
-			return app.CmdInheritAdd(args[0], args[1])
+			return app.CmdInherit()
 		},
-	}
-	inheritCmd.Flags().BoolVar(&inheritList, "list", false, "List inheritance links")
-	inheritCmd.Flags().StringVar(&inheritRemove, "remove", "", "Remove inheritance link by label")
-	rootCmd.AddCommand(inheritCmd)
+	})
 
 	// promote — copy a local .agents/ artifact into ~/.agents/.
 	//
@@ -635,9 +622,11 @@ func main() {
 	// Routing happens via semantic (frontmatter → bucket default)
 	// rather than bucket name; see SPEC-002 §Semantic-aware routing
 	// and docs/architecture/semantic-routing.md. Per-tool destinations
-	// are computed by TargetDestination; concat targets (Windsurf
-	// memories, Copilot/Codex instructions.md) are regenerated atomically
-	// at the end of the sync.
+	// are computed by TargetDestination; passive rules then reach each
+	// installed tool through its delivery channel (SPEC-013): regions in
+	// ~/.codex/AGENTS.md, Windsurf's global_rules.md and the OpenClaw
+	// workspace AGENTS.md, a link in ~/.copilot/instructions/, and an
+	// entry in ~/.config/opencode/opencode.json.
 	var globalSyncTargets string
 	globalSyncCmd := &cobra.Command{
 		Use:   "sync",
@@ -648,7 +637,7 @@ func main() {
 			})
 		},
 	}
-	globalSyncCmd.Flags().StringVar(&globalSyncTargets, "targets", "", "Comma-separated tools to sync (default: all registered; openclaw only after an explicit --targets openclaw)")
+	globalSyncCmd.Flags().StringVar(&globalSyncTargets, "targets", "", "Comma-separated tools to sync (default: every installed tool; naming a tool also consents to editing a file of yours it reads)")
 	globalCmd.AddCommand(globalSyncCmd)
 
 	// global status — read-only report of every per-tool destination's
@@ -664,24 +653,24 @@ func main() {
 			})
 		},
 	}
-	globalStatusCmd.Flags().StringVar(&globalStatusTargets, "targets", "", "Comma-separated tools to report on (default: all registered; openclaw only after an explicit --targets openclaw)")
+	globalStatusCmd.Flags().StringVar(&globalStatusTargets, "targets", "", "Comma-separated tools to report on (default: all registered)")
 	globalCmd.AddCommand(globalStatusCmd)
 
-	// global clean — remove sync-agents-owned symlinks and concat
-	// files from per-tool global dirs. Safety-gated: user-owned
-	// files (without the banner) and user-owned symlinks (pointing
-	// outside ~/.agents/) are left alone with warnings.
+	// global clean — remove sync-agents-owned symlinks, regions, and
+	// config entries from per-tool global dirs. Safety-gated: user
+	// files, bytes outside our regions, and user-owned symlinks
+	// (pointing outside ~/.agents/) are left alone.
 	var globalCleanTargets string
 	globalCleanCmd := &cobra.Command{
 		Use:   "clean",
-		Short: "Remove sync-agents-owned global symlinks and concat files",
+		Short: "Remove sync-agents-owned global symlinks, regions, and config entries",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return app.CmdGlobalClean(agent.GlobalCleanOpts{
 				Targets: parseTargetList(globalCleanTargets),
 			})
 		},
 	}
-	globalCleanCmd.Flags().StringVar(&globalCleanTargets, "targets", "", "Comma-separated tools to clean (default: all registered; openclaw only after an explicit --targets openclaw)")
+	globalCleanCmd.Flags().StringVar(&globalCleanTargets, "targets", "", "Comma-separated tools to clean (default: all registered)")
 	globalCmd.AddCommand(globalCleanCmd)
 
 	rootCmd.AddCommand(globalCmd)

@@ -378,3 +378,87 @@ func TestLint_FoldedDescriptionIsAnalyzed(t *testing.T) {
 		}
 	}
 }
+
+// TestCmdLint_ImportFlagWarns covers W201: `import: true` on a plan,
+// spec, or ADR (any depth) warns with the SPEC-013 message, never fails
+// the run, and is not reported for rules, for `import: false`, or when
+// only the skills bucket is linted.
+func TestCmdLint_ImportFlagWarns(t *testing.T) {
+	a, _ := newLintApp(t)
+	agents := filepath.Join(a.ProjectRoot, ".agents")
+	files := map[string]string{
+		"plans/rollout.md":            "---\nimport: true\n---\n# Rollout\n",
+		"specs/api.md":                "---\nimport: TRUE\n---\n# API\n",
+		"adrs/accepted/0001-db.md":    "---\nimport: true\n---\n# DB\n",
+		"plans/macos/brew.md":         "---\nimport: true\n---\n# Brew\n",
+		"plans/off.md":                "---\nimport: false\n---\n# Off\n",
+		"specs/plain.md":              "# No frontmatter\n",
+		"rules/security.md":           "---\nimport: true\n---\n# Security\n",
+		"plans/.hidden/ignored.md":    "---\nimport: true\n---\n# Hidden\n",
+		"adrs/proposed/0002-notes.md": "---\ntitle: notes\n---\n",
+	}
+	for rel, content := range files {
+		p := filepath.Join(agents, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	findings, err := a.lintImportFlags()
+	if err != nil {
+		t.Fatalf("lintImportFlags: %v", err)
+	}
+	var got []string
+	for _, f := range findings {
+		if f.Code != "W201" || f.Severity != "warn" || f.Message != importFlagMessage {
+			t.Errorf("unexpected finding %+v", f)
+		}
+		got = append(got, f.Path)
+	}
+	want := []string{"plans/macos/brew.md", "plans/rollout.md", "specs/api.md", "adrs/accepted/0001-db.md"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("W201 paths = %v, want %v", got, want)
+	}
+
+	if err := a.CmdLint("", false); err != nil {
+		t.Fatalf("W201 is a warning and must not fail lint, got %v", err)
+	}
+	stderr := a.Stderr.(*bytes.Buffer).String() + a.Stdout.(*bytes.Buffer).String()
+	if !strings.Contains(stderr, "plans/rollout.md: W201 "+importFlagMessage) {
+		t.Fatalf("bare lint did not report W201; output:\n%s", stderr)
+	}
+
+	a.Stdout.(*bytes.Buffer).Reset()
+	a.Stderr.(*bytes.Buffer).Reset()
+	if err := a.CmdLint("skills", false); err != nil {
+		t.Fatalf("lint skills: %v", err)
+	}
+	if out := a.Stderr.(*bytes.Buffer).String() + a.Stdout.(*bytes.Buffer).String(); strings.Contains(out, "W201") {
+		t.Fatalf("lint skills must not run the import check; output:\n%s", out)
+	}
+}
+
+// TestCmdLint_ImportFlagWithoutSkillsDir checks that a project with no
+// skills bucket still gets the W201 report.
+func TestCmdLint_ImportFlagWithoutSkillsDir(t *testing.T) {
+	a, skills := newLintApp(t)
+	if err := os.RemoveAll(skills); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(a.ProjectRoot, ".agents", "specs", "api.md")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("---\nimport: true\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.CmdLint("all", false); err != nil {
+		t.Fatalf("lint all: %v", err)
+	}
+	if out := a.Stderr.(*bytes.Buffer).String() + a.Stdout.(*bytes.Buffer).String(); !strings.Contains(out, "specs/api.md: W201") {
+		t.Fatalf("expected W201 for specs/api.md; output:\n%s", out)
+	}
+}

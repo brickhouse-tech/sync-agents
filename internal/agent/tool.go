@@ -45,7 +45,7 @@ type Tool struct {
 	//
 	//   Claude:    {ScopeLocal: ".claude",         ScopeGlobal: ".claude"}
 	//   Codeium:   {ScopeLocal: ".windsurf",       ScopeGlobal: ".codeium"}
-	//   Copilot:   {ScopeLocal: ".github/copilot", ScopeGlobal: ".github/copilot"}
+	//   Copilot:   {ScopeLocal: ".github/copilot", ScopeGlobal: ".copilot"}
 	//
 	// The segment is joined to a scope-appropriate parent (project
 	// root for local, the global root parent for global) to form the
@@ -64,26 +64,12 @@ type Tool struct {
 	LocalOnly bool
 
 	// ResolveGlobalDir computes the global directory for a tool whose
-	// root is not <parent>/<segment> (OpenClaw's workspace moves with
-	// env vars and its own config). Nil for every other tool. It does
-	// IO through env, so only the command shell calls it (see
-	// App.bindTool), which then pins the result into DirByScope as an
-	// absolute path.
+	// root is not <parent>/<segment>: Codex honors $CODEX_HOME, and
+	// OpenClaw's workspace moves with env vars and its own config. Nil
+	// for every other tool. It does IO through env, so only the command
+	// shell calls it (see App.bindTool), which then pins the result into
+	// DirByScope as an absolute path.
 	ResolveGlobalDir func(parent string, env ToolEnv) (string, error)
-
-	// Region, when set, marks a tool delivered by splicing one managed
-	// region into RegionFile, a file another program owns and creates.
-	// It drives StrategyRegion routing, a clean that strips only the
-	// region, a region row in status, and consent: a plain `global
-	// sync` includes the tool only once the markers already exist.
-	Region *ManagedRegion
-
-	// RegionFile is the host file's name inside the global dir.
-	RegionFile string
-
-	// RegionCharCap, when set, reports the size above which the tool
-	// truncates RegionFile, so sync can warn before content is lost.
-	RegionCharCap func(parent string, env ToolEnv) (int, error)
 }
 
 // DirForScope returns the absolute directory path for this tool at the
@@ -152,9 +138,9 @@ func (t Tool) Matches(name string) bool {
 //  3. A doc table update in docs/architecture/scope-and-targets.md
 //     and the spec table in SPEC-002 §Filesystem conventions.
 //  4. For a tool whose root moves (env vars, its own config), a
-//     ResolveGlobalDir resolver. For a tool that only reads a file it
-//     owns, Region + RegionFile instead of a concat destination, so
-//     sync splices one region and never takes the file over.
+//     ResolveGlobalDir resolver.
+//  5. For a tool that reads aggregated rule text, a row in
+//     channelSpecs (channel.go) naming its vendor read path.
 //
 // The order of Tools should not be relied on for semantic behavior —
 // only for stable user-facing output ordering.
@@ -185,24 +171,28 @@ var Tools = []Tool{
 		},
 	},
 	{
-		// Copilot lives nested under .github/ at both scopes. The
-		// DirByScope value here is the path *segment* that gets
-		// joined; filepath.Join handles the "/" correctly on every
-		// platform.
+		// Copilot's project files live under .github/; its user-scope
+		// home is ~/.copilot, whose instructions/ directory Copilot
+		// scans for *.instructions.md (SPEC-013 E5). The DirByScope
+		// value is the path *segment* that gets joined; filepath.Join
+		// handles the "/" correctly on every platform.
 		ID: "copilot",
 		DirByScope: map[Scope]string{
 			ScopeLocal:  filepath.Join(".github", "copilot"),
-			ScopeGlobal: filepath.Join(".github", "copilot"),
+			ScopeGlobal: ".copilot",
 		},
 	},
 	{
 		// Codex was added in SPEC-002 as a global target. The local
-		// dir is ".codex/" mirroring the user-scope convention.
+		// dir is ".codex/" mirroring the user-scope convention. The
+		// global segment is the default; resolveCodexHome replaces it
+		// with $CODEX_HOME when that is set.
 		ID: "codex",
 		DirByScope: map[Scope]string{
 			ScopeLocal:  ".codex",
 			ScopeGlobal: ".codex",
 		},
+		ResolveGlobalDir: resolveCodexHome,
 	},
 	{
 		// opencode (SPEC-011 Part B). Its user-scope tree follows the
@@ -212,8 +202,8 @@ var Tools = []Tool{
 		// separator on every platform and DirForScope needs no
 		// special case.
 		//
-		// opencode reads AGENTS.md natively, so it needs no concat
-		// destination of its own. Its subagent dir is "agents"
+		// Rules reach opencode through its opencode.json
+		// "instructions" list (channelSpecs). Its subagent dir is "agents"
 		// (plural) at both scopes, matching Bucket.Dir, so the agents
 		// bucket routes there without a per-tool name override.
 		//
@@ -235,17 +225,14 @@ var Tools = []Tool{
 		// repo. The DirByScope segment is the default layout;
 		// resolveOpenClawWorkspace replaces it with the real workspace.
 		//
-		// Passive rules are inlined into the OpenClaw-rules region of
-		// <workspace>/AGENTS.md. Skills are skipped because OpenClaw
-		// already loads ~/.agents/skills natively.
+		// Passive rules are inlined into the openclaw-rules region of
+		// <workspace>/AGENTS.md (channelSpecs). Skills are skipped
+		// because OpenClaw already loads ~/.agents/skills natively.
 		ID: "openclaw",
 		DirByScope: map[Scope]string{
 			ScopeGlobal: filepath.Join(".openclaw", "workspace"),
 		},
 		ResolveGlobalDir: resolveOpenClawWorkspace,
-		Region:           &OpenClawRulesRegion,
-		RegionFile:       "AGENTS.md",
-		RegionCharCap:    openClawRegionCharCap,
 	},
 }
 

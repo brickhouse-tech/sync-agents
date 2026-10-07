@@ -99,7 +99,7 @@ var Buckets = []Bucket{
 	// Claude (.claude/agents/), Cursor (.cursor/agents/, since Cursor
 	// 2.4), and opencode (.opencode/agents/, ~/.config/opencode/agents/
 	// at user scope). Windsurf, Copilot, and Codex have no subagent
-	// concept and consume agents only through the AGENTS.md index.
+	// concept and receive no agents.
 	//
 	// Frontmatter is NOT translated between harness dialects — Claude's
 	// `tools:`/`model:` and Cursor's `readonly:`/`is_background:` pass
@@ -110,8 +110,8 @@ var Buckets = []Bucket{
 	// Reference-doc buckets (SPEC-004 Part D). plans = per-effort
 	// how/when working documents; specs = durable what/why design
 	// docs. Same plumbing, different lifecycle. Claude-only local
-	// symlinks (@-mentionable); other tools consume them via the
-	// AGENTS.md index. Not created by init.
+	// symlinks (@-mentionable); other tools open them from .agents/
+	// when asked. Not created by init.
 	{Dir: "plans", Artifact: ArtifactPlan, NewTemplate: templates.Plan, Tools: []string{"claude"}},
 	{Dir: "specs", Artifact: ArtifactSpec, NewTemplate: templates.Spec, Tools: []string{"claude"}},
 	// Claude hook fragments (SPEC-004 Part C). Flat JSON files
@@ -119,11 +119,10 @@ var Buckets = []Bucket{
 	// routing handled separately in hooks.go. Not created by init.
 	{Dir: "hooks", Artifact: ArtifactHook, NewTemplate: templates.Hook, Tools: []string{"claude"}, Ext: ".json"},
 	// Architecture Decision Records (SPEC-004 Part F). Status is
-	// encoded by subdirectory: proposed/, accepted/, denied/. Only
-	// accepted + proposed are indexed in AGENTS.md; denied ADRs are
-	// kept (and pointed at from the index) so past rejections aren't
-	// re-proposed. `add adr` scaffolds into proposed/; the `adr`
-	// command moves records between statuses.
+	// encoded by subdirectory: proposed/, accepted/, denied/. Denied
+	// ADRs are kept so past rejections aren't re-proposed. `add adr`
+	// scaffolds into proposed/; the `adr` command moves records between
+	// statuses.
 	{Dir: "adrs", Artifact: ArtifactADR, NewTemplate: templates.ADR, Tools: []string{"claude"}, NewSubdir: "proposed"},
 }
 

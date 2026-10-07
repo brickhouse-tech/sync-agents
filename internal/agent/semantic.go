@@ -35,9 +35,8 @@ const (
 
 	// Reference marks documents that are neither preloaded nor
 	// trigger-dispatched: plans and specs (SPEC-004 Part D). They are
-	// indexed in AGENTS.md and reachable on demand (@-mention, file
-	// read) but never enter the managed import block or any
-	// invocable surface.
+	// reachable on demand (@-mention, file read) but never enter a
+	// delivery channel or any invocable surface.
 	Reference Semantic = "reference"
 )
 

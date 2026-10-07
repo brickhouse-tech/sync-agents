@@ -60,6 +60,14 @@
 //     and helpers.
 //   - globalroot.go — ResolveGlobalRoot, ResolveGlobalRootParent,
 //     ResolveToolDir, and the $SYNC_AGENTS_GLOBAL_ROOT env var name.
+//   - channel.go    — SPEC-013 delivery channels (pure): channelSpecs,
+//     the per-tool × scope table; Format; the Mount kinds and the
+//     mayMount consent rule; passiveEntries and renderChannel.
+//   - budget.go     — Cap, Budget, and fitBudget, the first-fit pointer
+//     demotion that keeps a bundle under a tool's load limit.
+//   - codex.go      — Codex's layout: $CODEX_HOME, project_doc_max_bytes.
+//   - jsonentry.go  — byte-range edits of one entry in a strict-JSON
+//     array (opencode.json "instructions").
 //
 // For prose-level documentation see docs/architecture/ in the repo
 // root. For the .agents/ contract that drives the existing commands

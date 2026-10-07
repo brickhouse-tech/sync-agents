@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>sync-agents — one set of agent rules to rule them all</title>
-<meta name="description" content="Package manager + sync engine for AI-agent context. Declarative sources, SHA-pinned lockfile, quarantine scanning, linked sources, and one AGENTS.md index synced across Claude, Windsurf, Cursor, and Copilot.">
+<meta name="description" content="Package manager + sync engine for AI-agent context. Declarative sources, SHA-pinned lockfile, quarantine scanning, linked sources, and rule content delivered to Claude, Windsurf, Cursor, Copilot, Codex, and opencode at the paths each tool reads.">
 <meta property="og:title" content="sync-agents">
 <meta property="og:description" content="Package manager + sync engine for AI-agent context — rules, skills, and workflows synced everywhere, verified before install.">
 <meta property="og:type" content="website">
@@ -380,7 +380,7 @@
         <div class="ln d11"><span class="t-ok">  ✔</span> provenance written <span class="t-di">(_origin.json · owner/repo/ref/SHA)</span></div>
         <div class="ln d12"><span class="typed">sync-agents sync</span></div>
         <div class="ln d13"><span class="t-ok">  ✔</span> .claude  <span class="t-ok">✔</span> .windsurf  <span class="t-ok">✔</span> .cursor  <span class="t-ok">✔</span> .github/copilot</div>
-        <div class="ln d14"><span class="t-ok">  ✔</span> AGENTS.md reindexed → symlinked to CLAUDE.md</div>
+        <div class="ln d14"><span class="t-ok">  ✔</span> .agents/index/ → cursor.mdc · copilot.md <span class="t-di">(AGENTS.md left as yours)</span></div>
         <div class="ln d15"><span class="cursor"></span></div>
       </div>
     </div>
@@ -430,10 +430,10 @@
       </article>
       <article class="card green">
         <div class="ico">idx</div>
-        <h3>AGENTS.md auto-index</h3>
-        <p>One generated index of everything in <code>.agents/</code>, symlinked to
-        <code>CLAUDE.md</code> so Claude reads it natively. <code>watch</code> keeps it fresh,
-        inheritance links chain project → team → org → global.</p>
+        <h3>Rule content for every tool</h3>
+        <p>Claude and Windsurf read the linked rules folder. Cursor, Copilot, Codex, and opencode
+        each get one generated file in <code>.agents/index/</code>, sized to the tool's limit.
+        <code>AGENTS.md</code> stays yours; <code>watch</code> keeps the rest fresh.</p>
       </article>
       <article class="card violet">
         <div class="ico">{ }</div>
@@ -486,10 +486,10 @@ $ sync-agents approve code-review</pre>
       <div class="step">
         <span class="num">03 · index &amp; sync</span>
         <h3>Index and fan out</h3>
-        <p>Regenerate <code style="font-family:var(--mono);font-size:.85em">AGENTS.md</code> and symlink every artifact into each tool's directory. Change once, updated everywhere.</p>
+        <p>Symlink every artifact into each tool's directory and render one rules file per tool in <code style="font-family:var(--mono);font-size:.85em">.agents/index/</code>. Change once, updated everywhere.</p>
         <pre>$ sync-agents sync
 <span class="ok">✔</span> 4 targets linked
-<span class="ok">✔</span> AGENTS.md → CLAUDE.md</pre>
+<span class="ok">✔</span> .agents/index/ mounted for cursor, copilot</pre>
       </div>
     </div>
   </section>

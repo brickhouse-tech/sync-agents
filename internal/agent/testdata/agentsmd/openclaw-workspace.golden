@@ -1,0 +1,26 @@
+# AGENTS.md
+
+Shared rules, skills, and workflows for this project live in `.agents/`.
+`sync-agents sync` delivers them to each tool's native location. If your tool
+has not loaded them, read the files in `.agents/rules/` that apply to your task.
+
+## Inherits
+
+<!-- Identity imports live here. This section is the one part of this file
+     that `sync-agents index` preserves; anything added elsewhere is deleted. -->
+
+@SOUL.md
+@IDENTITY.md
+
+## Tools
+
+### Local notes (migrated from TOOLS.md)
+
+Environment reference moved to `.agents/rules/environment.md`.
+
+<!-- sync-agents:openclaw-rules:start -->
+<!-- managed by sync-agents global sync from ~/.agents/; do not edit between the markers -->
+## brief
+
+Keep answers short.
+<!-- sync-agents:openclaw-rules:end -->

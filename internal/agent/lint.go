@@ -27,6 +27,10 @@ import (
 //	W101 first-person description             → report only
 //	W102 description lacks when-to-use clause → report only
 //	W103 SKILL.md body > 500 lines            → report only
+//
+// Outside the skills bucket, a bare `lint` (or `lint all`) also reports:
+//
+//	W201 `import: true` on a plan/spec/ADR    → report only (SPEC-013)
 
 const (
 	skillNameMaxLen        = 64
@@ -55,13 +59,17 @@ type LintFinding struct {
 }
 
 // CmdLint validates skill frontmatter, optionally amending fixable
-// findings in place. v1 lints the skills bucket only; the [typ]
-// argument exists so future buckets slot in per the registry.
+// findings in place. typ "skills" lints the skills bucket only; an
+// empty typ or "all" also runs the cross-bucket checks (W201). The
+// [typ] argument exists so future buckets slot in per the registry.
 func (a *App) CmdLint(typ string, fix bool) error {
+	var withImportCheck bool
 	switch typ {
-	case "", "all", "skill", "skills":
+	case "", "all":
+		withImportCheck = true
+	case "skill", "skills":
 	default:
-		a.Error(fmt.Sprintf("lint currently supports: skills (got %q)", typ))
+		a.Error(fmt.Sprintf("lint currently supports: skills, all (got %q)", typ))
 		return fmt.Errorf("unsupported lint type")
 	}
 
@@ -69,39 +77,16 @@ func (a *App) CmdLint(typ string, fix bool) error {
 		return err
 	}
 
-	skillsDir := filepath.Join(a.ProjectRoot, ".agents", "skills")
-	entries, err := os.ReadDir(skillsDir)
+	findings, checked, err := a.lintSkills(fix)
 	if err != nil {
-		if os.IsNotExist(err) {
-			a.Info("no .agents/skills/ directory; nothing to lint")
-			return nil
-		}
 		return err
 	}
-
-	var findings []LintFinding
-	checked := 0
-	for _, e := range entries {
-		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
-			continue
-		}
-		skillPath := filepath.Join(skillsDir, e.Name(), "SKILL.md")
-		if _, err := os.Stat(skillPath); err != nil {
-			// Dirs without SKILL.md are scratch dirs by convention
-			// (see DiscoverArtifacts); not lint's concern.
-			continue
-		}
-		checked++
-		fs, err := a.lintSkill(e.Name(), skillPath, fix)
+	if withImportCheck {
+		importFindings, err := a.lintImportFlags()
 		if err != nil {
-			a.Warn(fmt.Sprintf("skills/%s: %v", e.Name(), err))
-			findings = append(findings, LintFinding{
-				Path: "skills/" + e.Name() + "/SKILL.md", Code: "E001",
-				Severity: "error", Message: err.Error(),
-			})
-			continue
+			return err
 		}
-		findings = append(findings, fs...)
+		findings = append(findings, importFindings...)
 	}
 
 	fixed, errsLeft, warns := 0, 0, 0
@@ -133,6 +118,111 @@ func (a *App) CmdLint(typ string, fix bool) error {
 		return fmt.Errorf("%d lint error(s)", errsLeft)
 	}
 	return nil
+}
+
+// lintSkills runs lintSkill over every .agents/skills/<dir>/SKILL.md
+// and returns the findings and the number of skills checked. A missing
+// skills directory is not an error: there is nothing to lint.
+func (a *App) lintSkills(fix bool) ([]LintFinding, int, error) {
+	skillsDir := filepath.Join(a.ProjectRoot, ".agents", "skills")
+	entries, err := os.ReadDir(skillsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, 0, nil
+		}
+		return nil, 0, err
+	}
+
+	var findings []LintFinding
+	checked := 0
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		skillPath := filepath.Join(skillsDir, e.Name(), "SKILL.md")
+		if _, err := os.Stat(skillPath); err != nil {
+			// Dirs without SKILL.md are scratch dirs by convention
+			// (see DiscoverArtifacts); not lint's concern.
+			continue
+		}
+		checked++
+		fs, err := a.lintSkill(e.Name(), skillPath, fix)
+		if err != nil {
+			a.Warn(fmt.Sprintf("skills/%s: %v", e.Name(), err))
+			findings = append(findings, LintFinding{
+				Path: "skills/" + e.Name() + "/SKILL.md", Code: "E001",
+				Severity: "error", Message: err.Error(),
+			})
+			continue
+		}
+		findings = append(findings, fs...)
+	}
+	return findings, checked, nil
+}
+
+// importFlagBuckets are the reference-doc buckets whose `import: true`
+// frontmatter used to add the doc to the managed @-import block in
+// CLAUDE.md (SPEC-004 Part D). SPEC-013 deleted that block, so the key
+// no longer does anything; W201 tells the author where always-on
+// content lives now.
+var importFlagBuckets = []string{"plans", "specs", "adrs"}
+
+// importFlagMessage is the W201 text. A rule is the only artifact that
+// every tool receives as content, so it is the replacement for an
+// always-loaded reference doc.
+const importFlagMessage = "`import: true` has no effect since SPEC-013; move it to rules/ to make it always-on"
+
+// lintImportFlags reports W201 for every .md file under the
+// reference-doc buckets whose frontmatter sets `import: true`. The walk
+// is recursive so ADR status dirs and OS-scoped subdirs are covered.
+// Files whose frontmatter cannot be parsed are skipped: they never
+// carried a readable flag.
+func (a *App) lintImportFlags() ([]LintFinding, error) {
+	agentsDir := filepath.Join(a.ProjectRoot, ".agents")
+	var findings []LintFinding
+	for _, bucket := range importFlagBuckets {
+		root := filepath.Join(agentsDir, bucket)
+		err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				if os.IsNotExist(err) && path == root {
+					return filepath.SkipDir
+				}
+				return err
+			}
+			if strings.HasPrefix(d.Name(), ".") && path != root {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if d.IsDir() || !strings.HasSuffix(d.Name(), ".md") {
+				return nil
+			}
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			block, err := parseFMBlock(string(raw))
+			if err != nil || !block.present {
+				return nil
+			}
+			if v, _ := block.get("import"); !strings.EqualFold(strings.TrimSpace(v), "true") {
+				return nil
+			}
+			rel, err := filepath.Rel(agentsDir, path)
+			if err != nil {
+				return err
+			}
+			findings = append(findings, LintFinding{
+				Path: filepath.ToSlash(rel), Code: "W201", Severity: "warn", Message: importFlagMessage,
+			})
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return findings, nil
 }
 
 // lintSkill checks one SKILL.md, rewriting it when fix is true and a

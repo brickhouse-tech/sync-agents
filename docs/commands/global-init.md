@@ -24,11 +24,17 @@ The `config` file looks like:
 
 ```text
 # sync-agents global configuration
-# Comma-separated list of sync targets (available: claude, codeium, cursor, copilot, codex)
+# Comma-separated list of sync targets (available: claude, codeium, cursor, copilot, codex, opencode, openclaw)
 # Note: 'codeium' is the user-scope name for Windsurf; the project-scope dir is .windsurf/
+# Note: global sync does not read this line; it serves every tool whose home directory exists.
 # Override per-command with: sync-agents global sync --targets claude,cursor
+# Naming a tool in --targets also consents to editing a file of yours that it reads.
 targets = claude,codeium,cursor,copilot,codex
 ```
+
+`global sync` does not read the `targets` line. It serves every tool
+whose home directory exists, or the tools `--targets` names (see
+[global sync § Consent](./global-sync.md#consent)).
 
 The target list is fixed at five tools and **not** derived from any
 project's local `.agents/config`. SPEC-002 AC-11 mandates this

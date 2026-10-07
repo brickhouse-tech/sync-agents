@@ -54,7 +54,7 @@ forward.
 If you'd rather keep editing locally and have global mirror, the
 inverse direction (`demote`) is tracked under Future Work in
 SPEC-002. Today, after promote, you edit the global file directly and
-let `global sync` (future PR) fan it out to per-tool dirs.
+let `global sync` fan it out to per-tool dirs.
 
 ## Flags
 
@@ -116,11 +116,10 @@ sync-agents promote --global-root /tmp/test/.agents rule security
 
 ## What `promote` does NOT do
 
-- It does not regenerate `~/.agents/AGENTS.md`. The global index is
-  refreshed by `global sync` (future PR). AC-10 in SPEC-002 attaches
-  that responsibility to sync, not promote.
-- It does not run `global sync` automatically. The `--sync` flag is
-  reserved for a future PR.
+- It does not deliver the artifact to any tool. `global sync` does
+  that; pass `--sync` to run it right after the promote.
+- It does not write an `AGENTS.md`. sync-agents never generates one
+  (SPEC-013).
 - It does not modify the local `.agents/` tree. The local copy stays
   intact even after `--force`.
 

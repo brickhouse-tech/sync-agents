@@ -3,6 +3,7 @@ package agent
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -115,59 +116,71 @@ func TestTargetDestination_CodeiumInvocableMultiFile(t *testing.T) {
 	}
 }
 
-// TestTargetDestination_CodeiumPassiveConcat checks the rule concat
-// destination — Windsurf's memories/global_rules.md.
-func TestTargetDestination_CodeiumPassiveConcat(t *testing.T) {
-	d := TargetDestination(asTool(t, "codeium"), ArtifactRule, "security", Passive, "", "/home/u")
-	if d.Strategy != StrategyConcat {
-		t.Errorf("strategy = %v, want StrategyConcat", d.Strategy)
-	}
-	want := filepath.Join("/home/u", ".codeium", "windsurf", "memories", "global_rules.md")
-	if d.Path != want {
-		t.Errorf("path = %q, want %q", d.Path, want)
-	}
-}
-
-// TestTargetDestination_CursorDegenerate verifies that both
-// semantics resolve to the same Cursor path.
-func TestTargetDestination_CursorDegenerate(t *testing.T) {
-	cursor := asTool(t, "cursor")
-	dPassive := TargetDestination(cursor, ArtifactRule, "x", Passive, "", "/home/u")
-	dInvocable := TargetDestination(cursor, ArtifactSkill, "x", Invocable, "", "/home/u")
-
-	want := filepath.Join("/home/u", ".cursor", "rules", "x.md")
-	if dPassive.Path != want || dInvocable.Path != want {
-		t.Errorf("Cursor should route both semantics to %q; got passive=%q invocable=%q",
-			want, dPassive.Path, dInvocable.Path)
-	}
-	if dPassive.Strategy != StrategySymlink || dInvocable.Strategy != StrategySymlink {
-		t.Error("both Cursor destinations should be StrategySymlink")
+// TestTargetDestination_PassiveGoesToChannel: passive content for
+// every tool with a global channel (or a channel gap) is the channel
+// layer's, whatever the bucket (SPEC-013). The per-artifact loop gets
+// no path for it.
+func TestTargetDestination_PassiveGoesToChannel(t *testing.T) {
+	for _, id := range []string{"codeium", "cursor", "copilot", "codex", "opencode", "openclaw"} {
+		for _, typ := range []ArtifactType{ArtifactRule, ArtifactWorkflow, ArtifactSkill} {
+			d := TargetDestination(asTool(t, id), typ, "x", Passive, "/src/x", "/home/u")
+			if d.Strategy != StrategyChannel || d.Path != "" {
+				t.Errorf("[%s] passive %s = (%v, %q), want (StrategyChannel, \"\")", id, typ, d.Strategy, d.Path)
+			}
+		}
 	}
 }
 
-// TestTargetDestination_CopilotAndCodexConcat verifies both
-// instructions.md routes work and that semantic is ignored.
-func TestTargetDestination_CopilotAndCodexConcat(t *testing.T) {
+// TestTargetDestination_ClaudePassiveIsNotAChannel: Claude reads
+// ~/.claude/rules natively, so its passive rules stay per-artifact
+// links.
+func TestTargetDestination_ClaudePassiveIsNotAChannel(t *testing.T) {
+	d := TargetDestination(asTool(t, "claude"), ArtifactRule, "x", Passive, "", "/home/u")
+	if d.Strategy != StrategySymlink {
+		t.Errorf("strategy = %v, want StrategySymlink", d.Strategy)
+	}
+}
+
+// TestTargetDestination_InvocableWithoutSurfaceSkips: tools without a
+// user-scope command or skill surface skip invocable artifacts with a
+// reason, and the reason for a tool that loads ~/.agents/skills itself
+// says so (a link would register the skill twice).
+func TestTargetDestination_InvocableWithoutSurfaceSkips(t *testing.T) {
 	cases := []struct {
-		toolID string
-		want   string
+		id, wantSkill string
 	}{
-		{"copilot", filepath.Join("/home/u", ".github", "copilot", "instructions.md")},
-		{"codex", filepath.Join("/home/u", ".codex", "instructions.md")},
+		{"cursor", "Cursor loads ~/.agents/skills natively"},
+		{"copilot", "copilot has no user-scope skill surface"},
+		{"codex", "Codex loads ~/.agents/skills natively"},
+		{"opencode", "opencode loads ~/.agents/skills natively"},
+		{"openclaw", "OpenClaw loads ~/.agents/skills natively"},
 	}
 	for _, c := range cases {
-		t.Run(c.toolID, func(t *testing.T) {
-			tool := asTool(t, c.toolID)
-			for _, sem := range []Semantic{Passive, Invocable} {
-				d := TargetDestination(tool, ArtifactRule, "x", sem, "", "/home/u")
-				if d.Strategy != StrategyConcat {
-					t.Errorf("%s/%s strategy = %v, want StrategyConcat", c.toolID, sem, d.Strategy)
-				}
-				if d.Path != c.want {
-					t.Errorf("%s/%s path = %q, want %q", c.toolID, sem, d.Path, c.want)
+		tool := asTool(t, c.id)
+		if d := TargetDestination(tool, ArtifactSkill, "x", Invocable, "", "/home/u"); d.Strategy != StrategySkip || d.SkipReason != c.wantSkill {
+			t.Errorf("[%s] skill = (%v, %q), want skip %q", c.id, d.Strategy, d.SkipReason, c.wantSkill)
+		}
+		d := TargetDestination(tool, ArtifactRule, "x", Invocable, "", "/home/u")
+		if d.Strategy != StrategySkip || !strings.Contains(d.SkipReason, "no user-scope command surface") {
+			t.Errorf("[%s] invocable rule = (%v, %q), want a command-surface skip", c.id, d.Strategy, d.SkipReason)
+		}
+	}
+}
+
+// TestTargetDestination_NoSkipReasonMentionsTheIndex: AGENTS.md is no
+// longer an index (SPEC-013), so no skip reason may send the user to
+// it.
+func TestTargetDestination_NoSkipReasonMentionsTheIndex(t *testing.T) {
+	types := []ArtifactType{ArtifactRule, ArtifactWorkflow, ArtifactSkill, ArtifactAgent, ArtifactPlan, ArtifactSpec, ArtifactADR, ArtifactHook}
+	for _, tool := range Tools {
+		for _, typ := range types {
+			for _, sem := range []Semantic{Passive, Invocable, Reference} {
+				d := TargetDestination(tool, typ, "x", sem, "", "/home/u")
+				if strings.Contains(d.SkipReason, "AGENTS.md") {
+					t.Errorf("[%s] %s/%v reason mentions AGENTS.md: %q", tool.ID, typ, sem, d.SkipReason)
 				}
 			}
-		})
+		}
 	}
 }
 
@@ -277,22 +290,6 @@ func TestTargetDestination_AgentRoutingMatchesBucket(t *testing.T) {
 		linked := d.Strategy == StrategySymlink
 		if linked != bucket.SyncsToTool(tool.ID) {
 			t.Errorf("[%s] global routing links=%v but bucket.SyncsToTool=%v", tool.ID, linked, bucket.SyncsToTool(tool.ID))
-		}
-	}
-}
-
-// TestTargetDestination_OpencodeNonAgentSkips pins the conservative
-// half of SPEC-011 Part B: only opencode's subagent surface is
-// verified, so every other bucket skips with a reason rather than
-// guessing a path inside a tree the user hand-manages.
-func TestTargetDestination_OpencodeNonAgentSkips(t *testing.T) {
-	for _, typ := range []ArtifactType{ArtifactRule, ArtifactSkill, ArtifactWorkflow} {
-		d := TargetDestination(asTool(t, "opencode"), typ, "x", Invocable, "", "/home/u")
-		if d.Strategy != StrategySkip {
-			t.Errorf("[%s] strategy = %v, want StrategySkip", typ, d.Strategy)
-		}
-		if d.SkipReason == "" {
-			t.Errorf("[%s] SkipReason must be set", typ)
 		}
 	}
 }

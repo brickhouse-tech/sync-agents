@@ -45,4 +45,4 @@ bash examples/fix/run-demo.sh
 
 ## Contributing
 
-Add your own examples via PR! Follow the templates in `src/md/` for consistent formatting.
+Add your own examples via PR! Follow the templates in `internal/agent/templates/` (what `sync-agents add` scaffolds) for consistent formatting.

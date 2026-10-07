@@ -40,8 +40,9 @@ const (
 // out of bounds — in particular the tool root, which holds the tool's
 // own application state.
 //
-// Copilot and Codex have no per-artifact dirs (single concat file,
-// already covered by concat states), so they sweep nothing.
+// Copilot, Codex, opencode, and OpenClaw have no per-artifact dirs
+// here (their rules arrive through one channel, reported by
+// channelRows), so they sweep nothing.
 func toolSweepDirs(tool Tool, parent string) []string {
 	switch tool.ID {
 	case "claude":

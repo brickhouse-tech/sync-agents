@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,22 +18,23 @@ type GlobalCleanOpts struct {
 }
 
 // CmdGlobalClean removes the per-tool global filesystem artifacts
-// that `global sync` would create — symlinks into ~/.agents/ and
-// concat files carrying the sync-agents banner — and prunes empty
+// that `global sync` would create — symlinks into ~/.agents/, the
+// delivery channels (our regions, link, and config entry; SPEC-013),
+// and the pre-SPEC-013 placements whose proof holds — and prunes empty
 // parent directories.
 //
 // Safety contract (SPEC-002 §Requirement: Global clean):
 //
 //   - Symlinks are removed ONLY if their target resolves inside the
 //     global root. A user-curated symlink to elsewhere stays put.
-//   - Regular files are removed ONLY if their head bytes contain
-//     the sync-agents banner. A user-written file at the same path
-//     (someone manually editing instructions.md, say) is left alone
-//     with a warning.
-//   - The canonical ~/.agents/ tree is never touched.
+//   - Regular files in tool directories are never removed. A region
+//     is stripped from its host and every other byte kept; a legacy
+//     concat file goes only when it starts with the old banner.
+//   - The canonical ~/.agents/ tree is never touched, apart from the
+//     generated ~/.agents/index/.
 //   - Directories created by sync-agents that become empty after
-//     symlink/concat removal are rmdir'd, walking upward until a
-//     non-empty parent is reached or the per-tool root itself.
+//     symlink removal are rmdir'd, walking upward until a non-empty
+//     parent is reached or the per-tool root itself.
 //
 // App.DryRun causes the planned operations to print without any
 // filesystem writes.
@@ -58,20 +58,15 @@ func (a *App) CmdGlobalClean(opts GlobalCleanOpts) error {
 		return err
 	}
 
-	totalRemoved := 0
+	totalRemoved := len(a.removeGlobalLegacyPlacements(tools))
+	n, err := a.cleanChannels(ChannelRun{Scope: ScopeGlobal, Explicit: opts.Targets, Tools: tools})
+	totalRemoved += n
+	if err != nil {
+		a.Warn(fmt.Sprintf("delivery channels: %v", err))
+	}
 	for _, tool := range tools {
 		dir := tool.DirForScope(ScopeGlobal, parent)
-		if dir == "" {
-			continue
-		}
-		// A region tool's dir is another program's working tree:
-		// strip our region from the host file and never walk the dir.
-		if tool.Region != nil {
-			removed, err := a.stripToolRegion(tool, filepath.Join(dir, tool.RegionFile))
-			if err != nil {
-				a.Warn(fmt.Sprintf("[%s] %v", tool.ID, err))
-			}
-			totalRemoved += removed
+		if dir == "" || hostOwnedHome(tool.ID) {
 			continue
 		}
 		removed, err := a.cleanToolDir(tool.ID, dir, root)
@@ -109,6 +104,15 @@ func (a *App) CmdGlobalClean(opts GlobalCleanOpts) error {
 		a.Info(fmt.Sprintf("removed %d item(s) across %d tool(s)", totalRemoved, len(tools)))
 	}
 	return nil
+}
+
+// hostOwnedHome reports whether toolID's global home is another
+// program's working tree: its channel writes a region into a host that
+// program creates (OpenClaw's workspace). Such a home is never walked;
+// cleanChannels strips our region and that is all.
+func hostOwnedHome(toolID string) bool {
+	rm, ok := channelSpecs[toolID][ScopeGlobal].Mount.(RegionMount)
+	return ok && !rm.CreateHost
 }
 
 // cleanToolDir walks one tool's per-scope directory and removes
@@ -167,28 +171,9 @@ func (a *App) cleanToolDir(toolID, dir, agentsRoot string) (int, error) {
 			return nil
 		}
 
-		if info.IsDir() {
-			return nil
-		}
-
-		// Regular file: check for the sync-agents banner. Files
-		// without it are user-owned.
-		if !fileCarriesBanner(path) {
-			a.Warn(fmt.Sprintf("[%s] skip non-sync-agents file %s", toolID, path))
-			return nil
-		}
-		if a.DryRun {
-			a.Info(fmt.Sprintf("[dry-run] [%s] would remove concat %s", toolID, path))
-			removed++
-			pruneCandidates = append(pruneCandidates, filepath.Dir(path))
-			return nil
-		}
-		if err := os.Remove(path); err != nil {
-			a.Warn(fmt.Sprintf("[%s] failed to remove %s: %v", toolID, path, err))
-			return nil
-		}
-		removed++
-		pruneCandidates = append(pruneCandidates, filepath.Dir(path))
+		// Directories and regular files are never ours: sync-agents
+		// writes only symlinks into tool directories, plus regions and
+		// config entries that cleanChannels undoes.
 		return nil
 	})
 	if err != nil {
@@ -201,15 +186,13 @@ func (a *App) cleanToolDir(toolID, dir, agentsRoot string) (int, error) {
 	// generated subdir like global_workflows/ that's now empty.
 	a.pruneEmptyDirs(toolID, pruneCandidates, dir)
 
-	// For Claude specifically, the managed @-import block lives in
-	// <dir>/CLAUDE.md. This file is user-editable, so we don't
-	// remove it blindly during the walk (fileCarriesBanner would
-	// reject it because its first line is an HTML comment marker,
-	// not the concat banner). After the walk has pruned every
-	// other sync-agents artifact, give the CLAUDE.md one more pass
-	// — if it carries a managed block, strip the block. If the
-	// file is empty afterwards, remove it; that may re-open the
-	// per-tool root for pruning below.
+	// For Claude specifically, a legacy @-import block may live in
+	// <dir>/CLAUDE.md. This file is user-editable, so the walk leaves
+	// it alone. After the walk has pruned every other sync-agents
+	// artifact, give the CLAUDE.md one more pass — if it carries a
+	// managed block, strip the block. If the file is empty
+	// afterwards, remove it; that may re-open the per-tool root for
+	// pruning below.
 	if toolID == "claude" {
 		claudeMD := filepath.Join(dir, "CLAUDE.md")
 		if _, _, err := a.scrubClaudeManagedBlock(claudeMD, a.DryRun); err != nil {
@@ -246,7 +229,11 @@ func (a *App) cleanToolDir(toolID, dir, agentsRoot string) (int, error) {
 //
 // When the file has content outside the markers, only the block is
 // stripped; the rest is preserved. This protects user-authored
-// frontmatter or prose that may co-exist with the managed region.
+// frontmatter or prose that may co-exist with the managed region. The
+// rewrite is a compare-and-swap, so a concurrent edit is never undone.
+//
+// Global sync calls it too: SPEC-013 retired the block, and stripping
+// it is the one-time migration for ~/.claude/CLAUDE.md.
 func (a *App) scrubClaudeManagedBlock(claudeMDPath string, dryRun bool) (int, bool, error) {
 	data, err := os.ReadFile(claudeMDPath)
 	if err != nil {
@@ -256,7 +243,7 @@ func (a *App) scrubClaudeManagedBlock(claudeMDPath string, dryRun bool) (int, bo
 		return 0, false, err
 	}
 
-	remaining, found := stripRegion(string(data), ClaudeImportsRegion)
+	remaining, found := stripRegion(string(data), legacyClaudeImportsRegion)
 	if !found {
 		return 0, false, nil
 	}
@@ -286,37 +273,10 @@ func (a *App) scrubClaudeManagedBlock(claudeMDPath string, dryRun bool) (int, bo
 	if !strings.HasSuffix(remaining, "\n") {
 		remaining += "\n"
 	}
-	if err := os.WriteFile(claudeMDPath, []byte(remaining), 0o644); err != nil {
+	if err := writeIfUnchanged(claudeMDPath, data, []byte(remaining)); err != nil {
 		return 0, false, err
 	}
 	return 1, false, nil
-}
-
-// stripToolRegion removes a region tool's region from its host file
-// and keeps the file, even when nothing else is left in it: the file
-// belongs to the tool. Returns 1 when a region was (or, in dry-run,
-// would be) removed.
-func (a *App) stripToolRegion(tool Tool, host string) (int, error) {
-	data, err := os.ReadFile(host)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, nil
-		}
-		return 0, err
-	}
-	remaining, found := stripRegion(string(data), *tool.Region)
-	if !found {
-		return 0, nil
-	}
-	if a.DryRun {
-		a.Info(fmt.Sprintf("[dry-run] [%s] would strip region %s from %s", tool.ID, tool.Region.Name, host))
-		return 1, nil
-	}
-	if _, err := writeIfChanged(host, []byte(remaining)); err != nil {
-		return 0, err
-	}
-	a.Info(fmt.Sprintf("[%s] stripped region %s from %s", tool.ID, tool.Region.Name, host))
-	return 1, nil
 }
 
 // pruneEmptyDirs walks the candidate parent paths from longest to
@@ -400,24 +360,6 @@ func symlinkPointsInto(linkPath, agentsRoot string) bool {
 		return true
 	}
 	return strings.HasPrefix(abs, agentsRoot+string(filepath.Separator))
-}
-
-// fileCarriesBanner returns true if the first few bytes of the file
-// match the sync-agents banner. Used to gate concat file removal.
-//
-// We read up to 256 bytes — enough to cover the banner plus some
-// slack. A file with the banner anywhere except the very top is
-// considered user-owned (we wrote the banner first; deviation means
-// the user touched it).
-func fileCarriesBanner(path string) bool {
-	f, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-	head := make([]byte, 256)
-	n, _ := f.Read(head)
-	return bytes.HasPrefix(head[:n], []byte("<!--\nGenerated by sync-agents"))
 }
 
 // isToolActive reports whether the tool with the given ID is in the

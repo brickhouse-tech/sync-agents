@@ -1,0 +1,17 @@
+# AGENTS.md
+
+Shared rules, skills, and workflows for this project live in `.agents/`.
+`sync-agents sync` delivers them to each tool's native location. If your tool
+has not loaded them, read the files in `.agents/rules/` that apply to your task.
+
+## Rules
+
+- [git](.agents/rules/git.md)
+Always read git.md before committing.
+- [testing](.agents/rules/testing.md)
+
+## Notes
+
+Hand-written section the old generator would have deleted.
+
+- [design doc](docs/design.md)

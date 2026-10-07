@@ -45,7 +45,7 @@ known tools.
 | `claude` | `.claude/` | `~/.claude/` |
 | `codeium` | `.windsurf/` | `~/.codeium/` |
 | `cursor` | `.cursor/` | `~/.cursor/` |
-| `copilot` | `.github/copilot/` | `~/.github/copilot/` |
+| `copilot` | `.github/copilot/` | `~/.copilot/` |
 | `codex` | `.codex/` | `~/.codex/` |
 | `opencode` | `.opencode/` | `~/.config/opencode/` |
 | `openclaw` | none (global only) | resolved OpenClaw workspace, default `~/.openclaw/workspace/` |
@@ -61,19 +61,25 @@ to the registry makes it available to opt into (via `.agents/config`
 or `--targets`); it does not enroll existing users, whose `.opencode/`
 directories may be hand-managed.
 
-`copilot` is the other shape-changer: it lives nested under `.github/`
-rather than as a top-level dot-dir.
+`copilot` is the other shape-changer: at project scope it lives nested
+under `.github/` rather than as a top-level dot-dir. At user scope its
+home is `~/.copilot/`, whose `instructions/` directory Copilot reads.
+2.0 moved it there from `~/.github/copilot/`, which Copilot never read.
 
 `openclaw` is global only and its directory is not a fixed segment.
 `Tool.ResolveGlobalDir` computes the workspace from OpenClaw's env vars
 and config each run, and the command layer pins the result into
 `DirByScope` as an absolute path before routing. A local `sync
 --targets openclaw` skips it with a warning rather than creating
-`.openclaw/` in the project. It is also the one **region** tool: it
+`.openclaw/` in the project. Its delivery channel is a region: it
 never owns a file, it splices one marker region into the workspace
 `AGENTS.md` OpenClaw created, and a plain `global sync` touches it only
 after an explicit `--targets openclaw` has put the markers there. See
 [global sync § OpenClaw](../commands/global-sync.md#openclaw).
+
+The directory is the tool's home. What sync-agents writes inside it
+for rule content (a link, a region, or a config entry) is the tool's
+delivery channel; see [Delivery channels](./delivery-channels.md).
 
 ## How callers compose scope + tool
 
@@ -111,6 +117,8 @@ the registry.
 
 - [Global root resolution](./global-root-resolution.md) — the
   precedence chain that determines the global canonical path.
+- [Delivery channels](./delivery-channels.md) — what each tool
+  receives inside these directories (SPEC-013).
 - SPEC-002 (shipped; spec retired to git history) — the spec
   that introduced global scope, the `Tool.DirByScope` model, and the
   semantic-aware routing layer that builds on top of it.

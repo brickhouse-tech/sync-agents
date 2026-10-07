@@ -45,9 +45,11 @@ func TestCmdInit(t *testing.T) {
 		}
 	}
 
-	// AGENTS.md created
-	if _, err := os.Stat(filepath.Join(dir, "AGENTS.md")); err != nil {
+	// AGENTS.md created as the stub, not a generated index (SPEC-013).
+	if got, err := os.ReadFile(filepath.Join(dir, "AGENTS.md")); err != nil {
 		t.Error("AGENTS.md not created")
+	} else if string(got) != AgentsMDStub {
+		t.Errorf("AGENTS.md = %q, want the stub", got)
 	}
 }
 
@@ -118,27 +120,6 @@ func TestCmdStatus(t *testing.T) {
 	out := buf.String()
 	if !strings.Contains(out, "sync-agents") {
 		t.Error("status output missing")
-	}
-}
-
-func TestCmdIndex(t *testing.T) {
-	app, dir := newTestApp(t)
-
-	// Seed a rule.
-	os.MkdirAll(filepath.Join(dir, ".agents", "rules"), 0o755)
-	os.WriteFile(filepath.Join(dir, ".agents", "rules", "security.md"), []byte("body"), 0o644)
-
-	if err := app.CmdIndex(); err != nil {
-		t.Fatal(err)
-	}
-
-	data, _ := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
-	content := string(data)
-	if !strings.Contains(content, "security") {
-		t.Errorf("rule not indexed in AGENTS.md:\n%s", content)
-	}
-	if !strings.HasPrefix(content, "---\ntrigger: always_on\n---\n") {
-		t.Errorf("missing trigger header:\n%s", content[:80])
 	}
 }
 
@@ -227,7 +208,7 @@ func TestScrubClaudeManagedBlock_OnlyBlock(t *testing.T) {
 	app := &App{Stdout: &buf, Stderr: &buf}
 
 	claudeMD := filepath.Join(dir, "CLAUDE.md")
-	os.WriteFile(claudeMD, []byte(ManagedImportBlockStart+"\n"+managedImportBanner+"\n@/a.md\n"+ManagedImportBlockEnd+"\n"), 0o644)
+	os.WriteFile(claudeMD, []byte(legacyClaudeImportsRegion.Start()+"\n"+"<!-- managed by sync-agents; do not edit between the markers -->"+"\n@/a.md\n"+legacyClaudeImportsRegion.End()+"\n"), 0o644)
 
 	removed, pruned, err := app.scrubClaudeManagedBlock(claudeMD, false)
 	if err != nil {
@@ -251,10 +232,10 @@ func TestScrubClaudeManagedBlock_UserContentSurvives(t *testing.T) {
 
 	claudeMD := filepath.Join(dir, "CLAUDE.md")
 	content := "# My config\n\nCustom prose.\n\n" +
-		ManagedImportBlockStart + "\n" +
-		managedImportBanner + "\n" +
+		legacyClaudeImportsRegion.Start() + "\n" +
+		"<!-- managed by sync-agents; do not edit between the markers -->" + "\n" +
 		"@/a.md\n" +
-		ManagedImportBlockEnd + "\n\n" +
+		legacyClaudeImportsRegion.End() + "\n\n" +
 		"More user content.\n"
 	os.WriteFile(claudeMD, []byte(content), 0o644)
 
@@ -337,8 +318,10 @@ func TestCmdSync_AgentsMDToClaudeMD(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, ".agents", "rules"), 0o755)
 	os.WriteFile(filepath.Join(dir, ".agents", "rules", "test.md"), []byte("# rule\n"), 0o644)
 
-	// Pre-create AGENTS.md so CLAUDE.md symlink is created.
+	// Pre-create AGENTS.md and report a Claude Code that predates native
+	// AGENTS.md reading, so the CLAUDE.md symlink is created.
 	os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("test"), 0o644)
+	app.ToolEnv.Run = fakeClaude("2.1.276 (Claude Code)\n", nil)
 
 	if err := app.CmdSync(); err != nil {
 		t.Fatal(err)
@@ -350,14 +333,6 @@ func TestCmdSync_AgentsMDToClaudeMD(t *testing.T) {
 	}
 	if fi.Mode()&os.ModeSymlink == 0 {
 		t.Error("CLAUDE.md should be a symlink")
-	}
-}
-
-func TestCmdInheritList(t *testing.T) {
-	app, _ := newTestApp(t)
-	// Just verify it doesn't panic.
-	if err := app.CmdInheritList(); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -454,55 +429,6 @@ func TestCmdFix_MissingSource(t *testing.T) {
 	}
 }
 
-func TestCmdInheritAdd_New(t *testing.T) {
-	app, dir := newTestApp(t)
-
-	// Create AGENTS.md with the generated structure.
-	app.CmdIndex()
-
-	// Add an inherit link.
-	if err := app.CmdInheritAdd("parent", "../parent-project"); err != nil {
-		t.Fatal(err)
-	}
-
-	data, _ := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
-	content := string(data)
-	if !strings.Contains(content, "## Inherits") {
-		t.Errorf("Inherits section not created:\n%s", content[:500])
-	}
-	if !strings.Contains(content, "[parent]") {
-		t.Errorf("inherit entry missing:\n%s", content[:500])
-	}
-}
-
-func TestCmdInheritAdd_Duplicate(t *testing.T) {
-	app, dir := newTestApp(t)
-	app.CmdIndex()
-	app.CmdInheritAdd("dup", "../a")
-	err := app.CmdInheritAdd("dup", "../b")
-	if err == nil {
-		t.Error("expected error on duplicate label")
-	}
-	_ = dir
-}
-
-func TestCmdInheritAdd_MissingArgs(t *testing.T) {
-	app, _ := newTestApp(t)
-	err := app.CmdInheritAdd("", "")
-	if err == nil {
-		t.Error("expected error on missing args")
-	}
-}
-
-func TestCmdInheritRemove(t *testing.T) {
-	app, _ := newTestApp(t)
-	app.CmdIndex()
-	app.CmdInheritAdd("temp", "../x")
-	if err := app.CmdInheritRemove("temp"); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestCmdImport_MissingUrl(t *testing.T) {
 	app, _ := newTestApp(t)
 	err := app.CmdImport("", false)
@@ -585,33 +511,5 @@ func TestCmdWatch_ProjectWithoutAgents(t *testing.T) {
 	err := app.CmdWatch()
 	if err == nil {
 		t.Error("expected error when .agents/ doesn't exist")
-	}
-}
-
-func TestGenerateAgentsMD_InheritsPreserved(t *testing.T) {
-	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".agents"), 0o755)
-	var buf bytes.Buffer
-	app := &App{
-		ProjectRoot:   dir,
-		GlobalRoot:    filepath.Join(dir, ".agents"),
-		ActiveTargets: []string{"claude"},
-		Stdout:        &buf,
-		Stderr:        &buf,
-	}
-
-	// Pre-seed AGENTS.md with an Inherits section.
-	initial := "---\ntrigger: always_on\n---\n\n# AGENTS\n\n> Auto-generated by sync-agents.\n\nThis file indexes all rules, skills, and workflows defined in `.agents/`.\n\n## Inherits\n\n- [parent](../parent-project)\n\n## Rules\n\n_No rules defined yet. Add one with 'sync-agents add rule <name>'. _\n\n## Skills\n\n_No skills defined yet. Add one with 'sync-agents add skill <name>'. _\n\n## Workflows\n\n_No workflows defined yet. Add one with 'sync-agents add workflow <name>'. _\n\n## State\n\n_No state snapshots yet._\n"
-	os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte(initial), 0o644)
-
-	app.generateAgentsMD()
-
-	data, _ := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
-	content := string(data)
-	if !strings.Contains(content, "## Inherits") {
-		t.Errorf("Inherits section lost:\n%s", content[:500])
-	}
-	if !strings.Contains(content, "[parent]") {
-		t.Errorf("inherit entry lost:\n%s", content[:500])
 	}
 }

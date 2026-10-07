@@ -15,11 +15,33 @@ setup() {
   export HOME="$TEST_DIR"
   # OpenClaw's workspace follows these vars even with HOME redirected.
   unset OPENCLAW_HOME OPENCLAW_STATE_DIR OPENCLAW_CONFIG_PATH OPENCLAW_WORKSPACE_DIR OPENCLAW_PROFILE
+  # The CLAUDE.md policy (SPEC-013) runs `claude --version`. A fake
+  # claude first on PATH keeps every test off the real install; the
+  # default is a release that reads AGENTS.md natively.
+  FAKE_BIN="$(mktemp -d)"
+  export PATH="$FAKE_BIN:$PATH"
+  fake_claude 2.1.286
+  # HOME is the project, so without this every project would be the
+  # global root and SPEC-013's $HOME dedupe would skip the Copilot,
+  # Codex, and opencode channels. Point the global root elsewhere
+  # (absent: no global rules to merge).
+  export SYNC_AGENTS_GLOBAL_ROOT="$FAKE_BIN/home/.agents"
 }
 
 teardown() {
   # Clean up temp directory
-  rm -rf "$TEST_DIR"
+  rm -rf "$TEST_DIR" "$FAKE_BIN"
+}
+
+# fake_claude VERSION|fail: replace the fake claude with one that prints
+# "VERSION (Claude Code)", or with one that exits 1.
+fake_claude() {
+  if [ "$1" = "fail" ]; then
+    printf '#!/bin/sh\necho "claude: broken install" >&2\nexit 1\n' > "$FAKE_BIN/claude"
+  else
+    printf '#!/bin/sh\necho "%s (Claude Code)"\n' "$1" > "$FAKE_BIN/claude"
+  fi
+  chmod +x "$FAKE_BIN/claude"
 }
 
 # --------------------------------------------------------------------------
@@ -108,13 +130,13 @@ teardown() {
   [[ "$(cat "$TEST_DIR/.agents/rules/state.md")" == *"STATE_\${CONTEXT_DESCRIPTION}"* ]]
 }
 
-@test "init creates AGENTS.md with expected content" {
+@test "init creates AGENTS.md as a short stub, not an index" {
   run "$SCRIPT" -d "$TEST_DIR" init
   [ "$status" -eq 0 ]
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"# AGENTS"* ]]
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"## Rules"* ]]
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"## Skills"* ]]
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"## Workflows"* ]]
+  [[ "$(head -1 "$TEST_DIR/AGENTS.md")" == "# AGENTS.md" ]]
+  grep -q '`.agents/rules/`' "$TEST_DIR/AGENTS.md"
+  ! grep -q "Auto-generated" "$TEST_DIR/AGENTS.md"
+  ! grep -q "## Rules" "$TEST_DIR/AGENTS.md"
 }
 
 @test "init is idempotent - does not overwrite existing files" {
@@ -139,10 +161,11 @@ teardown() {
   [ -f "$TEST_DIR/.agents/rules/no-eval.md" ]
 }
 
-@test "add rule updates AGENTS.md" {
+@test "add rule leaves AGENTS.md untouched" {
   "$SCRIPT" -d "$TEST_DIR" init
+  cp "$TEST_DIR/AGENTS.md" "$TEST_DIR/before.md"
   "$SCRIPT" -d "$TEST_DIR" add rule no-eval
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"no-eval"* ]]
+  cmp -s "$TEST_DIR/before.md" "$TEST_DIR/AGENTS.md"
 }
 
 @test "add rule file contains rule name" {
@@ -163,13 +186,6 @@ teardown() {
   [ -f "$TEST_DIR/.agents/skills/code-review/SKILL.md" ]
 }
 
-@test "add skill updates AGENTS.md with directory path" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  "$SCRIPT" -d "$TEST_DIR" add skill code-review
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"code-review"* ]]
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"skills/code-review/SKILL.md"* ]]
-}
-
 # --------------------------------------------------------------------------
 # add workflow
 # --------------------------------------------------------------------------
@@ -179,12 +195,6 @@ teardown() {
   run "$SCRIPT" -d "$TEST_DIR" add workflow deploy
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/.agents/workflows/deploy.md" ]
-}
-
-@test "add workflow updates AGENTS.md" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  "$SCRIPT" -d "$TEST_DIR" add workflow deploy
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"deploy"* ]]
 }
 
 # --------------------------------------------------------------------------
@@ -209,15 +219,33 @@ teardown() {
 # index
 # --------------------------------------------------------------------------
 
-@test "index regenerates AGENTS.md" {
+@test "index migrates a generated AGENTS.md once, with a backup" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  cp "$BATS_TEST_DIRNAME/../internal/agent/testdata/agentsmd/inherits-placeholders.md" "$TEST_DIR/AGENTS.md"
+  run "$SCRIPT" -d "$TEST_DIR" index
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sync-agents will not rewrite this file again"* ]]
+  [[ "$(head -1 "$TEST_DIR/AGENTS.md")" == "# AGENTS.md" ]]
+  grep -q "^## Inherits" "$TEST_DIR/AGENTS.md"
+  ! grep -q "^## Rules" "$TEST_DIR/AGENTS.md"
+  cmp -s "$BATS_TEST_DIRNAME/../internal/agent/testdata/agentsmd/inherits-placeholders.md" \
+    "$TEST_DIR/.agents/.sync/AGENTS.md.pre-spec013"
+  # second run: nothing to migrate
+  cp "$TEST_DIR/AGENTS.md" "$TEST_DIR/after.md"
+  run "$SCRIPT" -d "$TEST_DIR" index
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"AGENTS.md:"* ]]
+  cmp -s "$TEST_DIR/after.md" "$TEST_DIR/AGENTS.md"
+}
+
+@test "index leaves a user-owned AGENTS.md alone" {
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" add rule my-rule
-  # Overwrite AGENTS.md with junk
   echo "junk" > "$TEST_DIR/AGENTS.md"
   run "$SCRIPT" -d "$TEST_DIR" index
   [ "$status" -eq 0 ]
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"my-rule"* ]]
-  [[ "$(cat "$TEST_DIR/AGENTS.md")" == *"## Rules"* ]]
+  [[ "$(cat "$TEST_DIR/AGENTS.md")" == "junk" ]]
+  [ ! -e "$TEST_DIR/.agents/.sync/AGENTS.md.pre-spec013" ]
 }
 
 # --------------------------------------------------------------------------
@@ -236,7 +264,8 @@ teardown() {
   [ -L "$TEST_DIR/.windsurf/workflows" ]
 }
 
-@test "sync creates CLAUDE.md symlink to AGENTS.md" {
+@test "sync links CLAUDE.md to AGENTS.md for Claude Code < 2.1.281" {
+  fake_claude 2.1.276
   "$SCRIPT" -d "$TEST_DIR" init
   run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
@@ -244,6 +273,101 @@ teardown() {
   local link_target
   link_target="$(readlink "$TEST_DIR/CLAUDE.md")"
   [[ "$link_target" == "AGENTS.md" ]]
+}
+
+@test "sync creates no CLAUDE.md for Claude Code >= 2.1.281" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [ ! -e "$TEST_DIR/CLAUDE.md" ] && [ ! -L "$TEST_DIR/CLAUDE.md" ]
+  [[ "$output" == *"CLAUDE.md not created: Claude Code 2.1.286 reads AGENTS.md natively"* ]]
+  ! grep -qxF "CLAUDE.md" "$TEST_DIR/.gitignore"
+}
+
+@test "sync removes our CLAUDE.md link under Claude Code 2.1.286" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  ln -s AGENTS.md "$TEST_DIR/CLAUDE.md"
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"CLAUDE.md -> AGENTS.md removed"* ]] || return 1
+  [ ! -e "$TEST_DIR/CLAUDE.md" ] && [ ! -L "$TEST_DIR/CLAUDE.md" ]
+}
+
+@test "a CLAUDE.md in a parent directory forces the link under Claude Code 2.1.286" {
+  mkdir -p "$TEST_DIR/proj"
+  echo "# parent" > "$TEST_DIR/CLAUDE.md"
+  "$SCRIPT" -d "$TEST_DIR/proj" init
+  run "$SCRIPT" -d "$TEST_DIR/proj" sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$TEST_DIR/CLAUDE.md stops Claude Code"* ]] || return 1
+  [ "$(readlink "$TEST_DIR/proj/CLAUDE.md")" = "AGENTS.md" ]
+}
+
+@test "sync changes nothing and warns once when claude --version fails" {
+  fake_claude fail
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [ ! -e "$TEST_DIR/CLAUDE.md" ] && [ ! -L "$TEST_DIR/CLAUDE.md" ]
+  [ "$(grep -c "cannot tell the Claude Code version" <<<"$output")" -eq 1 ]
+  [[ "$output" == *"exit status 1"* ]]
+  [[ "$output" == *"claude-md = link"* ]]
+}
+
+@test "sync keeps an existing CLAUDE.md link when claude --version fails" {
+  fake_claude fail
+  "$SCRIPT" -d "$TEST_DIR" init
+  ln -s AGENTS.md "$TEST_DIR/CLAUDE.md"
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [[ "$(readlink "$TEST_DIR/CLAUDE.md")" == "AGENTS.md" ]]
+}
+
+@test "CLAUDE.local.md forces the CLAUDE.md link on Claude Code 2.1.286" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  echo "local notes" > "$TEST_DIR/CLAUDE.local.md"
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [[ "$(readlink "$TEST_DIR/CLAUDE.md")" == "AGENTS.md" ]]
+}
+
+@test "claude-md = link links CLAUDE.md even when claude --version fails" {
+  fake_claude fail
+  "$SCRIPT" -d "$TEST_DIR" init
+  echo "claude-md = link" >> "$TEST_DIR/.agents/config"
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [[ "$(readlink "$TEST_DIR/CLAUDE.md")" == "AGENTS.md" ]]
+  [[ "$output" != *"cannot tell the Claude Code version"* ]]
+}
+
+@test "claude-md = off never touches CLAUDE.md" {
+  fake_claude 2.1.276
+  "$SCRIPT" -d "$TEST_DIR" init
+  echo "claude-md = off" >> "$TEST_DIR/.agents/config"
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [ ! -e "$TEST_DIR/CLAUDE.md" ] && [ ! -L "$TEST_DIR/CLAUDE.md" ]
+}
+
+@test "a real CLAUDE.md is never moved aside, even with --overwrite" {
+  fake_claude 2.1.276
+  "$SCRIPT" -d "$TEST_DIR" init
+  echo "my notes" > "$TEST_DIR/CLAUDE.md"
+  run "$SCRIPT" -d "$TEST_DIR" --overwrite sync
+  [ "$status" -eq 0 ]
+  [ ! -L "$TEST_DIR/CLAUDE.md" ]
+  [[ "$(cat "$TEST_DIR/CLAUDE.md")" == "my notes" ]]
+  ! ls "$TEST_DIR"/CLAUDE.md.replaced-by-sync-agents* >/dev/null 2>&1
+  [[ "$output" == *"@AGENTS.md"* ]]
+}
+
+@test "sync does not handle CLAUDE.md when claude is not a target" {
+  fake_claude 2.1.276
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" sync --targets windsurf
+  [ "$status" -eq 0 ]
+  [ ! -e "$TEST_DIR/CLAUDE.md" ] && [ ! -L "$TEST_DIR/CLAUDE.md" ]
 }
 
 # --------------------------------------------------------------------------
@@ -269,7 +393,7 @@ teardown() {
   run "$SCRIPT" -d "$TEST_DIR" status
   [ "$status" -eq 0 ]
   [[ "$output" == *".agents/ exists"* ]]
-  [[ "$output" == *"AGENTS.md exists"* ]]
+  [[ "$output" == *"[ok] AGENTS.md (yours"* ]]
 }
 
 @test "status shows synced state after sync" {
@@ -291,6 +415,7 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "clean removes symlinks and empty directories" {
+  fake_claude 2.1.276
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" sync
   # Verify symlinks exist first
@@ -450,15 +575,21 @@ teardown() {
 # New targets: cursor, codex, copilot
 # --------------------------------------------------------------------------
 
-@test "sync creates symlinks for all 4 targets" {
+@test "sync folds rules for claude/windsurf and delivers cursor/copilot through .agents/index" {
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" add rule test-rule
   run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.claude/rules" ]
   [ -L "$TEST_DIR/.windsurf/rules" ]
-  [ -L "$TEST_DIR/.cursor/rules" ]
-  [ -L "$TEST_DIR/.github/copilot/rules" ]
+  # SPEC-013: no rules fold for channel tools; a link to the index instead.
+  [ ! -e "$TEST_DIR/.cursor/rules/test-rule.md" ]
+  [ ! -e "$TEST_DIR/.github/copilot/rules" ]
+  [ "$(readlink "$TEST_DIR/.cursor/rules/sync-agents.mdc")" = "../../.agents/index/cursor.mdc" ]
+  [ "$(readlink "$TEST_DIR/.github/instructions/sync-agents.instructions.md")" = "../../.agents/index/copilot.md" ]
+  grep -q '^alwaysApply: true$' "$TEST_DIR/.agents/index/cursor.mdc"
+  grep -q '^## test-rule$' "$TEST_DIR/.agents/index/cursor.mdc"
+  grep -q '^applyTo: "\*\*"$' "$TEST_DIR/.agents/index/copilot.md"
 }
 
 @test "sync --targets cursor only syncs to .cursor/" {
@@ -466,27 +597,108 @@ teardown() {
   "$SCRIPT" -d "$TEST_DIR" add rule test-rule
   run "$SCRIPT" -d "$TEST_DIR" sync --targets cursor
   [ "$status" -eq 0 ]
-  [ -L "$TEST_DIR/.cursor/rules" ]
+  [ -L "$TEST_DIR/.cursor/rules/sync-agents.mdc" ]
   [ ! -d "$TEST_DIR/.claude" ]
   [ ! -d "$TEST_DIR/.windsurf" ]
+  [ ! -e "$TEST_DIR/.github/instructions" ]
 }
 
-@test "sync --targets copilot creates .github/copilot/ structure" {
+@test "sync --targets copilot links .github/instructions, not .github/copilot/rules" {
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" add rule test-rule
   run "$SCRIPT" -d "$TEST_DIR" sync --targets copilot
   [ "$status" -eq 0 ]
-  [ -L "$TEST_DIR/.github/copilot/rules" ]
+  [ -L "$TEST_DIR/.github/instructions/sync-agents.instructions.md" ]
+  [ ! -e "$TEST_DIR/.github/copilot/rules" ]
   [ ! -d "$TEST_DIR/.copilot" ]
 }
 
-@test "clean removes copilot symlinks from .github/copilot/" {
+@test "sync --targets codex links AGENTS.override.md and never writes AGENTS.md" {
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" add rule test-rule
-  "$SCRIPT" -d "$TEST_DIR" sync --targets copilot
-  run "$SCRIPT" -d "$TEST_DIR" clean --targets copilot
+  printf '# AGENTS.md\n\nMine.\n' > "$TEST_DIR/AGENTS.md"
+  before="$(cat "$TEST_DIR/AGENTS.md")"
+  run "$SCRIPT" -d "$TEST_DIR" sync --targets codex
   [ "$status" -eq 0 ]
-  [ ! -L "$TEST_DIR/.github/copilot/rules" ]
+  [ "$(readlink "$TEST_DIR/AGENTS.override.md")" = ".agents/index/codex.md" ]
+  grep -q '^Mine\.$' "$TEST_DIR/AGENTS.override.md"
+  grep -q '^## test-rule$' "$TEST_DIR/AGENTS.override.md"
+  [ ! -e "$TEST_DIR/.codex/rules" ]
+  run "$SCRIPT" -d "$TEST_DIR" index
+  [ "$status" -eq 0 ]
+  [ "$(cat "$TEST_DIR/AGENTS.md")" = "$before" ]
+}
+
+@test "sync --targets opencode creates opencode.json; an existing one needs --targets consent" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule test-rule
+  run "$SCRIPT" -d "$TEST_DIR" sync --targets opencode
+  [ "$status" -eq 0 ]
+  grep -qF '".agents/index/opencode.md"' "$TEST_DIR/opencode.json"
+
+  # A user-owned config is not edited from .agents/config targets alone.
+  printf '{\n  "model": "x"\n}\n' > "$TEST_DIR/opencode.json"
+  echo "targets = opencode" > "$TEST_DIR/.agents/config"
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--targets opencode"* ]]
+  ! grep -qF 'instructions' "$TEST_DIR/opencode.json"
+
+  run "$SCRIPT" -d "$TEST_DIR" sync --targets opencode
+  [ "$status" -eq 0 ]
+  grep -qF '"model": "x"' "$TEST_DIR/opencode.json"
+  grep -qF '".agents/index/opencode.md"' "$TEST_DIR/opencode.json"
+}
+
+@test "sync removes the legacy .cursor/rules fold before placing the .mdc link" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule test-rule
+  mkdir -p "$TEST_DIR/.cursor" "$TEST_DIR/.codex"
+  ln -s ../.agents/rules "$TEST_DIR/.cursor/rules"
+  ln -s ../.agents/rules "$TEST_DIR/.codex/rules"
+  run "$SCRIPT" -d "$TEST_DIR" sync --targets cursor,codex
+  [ "$status" -eq 0 ]
+  [ ! -L "$TEST_DIR/.cursor/rules" ]
+  [ -d "$TEST_DIR/.cursor/rules" ]
+  [ -L "$TEST_DIR/.cursor/rules/sync-agents.mdc" ]
+  [ ! -e "$TEST_DIR/.agents/rules/sync-agents.mdc" ]
+  [ ! -e "$TEST_DIR/.codex/rules" ]
+}
+
+@test "status reports one row per delivery channel" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule test-rule
+  "$SCRIPT" -d "$TEST_DIR" sync --targets cursor,copilot
+  run "$SCRIPT" -d "$TEST_DIR" status --targets cursor,copilot
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[synced] cursor"* ]]
+  [[ "$output" == *"[synced] copilot"* ]]
+  echo "edited" >> "$TEST_DIR/.agents/rules/test-rule.md"
+  run "$SCRIPT" -d "$TEST_DIR" status --targets cursor,copilot
+  [[ "$output" == *"[stale] cursor"* ]]
+}
+
+@test "project at \$HOME leaves copilot to global sync (same tree)" {
+  unset SYNC_AGENTS_GLOBAL_ROOT
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule test-rule
+  run "$SCRIPT" -d "$TEST_DIR" sync --targets cursor,copilot
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"copilot: skipped at project scope"* ]]
+  [ ! -e "$TEST_DIR/.github/instructions" ]
+  [ -L "$TEST_DIR/.cursor/rules/sync-agents.mdc" ]
+}
+
+@test "clean removes delivery links, the index, and empty tool dirs" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  "$SCRIPT" -d "$TEST_DIR" add rule test-rule
+  "$SCRIPT" -d "$TEST_DIR" sync --targets copilot,cursor
+  run "$SCRIPT" -d "$TEST_DIR" clean --targets copilot,cursor
+  [ "$status" -eq 0 ]
+  [ ! -e "$TEST_DIR/.github" ]
+  [ ! -e "$TEST_DIR/.cursor" ]
+  [ ! -e "$TEST_DIR/.agents/index" ]
+  [ -f "$TEST_DIR/AGENTS.md" ]
 }
 
 # --------------------------------------------------------------------------
@@ -555,7 +767,27 @@ teardown() {
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/.git/hooks/pre-commit" ]
   [ -x "$TEST_DIR/.git/hooks/pre-commit" ]
-  grep -q "sync-agents" "$TEST_DIR/.git/hooks/pre-commit"
+  grep -qxF "  git add -- .agents/index 2>/dev/null || true" "$TEST_DIR/.git/hooks/pre-commit"
+  ! grep -q "sync-agents index" "$TEST_DIR/.git/hooks/pre-commit"
+  ! grep -q "git add AGENTS.md" "$TEST_DIR/.git/hooks/pre-commit"
+}
+
+@test "git-hook replaces an old block and the hook commits without CLAUDE.md" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.git/hooks"
+  printf '#!/bin/sh\necho keep-me\n# --- sync-agents start ---\nsync-agents index\ngit add AGENTS.md CLAUDE.md\n# --- sync-agents end ---\n' > "$TEST_DIR/.git/hooks/pre-commit"
+  run "$SCRIPT" -d "$TEST_DIR" git-hook
+  [ "$status" -eq 0 ]
+  grep -q "keep-me" "$TEST_DIR/.git/hooks/pre-commit"
+  ! grep -q "git add AGENTS.md" "$TEST_DIR/.git/hooks/pre-commit"
+  [ "$(grep -c 'sync-agents start' "$TEST_DIR/.git/hooks/pre-commit")" -eq 1 ]
+  # The hook runs the binary under test via PATH.
+  ln -s "$SCRIPT" "$FAKE_BIN/sync-agents"
+  [ ! -e "$TEST_DIR/CLAUDE.md" ]
+  cd "$TEST_DIR"
+  git -c user.email=t@t -c user.name=t add AGENTS.md
+  run git -c user.email=t@t -c user.name=t commit -q -m test
+  [ "$status" -eq 0 ]
 }
 
 @test "git-hook is idempotent" {
@@ -673,7 +905,7 @@ teardown() {
   run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.claude/rules" ]
-  [ -L "$TEST_DIR/.cursor/rules" ]
+  [ -L "$TEST_DIR/.cursor/rules/sync-agents.mdc" ]
   [ ! -d "$TEST_DIR/.windsurf" ]
 }
 
@@ -682,6 +914,7 @@ teardown() {
 # --------------------------------------------------------------------------
 
 @test "sync adds symlink entries to .gitignore" {
+  fake_claude 2.1.276
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" sync
   [ -f "$TEST_DIR/.gitignore" ]
@@ -690,6 +923,9 @@ teardown() {
   grep -qxF ".cursor/" "$TEST_DIR/.gitignore"
   grep -qxF ".github/copilot/" "$TEST_DIR/.gitignore"
   grep -qxF "CLAUDE.md" "$TEST_DIR/.gitignore"
+  grep -qxF ".agents/index/" "$TEST_DIR/.gitignore"
+  grep -qxF ".cursor/rules/sync-agents.mdc" "$TEST_DIR/.gitignore"
+  grep -qxF ".github/instructions/sync-agents.instructions.md" "$TEST_DIR/.gitignore"
 }
 
 @test "sync adds header comment to .gitignore" {
@@ -699,6 +935,7 @@ teardown() {
 }
 
 @test "sync does not duplicate .gitignore entries" {
+  fake_claude 2.1.276
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" sync
   "$SCRIPT" -d "$TEST_DIR" sync
@@ -708,6 +945,7 @@ teardown() {
 }
 
 @test "sync preserves existing .gitignore content" {
+  fake_claude 2.1.276
   "$SCRIPT" -d "$TEST_DIR" init
   echo "node_modules/" > "$TEST_DIR/.gitignore"
   "$SCRIPT" -d "$TEST_DIR" sync
@@ -716,6 +954,7 @@ teardown() {
 }
 
 @test "sync --targets only adds relevant entries to .gitignore" {
+  fake_claude 2.1.276
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" sync --targets claude
   grep -qxF ".claude/" "$TEST_DIR/.gitignore"
@@ -735,90 +974,16 @@ teardown() {
 # Inheritance
 # --------------------------------------------------------------------------
 
-@test "inherit adds Inherits section to AGENTS.md" {
+@test "inherit is removed and points at the docs" {
   "$SCRIPT" -d "$TEST_DIR" init
+  cp "$TEST_DIR/AGENTS.md" "$TEST_DIR/before.md"
   run "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
-  [ "$status" -eq 0 ]
-  grep -q "## Inherits" "$TEST_DIR/AGENTS.md"
-  grep -q "\[global\](../../AGENTS.md)" "$TEST_DIR/AGENTS.md"
-}
-
-@test "inherit adds multiple entries" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
-  run "$SCRIPT" -d "$TEST_DIR" inherit team ../AGENTS.md
-  [ "$status" -eq 0 ]
-  grep -q "\[global\]" "$TEST_DIR/AGENTS.md"
-  grep -q "\[team\]" "$TEST_DIR/AGENTS.md"
-}
-
-@test "inherit --list shows entries" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
-  "$SCRIPT" -d "$TEST_DIR" inherit team ../AGENTS.md
-  run "$SCRIPT" -d "$TEST_DIR" inherit --list
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"global"* ]]
-  [[ "$output" == *"team"* ]]
-}
-
-@test "inherit --remove removes an entry" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
-  "$SCRIPT" -d "$TEST_DIR" inherit team ../AGENTS.md
-  run "$SCRIPT" -d "$TEST_DIR" inherit --remove global
-  [ "$status" -eq 0 ]
-  ! grep -q "\[global\]" "$TEST_DIR/AGENTS.md"
-  grep -q "\[team\]" "$TEST_DIR/AGENTS.md"
-}
-
-@test "inherit rejects duplicate labels" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
-  run "$SCRIPT" -d "$TEST_DIR" inherit global ../other/AGENTS.md
   [ "$status" -ne 0 ]
-  [[ "$output" == *"already exists"* ]]
-}
-
-@test "inherit without arguments fails" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  run "$SCRIPT" -d "$TEST_DIR" inherit
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"Usage"* ]]
-}
-
-@test "inherit section preserved across index regeneration" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
-  "$SCRIPT" -d "$TEST_DIR" add rule my-rule
-  # index regenerates AGENTS.md
-  "$SCRIPT" -d "$TEST_DIR" index
-  grep -q "## Inherits" "$TEST_DIR/AGENTS.md"
-  grep -q "\[global\](../../AGENTS.md)" "$TEST_DIR/AGENTS.md"
-  grep -q "my-rule" "$TEST_DIR/AGENTS.md"
-}
-
-@test "inherit Inherits section appears before Rules in AGENTS.md" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  "$SCRIPT" -d "$TEST_DIR" inherit global ../../AGENTS.md
-  local inherits_line rules_line
-  inherits_line=$(grep -n "## Inherits" "$TEST_DIR/AGENTS.md" | head -1 | cut -d: -f1)
-  rules_line=$(grep -n "## Rules" "$TEST_DIR/AGENTS.md" | head -1 | cut -d: -f1)
-  [ "$inherits_line" -lt "$rules_line" ]
-}
-
-@test "inherit --list with no inherits shows nothing" {
-  "$SCRIPT" -d "$TEST_DIR" init
+  [[ "$output" == *"docs/inheritance.md"* ]]
   run "$SCRIPT" -d "$TEST_DIR" inherit --list
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-}
-
-@test "inherit --remove nonexistent label warns" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  run "$SCRIPT" -d "$TEST_DIR" inherit --remove nonexistent
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"No inherit found"* ]]
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"edit ## Inherits by hand"* ]]
+  cmp -s "$TEST_DIR/before.md" "$TEST_DIR/AGENTS.md"
 }
 
 # --------------------------------------------------------------------------
@@ -1123,6 +1288,7 @@ teardown() {
 }
 
 @test "fix repairs missing CLAUDE.md symlink" {
+  fake_claude 2.1.276
   "$SCRIPT" -d "$TEST_DIR" init
   # AGENTS.md exists but CLAUDE.md symlink is missing
   [ -f "$TEST_DIR/AGENTS.md" ]
@@ -1135,6 +1301,7 @@ teardown() {
 }
 
 @test "fix repairs deleted symlinks after sync" {
+  fake_claude 2.1.276
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" sync
   # Verify sync worked
@@ -1162,7 +1329,7 @@ teardown() {
 
   run "$SCRIPT" -d "$TEST_DIR" --dry-run fix skills
   [ "$status" -eq 0 ]
-  [[ "$output" == *"would create"* ]]
+  [[ "$output" == *"would link"* ]]
   # Nothing actually created
   [ ! -e "$TEST_DIR/.claude/skills" ]
 }
@@ -1353,22 +1520,6 @@ CONF
   [ -f "$TEST_DIR/.agents/rules/state.md" ]
 }
 
-@test "AGENTS.md State section indexes only shared STATE_ files" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  # Per-engineer snapshot (no frontmatter) must stay out of the index
-  echo "state 1" > "$TEST_DIR/.agents/STATE_feature-work_20260425120000.md"
-  # Shared-task snapshot opts in via frontmatter
-  printf -- '---\nshared: true\n---\n\nstate 2\n' > "$TEST_DIR/.agents/STATE_bugfix_20260426080000.md"
-  "$SCRIPT" -d "$TEST_DIR" index
-  ! grep -q "STATE_feature-work_20260425120000" "$TEST_DIR/AGENTS.md"
-  grep -q "STATE_bugfix_20260426080000" "$TEST_DIR/AGENTS.md"
-}
-
-@test "AGENTS.md State section points at the state convention rule" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  grep -q "rules/state.md" "$TEST_DIR/AGENTS.md"
-}
-
 # --------------------------------------------------------------------------
 # agents bucket (SPEC-004 Part B)
 # --------------------------------------------------------------------------
@@ -1403,15 +1554,6 @@ CONF
   run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
   [ ! -e "$TEST_DIR/.claude/agents" ]
-}
-
-@test "index adds Agents section only when agents exist" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  run grep -q "## Agents" "$TEST_DIR/AGENTS.md"
-  [ "$status" -ne 0 ]
-  "$SCRIPT" -d "$TEST_DIR" add agent reviewer
-  grep -q "## Agents" "$TEST_DIR/AGENTS.md"
-  grep -q ".agents/agents/reviewer.md" "$TEST_DIR/AGENTS.md"
 }
 
 @test "clean removes the .claude/agents symlink" {
@@ -1449,22 +1591,6 @@ CONF
   [ ! -e "$TEST_DIR/.windsurf/specs" ]
 }
 
-@test "index lists plans and specs recursively with sections" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  mkdir -p "$TEST_DIR/.agents/plans/auth-effort"
-  printf -- '---\nname: rollout\ndescription: Rollout plan for the auth effort. Use when planning auth work.\n---\n\n# Rollout\n' \
-    > "$TEST_DIR/.agents/plans/auth-effort/rollout.md"
-  run "$SCRIPT" -d "$TEST_DIR" index
-  [ "$status" -eq 0 ]
-  grep -q "## Plans" "$TEST_DIR/AGENTS.md"
-  grep -q ".agents/plans/auth-effort/rollout.md" "$TEST_DIR/AGENTS.md"
-  # description suffix rendered
-  grep -q "Rollout plan for the auth effort" "$TEST_DIR/AGENTS.md"
-  # specs section absent when bucket empty
-  run grep -q "## Specs" "$TEST_DIR/AGENTS.md"
-  [ "$status" -ne 0 ]
-}
-
 # --------------------------------------------------------------------------
 # index backfill (skill frontmatter)
 # --------------------------------------------------------------------------
@@ -1477,8 +1603,6 @@ CONF
   [ "$status" -eq 0 ]
   grep -q "name: legacy-tool" "$TEST_DIR/.agents/skills/legacy-tool/SKILL.md"
   grep -q "description: Wraps the legacy tool when needed." "$TEST_DIR/.agents/skills/legacy-tool/SKILL.md"
-  # backfilled description flows into the AGENTS.md index line
-  grep -q "Wraps the legacy tool when needed" "$TEST_DIR/AGENTS.md"
 }
 
 @test "index --no-fix leaves skill headers untouched" {
@@ -1512,27 +1636,7 @@ CONF
   grep -q "status: proposed" "$TEST_DIR/.agents/adrs/proposed/use-postgres.md"
 }
 
-@test "index lists accepted+proposed ADRs, excludes denied, includes denied-dir note" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  mkdir -p "$TEST_DIR/.agents/adrs/accepted" "$TEST_DIR/.agents/adrs/proposed" "$TEST_DIR/.agents/adrs/denied"
-  printf -- '---\nname: use-postgres\ndescription: Adopt Postgres. Use when persisting relational data.\nstatus: accepted\n---\n' > "$TEST_DIR/.agents/adrs/accepted/use-postgres.md"
-  printf -- '---\nname: adopt-grpc\nstatus: proposed\n---\n' > "$TEST_DIR/.agents/adrs/proposed/adopt-grpc.md"
-  printf -- '---\nname: use-mongo\nstatus: denied\n---\n' > "$TEST_DIR/.agents/adrs/denied/use-mongo.md"
-
-  run "$SCRIPT" -d "$TEST_DIR" index
-  [ "$status" -eq 0 ]
-  grep -q "## ADRs" "$TEST_DIR/AGENTS.md"
-  grep -q "### Accepted" "$TEST_DIR/AGENTS.md"
-  grep -q "use-postgres" "$TEST_DIR/AGENTS.md"
-  grep -q "### Proposed" "$TEST_DIR/AGENTS.md"
-  grep -q "adopt-grpc" "$TEST_DIR/AGENTS.md"
-  # denied excluded from listings but the guidance note points at the dir
-  run grep -q "use-mongo" "$TEST_DIR/AGENTS.md"
-  [ "$status" -ne 0 ]
-  grep -q "adrs/denied" "$TEST_DIR/AGENTS.md"
-}
-
-@test "adr accept and deny move records and reindex" {
+@test "adr accept and deny move records" {
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" add adr use-postgres
   run "$SCRIPT" -d "$TEST_DIR" adr accept use-postgres
@@ -1544,8 +1648,6 @@ CONF
   run "$SCRIPT" -d "$TEST_DIR" adr deny use-postgres
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/.agents/adrs/denied/use-postgres.md" ]
-  run grep -q "use-postgres" "$TEST_DIR/AGENTS.md"
-  [ "$status" -ne 0 ]
 }
 
 @test "sync links adrs bucket into .claude only" {
@@ -1609,7 +1711,7 @@ _make_checkout() {
   return 0
 }
 
-@test "source add --link=<path> wires a relative symlink and indexes the skill" {
+@test "source add --link=<path> wires a relative symlink" {
   "$SCRIPT" -d "$TEST_DIR" init
   _make_checkout foo-skill ""
   run "$SCRIPT" -d "$TEST_DIR" source add --link="$TEST_DIR/foo-skill" skill:me/foo-skill
@@ -1621,8 +1723,6 @@ _make_checkout() {
   [[ "$target" != /* ]]
   # resolves to the real SKILL.md
   [ -f "$TEST_DIR/.agents/skills/foo-skill/SKILL.md" ]
-  # indexed in AGENTS.md
-  grep -q "foo-skill" "$TEST_DIR/AGENTS.md"
 }
 
 @test "linked source: lock and manifest contain no absolute paths" {

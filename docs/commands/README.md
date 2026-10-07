@@ -6,9 +6,9 @@ Every `sync-agents` command and global option, with links to the deep-dive doc w
 
 | Command | Description |
 |---|---|
-| `init` | Initialize the `.agents/` directory structure with `rules/`, `skills/`, `workflows/`, `STATE.md`, and generate `AGENTS.md` |
-| `sync [--overwrite]` | Create symlinks from `.agents/` into all target directories, and symlink `AGENTS.md` to `CLAUDE.md`. Merges into existing tool directories and never deletes. Exits non-zero on conflicts ([sync](./sync.md)) |
-| `watch` | Watch `.agents/` for changes and auto-regenerate `AGENTS.md` |
+| `init` | Initialize the `.agents/` directory structure with `rules/`, `skills/`, `workflows/`, `config`, and `.gitignore` lines; write an `AGENTS.md` stub when none exists |
+| `sync [--overwrite]` | Create symlinks from `.agents/` into all target directories, render `.agents/index/` and mount it for Cursor, Copilot, Codex, and opencode, and apply the `CLAUDE.md` policy. Merges into existing tool directories and never deletes. Exits non-zero on conflicts ([sync](./sync.md), [delivery channels](../architecture/delivery-channels.md)) |
+| `watch` | Watch `.agents/` and `AGENTS.md` for changes and regenerate `.agents/index/` |
 | `import <url>` | Import a rule/skill/workflow from a URL |
 | `pull [--dry-run\|--offline\|--force\|--only NAME\|--global]` | Fetch every `sources.yaml` entry, verify integrity, install into the matching buckets ([sources](../sources.md)) |
 | `update [NAME]` | Re-resolve refs and re-pull entries whose upstream moved; SHA-pinned entries are skipped |
@@ -22,23 +22,20 @@ Every `sync-agents` command and global option, with links to the deep-dive doc w
 | `approve <name>\|--all [--force]` | Promote a quarantined artifact into `.agents/` (`--force` accepts critical findings, recorded in the lock) |
 | `reject <name>\|--all` | Delete a quarantined artifact without installing it |
 | `git-hook` | Install a pre-commit git hook for auto-sync (`hook` remains as a deprecated alias) |
-| `inherit <label> <path>` | Add an inheritance link to AGENTS.md ([inheritance](../inheritance.md)) |
-| `inherit --list` | List current inheritance links |
-| `inherit --remove <label>` | Remove an inheritance link by label |
-| `status` | Show the current sync status of all targets and symlinks (`[synced]`, `[merged]`, `[local]`, `[missing]`) |
+| `status` | Show the sync status of all targets and symlinks (`[synced]`, `[merged]`, `[local]`, `[missing]`), `AGENTS.md` ownership, the `CLAUDE.md` decision, and one row per delivery channel |
 | [`add <type> <name>`](./add.md) | Add a new artifact from a template (type is `rule`, `skill`, `workflow`, `agent`, `plan`, `spec`, `hook`, or `adr`) |
 | [`add <type> <name> --from <path>`](./add.md) | Import an existing artifact instead of scaffolding one; frontmatter `name:` is normalized, everything else preserved |
 | [`add <type> <name> --from <path> --link`](./add.md) | Symlink the source instead of copying it — the source stays authoritative |
-| `index [--no-fix]` | Regenerate `AGENTS.md` by scanning `.agents/`. Backfills fixable skill frontmatter first (`--no-fix` skips the backfill) ([index](./index.md)) |
-| `adr <accept\|deny\|propose> <name>` | Move an ADR between status directories, update its `status:` frontmatter, and reindex ([ADRs](../adrs.md)) |
-| `lint [skills] [--fix]` | Validate SKILL.md frontmatter against [Claude's skill authoring rules](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices); `--fix` amends fixable findings in place ([lint](./lint.md)) |
-| `clean` | Remove all synced symlinks and empty target directories (does not remove `.agents/`) |
+| `index [--no-fix]` | Regenerate the per-tool delivery files in `.agents/index/`. Backfills fixable skill frontmatter first (`--no-fix` skips the backfill) ([index](./index.md)) |
+| `adr <accept\|deny\|propose> <name>` | Move an ADR between status directories and update its `status:` frontmatter ([ADRs](../adrs.md)) |
+| `lint [skills\|all] [--fix]` | Validate SKILL.md frontmatter against [Claude's skill authoring rules](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices) and flag inert `import: true` on plans, specs, and ADRs; `--fix` amends fixable findings in place ([lint](./lint.md)) |
+| `clean` | Remove all synced symlinks, delivery links, our `opencode.json` entry, `.agents/index/`, and empty target directories (never touches `AGENTS.md` or the rest of `.agents/`) |
 | `fix [type] [--overwrite]` | Migrate legacy dirs into `.agents/`, convert flat skill files to directory layout, and repair broken symlinks. Type: any bucket dir, or `all` (default) ([fix](./fix.md)) |
 | `promote <type> <name>` | Copy an artifact from the project's `.agents/` to the user-level global store (`~/.agents/`) ([promote](./promote.md)) |
 | `global init` | Initialize the global `~/.agents/` store ([global init](./global-init.md)) |
-| `global sync` | Fan the global store out to each tool's user-level config dir with semantic-aware routing ([global sync](./global-sync.md)) |
-| `global status` | Show per-artifact sync state across global tool dirs ([global status](./global-status.md)) |
-| `global clean` | Remove global symlinks/concat files owned by sync-agents ([global clean](./global-clean.md)) |
+| `global sync [--targets <list>]` | Fan the global store out to each installed tool's user-level config dir with semantic-aware routing and delivery channels; naming a tool in `--targets` consents to editing a file of yours it reads ([global sync](./global-sync.md)) |
+| `global status` | Show per-artifact sync state and one row per delivery channel across global tool dirs ([global status](./global-status.md)) |
+| `global clean` | Remove global symlinks, regions, and config entries owned by sync-agents ([global clean](./global-clean.md)) |
 
 ## Options
 
@@ -47,7 +44,7 @@ Every `sync-agents` command and global option, with links to the deep-dive doc w
 | `-h`, `--help` | Show help message |
 | `-v`, `--version` | Show version |
 | `-d`, `--dir <path>` | Set project root directory (default: current directory) |
-| `--targets <list>` | Comma-separated list of sync targets (default: `claude,windsurf,cursor,copilot`) |
+| `--targets <list>` | Comma-separated list of sync targets (default: `targets` in `.agents/config`). Naming a tool also consents to editing a file of yours it reads, such as an existing `opencode.json` |
 | `--dry-run` | Show what would be done without making changes |
 | `--overwrite` | (sync, fix) Rename a conflicting real entry to `<path>.replaced-by-sync-agents` and link in its place. Never deletes |
 | `--force` | Per command: `approve` accepts critical findings; `add` overwrites an existing artifact file; `promote` replaces an existing destination; `pull`, `update`, and `source add` overwrite locally edited artifacts; `global sync` renames conflicts to `*.replaced-by-sync-agents`. **Deprecated on `sync` and `fix`**, where it warns and behaves as `--overwrite` |
@@ -93,7 +90,7 @@ sync-agents sync --overwrite
 # Check sync status
 sync-agents status
 
-# Regenerate the AGENTS.md index
+# Regenerate the per-tool delivery files in .agents/index/
 sync-agents index
 
 # Remove all synced symlinks
@@ -124,5 +121,7 @@ For reproducible, SHA-pinned installs prefer the
 ## See also
 
 - [Topology & configuration](../topology.md)
+- [Delivery channels](../architecture/delivery-channels.md)
+- [Migrating to 2.0](../migration-v2.md)
 - [Sources, lockfile & provenance](../sources.md)
 - [Docs index](../README.md)

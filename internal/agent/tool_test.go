@@ -127,9 +127,10 @@ func TestTool_HasScope(t *testing.T) {
 	}
 }
 
-// TestTool_DirForScope_Copilot guards the .github/copilot nested path
-// which is the second shape-changer in the registry. The path must
-// use the OS separator (filepath.Join handles this).
+// TestTool_DirForScope_Copilot guards the .github/copilot nested
+// project path and the ~/.copilot user home (SPEC-013 E5), the second
+// shape-changer in the registry. The path must use the OS separator
+// (filepath.Join handles this).
 func TestTool_DirForScope_Copilot(t *testing.T) {
 	copilot, ok := ResolveTool("copilot")
 	if !ok {
@@ -139,7 +140,7 @@ func TestTool_DirForScope_Copilot(t *testing.T) {
 	if got := copilot.DirForScope(ScopeLocal, "/r"); got != want {
 		t.Errorf("copilot local dir = %q, want %q", got, want)
 	}
-	if got := copilot.DirForScope(ScopeGlobal, "/r"); got != want {
+	if got, want := copilot.DirForScope(ScopeGlobal, "/r"), filepath.Join("/r", ".copilot"); got != want {
 		t.Errorf("copilot global dir = %q, want %q", got, want)
 	}
 }

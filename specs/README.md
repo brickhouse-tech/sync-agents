@@ -38,5 +38,6 @@ treat retired spec content as current intent.
 | SPEC-010 | conformance audit + unified fold/drill sync | 🟡 Phase 3 fold/drill shipped for local `sync`/`fix`; **audit, adoption, global sync unification open** | — (active) | [sync](../docs/commands/sync.md) |
 | SPEC-011 | `add agent` import + selective load + multi-tool subagent routing | 🟡 Parts A–C shipped; **Part D open** | — (active) | [add](../docs/commands/add.md), [topology](../docs/topology.md), [scope-and-targets](../docs/architecture/scope-and-targets.md) |
 | SPEC-012 | `openclaw` global target (passive rules inlined into a workspace `AGENTS.md` region) | ✅ shipped | — (no spec file; designed in the PR) | [global-sync § OpenClaw](../docs/commands/global-sync.md#openclaw), [scope-and-targets](../docs/architecture/scope-and-targets.md), [index](../docs/commands/index.md) |
+| SPEC-013 | AGENTS.md is not an index (per-tool delivery channels, version-gated CLAUDE.md) | 🟡 implemented on feature/agents-md-regions; release gate (per-tool symlink canary) open | — (active) | [delivery-channels](../docs/architecture/delivery-channels.md), [migration-v2](../docs/migration-v2.md) |
 
-Next spec ID: **SPEC-013**.
+Next spec ID: **SPEC-014**.

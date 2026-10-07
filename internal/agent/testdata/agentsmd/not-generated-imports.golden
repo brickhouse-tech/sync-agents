@@ -1,0 +1,9 @@
+# Project guide
+
+Read `.agents/rules/` before you start.
+
+## Rules
+
+- [git](.agents/rules/git.md)
+
+This list is maintained by hand and must survive.

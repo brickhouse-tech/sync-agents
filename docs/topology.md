@@ -9,7 +9,8 @@ workflows, and state for your agents:
 
 ```
 .agents/
-  ├── config              # sync targets (claude, windsurf, cursor, copilot)
+  ├── config              # sync targets and options (targets, index, claude-md, ...)
+  ├── index/              # generated per-tool delivery files (cursor.mdc, copilot.md, ...)
   ├── rules/
   │   ├── rule1.md
   │   ├── rule2.md
@@ -36,19 +37,26 @@ workflows, and state for your agents:
   │   │   └── adopt-grpc.md
   │   ├── accepted/
   │   │   └── use-postgres.md
-  │   └── denied/          # kept but never indexed — prevents re-proposing rejected decisions
+  │   └── denied/          # kept so rejected decisions are not re-proposed
   │       └── use-mongo.md
   └── STATE.md
 ```
 
 Running `sync-agents sync` creates symlinks from `.agents/`
 subdirectories into `.claude/`, `.windsurf/`, `.cursor/`,
-`.github/copilot/`, and — when enabled — `.opencode/`. Any changes to `.agents/` are automatically
-reflected in the target directories because they are symlinks, not
-copies.
+`.github/copilot/`, and, when enabled, `.codex/` and `.opencode/`.
+Changes to `.agents/` show up in those directories at once, because they
+are symlinks, not copies.
 
-`AGENTS.md` is an auto-generated index of everything in `.agents/` and
-is symlinked to `CLAUDE.md` so that Claude reads the index natively.
+Rules reach Cursor, Copilot, Codex, and opencode through generated files
+in `.agents/index/`, which `sync`, `index`, and `watch` rebuild. See
+[delivery channels](./architecture/delivery-channels.md).
+
+`AGENTS.md` at the project root is your file. `init` writes a short
+stub when there is none; sync-agents never writes it after that.
+`CLAUDE.md -> AGENTS.md` is created only when the installed Claude Code
+needs it (see the
+[CLAUDE.md policy](./architecture/delivery-channels.md#claudemd-policy)).
 
 ## Skills use a directory layout
 
@@ -64,16 +72,15 @@ their directory exists — `init` does not create them,
 `add agent|plan|spec|hook|adr <name>` does.
 
 `plans/`, `specs/`, `hooks/`, and `adrs/` are Claude-only
-(`.claude/plans`, `.claude/specs`, …); other tools consume them
-through the `AGENTS.md` index.
+(`.claude/plans`, `.claude/specs`, …). Other tools open them from
+`.agents/` when asked.
 
 `agents/` reaches every tool that has a **native subagent surface**
 reading markdown with YAML frontmatter — Claude (`.claude/agents/`),
 Cursor (`.cursor/agents/`), and opencode (`.opencode/agents/`,
 `~/.config/opencode/agents/` at user scope). Windsurf, Copilot, and
 Codex have no subagent concept, so they are skipped rather than sent a
-mislabeled artifact; they see agents only through the `AGENTS.md`
-index.
+mislabeled artifact.
 
 Frontmatter is **not translated** between harnesses. Claude's `tools:`
 and `model:` sit alongside Cursor's `readonly:` and `is_background:` in
@@ -103,8 +110,11 @@ sync with progress.
 
 ```
 # sync-agents configuration
-# Comma-separated list of sync targets (available: claude, windsurf, cursor, copilot)
+# Comma-separated list of sync targets (available: claude, windsurf, cursor, copilot, codex, opencode)
+# Override per-command with: sync-agents sync --targets claude,cursor
 targets = claude,windsurf,cursor,copilot
+# index = local      # local (default: .agents/index/ and its links are gitignored) | commit
+# claude-md = auto   # auto (default: link CLAUDE.md -> AGENTS.md only for Claude Code < 2.1.281) | link | off
 ```
 
 Edit this file to limit which targets `sync` writes to by default. The
@@ -116,10 +126,17 @@ Other recognized keys:
   (default `on`); see [Quarantine](./quarantine.md).
 - `os = <goos>` — override the detected OS for testing/cross-compile
   CI; see [OS-scoped routing](./os-scoped-routing.md).
+- `index = local|commit` — whether `.agents/index/` and its links are
+  gitignored (default) or committed; see
+  [delivery channels](./architecture/delivery-channels.md#index-policy).
+- `claude-md = auto|link|off` — when sync creates `CLAUDE.md ->
+  AGENTS.md`; see the
+  [CLAUDE.md policy](./architecture/delivery-channels.md#claudemd-policy).
 
 ## See also
 
 - [Command reference](./commands/README.md)
 - [Scope and target directories](./architecture/scope-and-targets.md)
 - [Semantic routing](./architecture/semantic-routing.md)
+- [Delivery channels](./architecture/delivery-channels.md)
 - [ADRs](./adrs.md)
