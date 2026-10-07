@@ -2,6 +2,58 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [2.0.0](https://github.com/brickhouse-tech/sync-agents/compare/v1.10.1...v2.0.0) (2026-10-07)
+
+### ⚠ BREAKING CHANGES
+
+* **index:** AGENTS.md is no longer generated. Existing generated files are
+  rewritten once to a stub plus kept sections, with a backup in .agents/.sync/.
+  `sync-agents index` no longer writes an index. The `inherit` command is removed.
+  Frontmatter `import: true` no longer preloads plans, specs, or ADRs into Claude,
+  and global sync no longer writes @-imports into ~/.claude/CLAUDE.md.
+* **global:** global rule delivery paths moved. Copilot reads
+  ~/.copilot/instructions/sync-agents.instructions.md, not
+  ~/.github/copilot/instructions.md. Codex reads the codex-rules region
+  of ~/.codex/AGENTS.md, not ~/.codex/instructions.md. Bannered legacy
+  files are removed and ~/.cursor/rules/*.md links into ~/.agents are
+  deleted. Windsurf global_rules.md becomes a region; text outside it is
+  kept. global sync no longer creates a home for an uninstalled
+  Windsurf, Copilot, Codex, opencode or OpenClaw, and edits an existing
+  file of yours only after one --targets <tool> run. A link conflict
+  makes global sync exit non-zero. global status prints one channel row
+  per tool instead of concat and region rows. OpenClaw is unchanged.
+* **sync:** local sync no longer folds .agents/rules into
+  .cursor/rules, .github/copilot/rules, .codex/rules or .opencode/rules;
+  those links are removed. Sync creates .agents/index/, the
+  .cursor/rules/sync-agents.mdc, .github/instructions/
+  sync-agents.instructions.md and AGENTS.override.md links, and
+  opencode.json, and adds their .gitignore lines. init's .gitignore
+  block drops the instructions.md exceptions for .agents/index/. The
+  git-hook block changes and replaces the old one on re-run.
+* **claude:** on Claude Code >= 2.1.281, sync removes an existing
+  CLAUDE.md -> AGENTS.md symlink it owns. Set claude-md = link to keep it.
+* **claude:** sync no longer always creates CLAUDE.md -> AGENTS.md.
+  With Claude Code >= 2.1.281, when claude is not an active target, or
+  when claude --version cannot be read, no link is created (set
+  claude-md = link to restore the old behavior). A real CLAUDE.md is never
+  moved aside, --overwrite included; fix no longer relinks a CLAUDE.md
+  symlink that points elsewhere, and clean no longer removes one.
+
+* **index:** migrate AGENTS.md once and stop generating the link index ([be1066f](https://github.com/brickhouse-tech/sync-agents/commit/be1066f5137916a0bb85402047f9f6809a6e2190))
+
+### Features
+
+* **channel:** add pure per-tool delivery channel layer ([69c1ad0](https://github.com/brickhouse-tech/sync-agents/commit/69c1ad0f0a56bfb40b42958dfef3fc2f65fe9eaf))
+* **claude:** gate the CLAUDE.md symlink on the installed Claude Code version ([32b11ca](https://github.com/brickhouse-tech/sync-agents/commit/32b11ca8519593025188e8e9d4d89998b9e10cf5))
+* **global:** deliver global rules through channels and drop concat and region batches ([4ce20e7](https://github.com/brickhouse-tech/sync-agents/commit/4ce20e79d329f20eb1342224d5e9af9fca6264cb))
+* **lint:** warn that import: true has no effect ([6ec105e](https://github.com/brickhouse-tech/sync-agents/commit/6ec105e0cb8e297309f751217015a76d679f8f5f))
+* **sync:** deliver rules to cursor, copilot, codex and opencode through .agents/index ([ec2ec80](https://github.com/brickhouse-tech/sync-agents/commit/ec2ec80f3f79183f2950249f6405bee99405b845))
+
+### Bug Fixes
+
+* **claude:** link CLAUDE.md when a parent CLAUDE.md hides AGENTS.md ([9475a77](https://github.com/brickhouse-tech/sync-agents/commit/9475a77fe2723eeb8da07412a14374b2628ff33b))
+* **init:** gitignore .agents/.sync per-machine state ([67b51ea](https://github.com/brickhouse-tech/sync-agents/commit/67b51ea4309f0f59443deb8a34ab8135c8854fe0))
+
 ## [1.10.1](https://github.com/brickhouse-tech/sync-agents/compare/v1.10.0...v1.10.1) (2026-10-03)
 
 ## [1.10.0](https://github.com/brickhouse-tech/sync-agents/compare/v1.9.3...v1.10.0) (2026-09-30)
