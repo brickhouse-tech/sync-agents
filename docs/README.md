@@ -116,10 +116,6 @@ durable content lives), so IDs stay resolvable after the file is gone.
 - [SPEC-011](../specs/SPEC-011-agent-bucket-import-routing.md) — agent
   bucket: import (`add --from`) and multi-tool subagent routing
   shipped; per-agent selective load (Part D) open.
-- [SPEC-013](../specs/SPEC-013-agents-md-is-not-an-index.md) — AGENTS.md
-  is not an index: per-tool delivery channels and the version-gated
-  CLAUDE.md link. Implemented; the per-tool symlink canary is the open
-  release gate.
 
 ## Conventions
 

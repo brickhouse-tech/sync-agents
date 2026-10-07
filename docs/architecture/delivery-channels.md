@@ -294,9 +294,33 @@ nothing.
 | OpenClaw and Windsurf count UTF-16 units | inferred: OpenClaw is TypeScript; Windsurf does not state its unit |
 
 None of the Cursor, Copilot, Codex, or opencode CLIs was installed where
-this was built. A per-tool canary is the release gate for 2.0.0. If a
-tool does not follow the link, its row changes to write the rendered
-bytes at the native path instead of a symlink.
+this was built, so the four rows above stay unverified until someone
+checks each tool. If a tool does not follow the link, its
+`channelSpecs` row changes to write the rendered bytes at the native
+path instead of a symlink.
+
+## Open follow-ups
+
+Carried over from SPEC-013 when it shipped in 2.0.0:
+
+- **Per-tool symlink check.** Confirm the four unverified rows above,
+  and that opencode treats a missing `instructions` file (a fresh clone
+  with a committed `opencode.json`) as a no-op.
+- **Simplify pass.** Production Go grew by about 2.3k lines net in
+  2.0.0, mostly new delivery code. `deliver*.go` and `channel.go` are
+  the candidates.
+- **Copilot and `CLAUDE.md`.** The Copilot coding agent may also read a
+  root `CLAUDE.md`. Where sync links `CLAUDE.md -> AGENTS.md`, Copilot
+  could read `AGENTS.md` twice. Unverified.
+- **`init` defaults.** Should `init` suggest `index = commit` for teams
+  using cloud agents, and add `codex` to the default targets?
+- **Skills double-registration.** `.agents/skills` is native to Codex,
+  Cursor, and opencode, so the `.cursor/skills` and `.codex/skills`
+  links may register skills twice.
+- **Windsurf path.** Should the local fold move to `.devin/rules`, the
+  vendor's preferred path?
+- **Global `targets=`.** Global sync ignores `~/.agents/config`
+  `targets=`; the home gate covers most of the risk.
 
 ## See also
 
