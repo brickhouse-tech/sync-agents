@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [3.0.0](https://github.com/brickhouse-tech/sync-agents/compare/v2.0.1...v3.0.0) (2026-10-08)
+
+### ⚠ BREAKING CHANGES
+
+* @brickhouse-tech/sync-agents is no longer published to npm.
+
+### Features
+
+* drop npm distribution; ship via go install, Homebrew, and GitHub Releases ([cd207cb](https://github.com/brickhouse-tech/sync-agents/commit/cd207cb97dfd984948fa1ac55cb2586c9d72e4c3))
+
 ## [2.0.1](https://github.com/brickhouse-tech/sync-agents/compare/v2.0.0...v2.0.1) (2026-10-07)
 
 ## [2.0.0](https://github.com/brickhouse-tech/sync-agents/compare/v1.10.1...v2.0.0) (2026-10-07)
