@@ -28,14 +28,11 @@ No more copy-pasting the same instructions into four different tools, and no mor
 ## Install
 
 ```bash
-# npm — ships prebuilt native binaries, no Go toolchain needed
-npm install -g @brickhouse-tech/sync-agents
-
-# Homebrew
-brew install brickhouse-tech/tap/sync-agents
-
-# go install (Go 1.21+, no Node needed)
+# go install (Go 1.21+)
 go install github.com/brickhouse-tech/sync-agents@latest
+
+# Homebrew — prebuilt binary, no Go toolchain needed
+brew install brickhouse-tech/tap/sync-agents
 ```
 
 Pre-built archives (with SHA-256 checksums) are also on the [Releases page](https://github.com/brickhouse-tech/sync-agents/releases). More detail in [docs/install.md](docs/install.md).

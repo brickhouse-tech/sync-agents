@@ -2,22 +2,7 @@
 
 Every supported install channel for the `sync-agents` binary, with the trade-offs of each.
 
-## npm (recommended for Node.js projects)
-
-Ships native Go binaries via per-platform optional packages — no build
-step, no Go toolchain required.
-
-```bash
-npm install -g @brickhouse-tech/sync-agents
-```
-
-Or as a project devDependency:
-
-```bash
-npm install --save-dev @brickhouse-tech/sync-agents
-```
-
-## go install (no Node.js required)
+## go install
 
 ```bash
 go install github.com/brickhouse-tech/sync-agents@latest
@@ -28,6 +13,8 @@ Requires Go 1.21+. The binary is placed in `$GOPATH/bin` (or
 via `debug.ReadBuildInfo`.
 
 ## Homebrew
+
+Prebuilt binary; no Go toolchain needed.
 
 ```bash
 brew install brickhouse-tech/tap/sync-agents
@@ -49,6 +36,12 @@ sudo mv sync-agents /usr/local/bin/
 
 SHA-256 checksums are published alongside each release as
 `checksums.txt`.
+
+## npm (discontinued)
+
+`@brickhouse-tech/sync-agents` on npm stopped at 2.0.0 and is no longer
+published. Uninstall it (`npm uninstall -g @brickhouse-tech/sync-agents`)
+and use one of the channels above.
 
 ## See also
 
