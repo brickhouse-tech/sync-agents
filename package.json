@@ -1,6 +1,7 @@
 {
   "name": "@brickhouse-tech/sync-agents",
   "version": "2.0.1",
+  "private": true,
   "description": "Simple scripts to DRY up common agent interactions across multiple LLM providers.",
   "keywords": [
     "agents",
@@ -19,19 +20,6 @@
     "url": "https://github.com/brickhouse-tech/sync-agents.git"
   },
   "author": "Nicholas McCready",
-  "bin": {
-    "sync-agents": "bin/sync-agents.js"
-  },
-  "files": [
-    "bin/sync-agents.js"
-  ],
-  "optionalDependencies": {
-    "@brickhouse-tech/sync-agents-darwin-arm64": "2.0.1",
-    "@brickhouse-tech/sync-agents-darwin-x64": "2.0.1",
-    "@brickhouse-tech/sync-agents-linux-arm64": "2.0.1",
-    "@brickhouse-tech/sync-agents-linux-x64": "2.0.1",
-    "@brickhouse-tech/sync-agents-win32-x64": "2.0.1"
-  },
   "overrides": {
     "file-type": ">=22",
     "picomatch": ">=4.0.4"
@@ -39,13 +27,9 @@
   "scripts": {
     "prepare": "node scripts/install.js",
     "build": "node scripts/build.js",
-    "build:platform": "node scripts/build-platform.js",
-    "build:all": "node scripts/build-all.js",
     "clean": "node scripts/clean.js",
     "test": "npm run build && npx bats test/sync-agents.bats test/integration-global.bats",
-    "test:integration": "npm run build && npx bats test/integration-global.bats",
-    "prepack": "node scripts/sync-optional-deps.js",
-    "bootstrap:publish": "bash scripts/bootstrap-platform-publish.sh"
+    "test:integration": "npm run build && npx bats test/integration-global.bats"
   },
   "devDependencies": {
     "@commitlint/cli": "^21",

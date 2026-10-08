@@ -344,15 +344,15 @@
       scan the untrusted ones, and sync everything to Claude, Windsurf, Cursor, and Copilot.
     </p>
     <div class="install">
-      <span class="cmd" id="install-cmd"><span class="dollar">$</span> npm install -g <span class="pkg">@brickhouse-tech/sync-agents</span></span>
+      <span class="cmd" id="install-cmd"><span class="dollar">$</span> go install <span class="pkg">github.com/brickhouse-tech/sync-agents@latest</span></span>
       <button type="button" onclick="copyInstall(this)" aria-label="Copy install command">copy</button>
     </div>
     <div class="install-alt">
-      also: <code>brew install brickhouse-tech/tap/sync-agents</code> · <code>go install github.com/brickhouse-tech/sync-agents@latest</code>
+      also: <code>brew install brickhouse-tech/tap/sync-agents</code>
     </div>
     <div class="cta-row">
       <a class="btn btn-primary" href="https://github.com/brickhouse-tech/sync-agents#readme">Read the docs</a>
-      <a class="btn btn-ghost" href="https://www.npmjs.com/package/@brickhouse-tech/sync-agents">View on npm</a>
+      <a class="btn btn-ghost" href="https://github.com/brickhouse-tech/sync-agents/releases">Releases</a>
     </div>
   </header>
 
@@ -463,7 +463,7 @@
   <section id="how">
     <p class="kicker">// how it works</p>
     <h2>Three moves. Every repo. Every machine.</h2>
-    <p class="lede">A single Go binary (shipped via npm, Homebrew, or <code style="font-family:var(--mono);font-size:.9em">go install</code>) with
+    <p class="lede">A single Go binary (shipped via Homebrew, GitHub Releases, or <code style="font-family:var(--mono);font-size:.9em">go install</code>) with
     no runtime dependencies — it doesn't even need <code style="font-family:var(--mono);font-size:.9em">git</code> to pull.</p>
     <div class="steps">
       <div class="step">
@@ -499,7 +499,7 @@ $ sync-agents approve code-review</pre>
   <div class="wrap">
     <div class="flinks">
       <a href="https://github.com/brickhouse-tech/sync-agents">GitHub</a>
-      <a href="https://www.npmjs.com/package/@brickhouse-tech/sync-agents">npm</a>
+      <a href="https://github.com/brickhouse-tech/sync-agents/releases">Releases</a>
       <a href="https://github.com/brickhouse-tech/sync-agents/blob/main/CHANGELOG.md">Changelog</a>
       <a href="https://github.com/brickhouse-tech/sync-agents/issues">Issues</a>
       <a href="https://github.com/brickhouse-tech/sync-agents/blob/main/LICENSE">License</a>
@@ -510,7 +510,7 @@ $ sync-agents approve code-review</pre>
 
 <script>
 function copyInstall(btn) {
-  navigator.clipboard.writeText("npm install -g @brickhouse-tech/sync-agents").then(function () {
+  navigator.clipboard.writeText("go install github.com/brickhouse-tech/sync-agents@latest").then(function () {
     btn.textContent = "copied";
     setTimeout(function () { btn.textContent = "copy"; }, 1600);
   });

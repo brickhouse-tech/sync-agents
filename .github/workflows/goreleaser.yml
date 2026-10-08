@@ -5,6 +5,12 @@ on:
     tags:
       - "v*"
 
+# GitHub occasionally delivers a tag push twice (v2.0.1 got two runs that
+# raced each other's asset uploads). One run per tag.
+concurrency:
+  group: goreleaser-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
