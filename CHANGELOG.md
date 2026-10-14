@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [3.1.0](https://github.com/brickhouse-tech/sync-agents/compare/v3.0.0...v3.1.0) (2026-10-14)
+
+### Features
+
+* deprecate the adrs bucket ([10dd39e](https://github.com/brickhouse-tech/sync-agents/commit/10dd39ebc97b2419a412825b59974fe20b5ac91e))
+
 ## [3.0.0](https://github.com/brickhouse-tech/sync-agents/compare/v2.0.1...v3.0.0) (2026-10-08)
 
 ### ⚠ BREAKING CHANGES
