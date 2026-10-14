@@ -70,7 +70,7 @@ agent-level system prompts when working inside this repository.
   comment near the implementation. This gives future readers (humans
   and agents) a stable pointer back to the decision context.
 - When a doc explains a behavior that was specified, link to the
-  SPEC file at the bottom (`specs/SPEC-XXX-name.md`).
+  SPEC file at the bottom (`.agents/specs/SPEC-XXX-name.md`).
 
 ### Markdown rules and skills
 

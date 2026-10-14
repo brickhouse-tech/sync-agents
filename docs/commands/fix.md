@@ -86,4 +86,4 @@ bash examples/fix/run-demo.sh
 - [`sync-agents sync`](./sync.md)
 - [Topology & configuration](../topology.md)
 - [Command reference](./README.md)
-- [SPEC-010](../../specs/SPEC-010-conformance-audit-unified-sync.md) (fold/drill design)
+- [SPEC-010](../../.agents/specs/SPEC-010-conformance-audit-unified-sync.md) (fold/drill design)

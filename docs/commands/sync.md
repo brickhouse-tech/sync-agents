@@ -242,4 +242,4 @@ symlink per bucket.
 - [Topology & configuration](../topology.md)
 - [Delivery channels](../architecture/delivery-channels.md)
 - [Migrating to 2.0](../migration-v2.md)
-- [SPEC-010](../../specs/SPEC-010-conformance-audit-unified-sync.md) (ownership taxonomy, fold/drill design), SPEC-013 (delivery channels)
+- [SPEC-010](../../.agents/specs/SPEC-010-conformance-audit-unified-sync.md) (ownership taxonomy, fold/drill design), SPEC-013 (delivery channels)
