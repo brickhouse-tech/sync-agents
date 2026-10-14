@@ -1650,6 +1650,16 @@ CONF
   [ -f "$TEST_DIR/.agents/adrs/denied/use-postgres.md" ]
 }
 
+@test "adr commands warn that ADRs are deprecated" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  run "$SCRIPT" -d "$TEST_DIR" add adr use-postgres
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ADRs are deprecated"* ]]
+  run "$SCRIPT" -d "$TEST_DIR" adr accept use-postgres
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ADRs are deprecated"* ]]
+}
+
 @test "sync links adrs bucket into .claude only" {
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" add adr use-postgres
