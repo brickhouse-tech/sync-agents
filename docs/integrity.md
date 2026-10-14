@@ -2,7 +2,7 @@
 
 `sources.lock` records only *remotely-sourced* manifest entries.
 Locally-authored rules, hand-written skills, imports, linked checkouts,
-hooks, agents, plans, specs and ADRs have no provenance record and no
+hooks, agents, plans and specs have no provenance record and no
 post-install integrity check. The integrity lock (SPEC-008) closes that
 gap for the **entire `.agents/` tree**.
 

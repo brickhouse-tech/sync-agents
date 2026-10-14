@@ -13,7 +13,7 @@ Every artifact has one of three semantics:
 |---|---|
 | **`invocable`** | Loaded only when triggered by name — a user slash command, or an AI model's tool-call decision based on the artifact's description. Not in baseline context. |
 | **`passive`** | Always part of baseline context for every conversation. No trigger logic; always loaded. |
-| **`reference`** | Neither preloaded nor trigger-dispatched: read on demand (@-mention, file read). Used by the `plans/`, `specs/`, and `adrs/` buckets (SPEC-004 Part D). Never enters a delivery channel or any invocable surface; `import: true` has no effect (SPEC-013). |
+| **`reference`** | Neither preloaded nor trigger-dispatched: read on demand (@-mention, file read). Used by the `plans/` and `specs/` buckets (SPEC-004 Part D). Never enters a delivery channel or any invocable surface; `import: true` has no effect (SPEC-013). |
 
 These are independent of the bucket directory the artifact lives in.
 

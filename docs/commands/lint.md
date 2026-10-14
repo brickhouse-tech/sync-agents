@@ -30,7 +30,7 @@ keys verbatim. Reserved-word names are reported but never auto-renamed.
 | W101 | first-person description ("I can…", "You can…") | report only (third person required) |
 | W102 | description lacks a when-to-use clause | report only |
 | W103 | SKILL.md body > 500 lines | report only |
-| W201 | `import: true` in the frontmatter of a plan, spec, or ADR | report only (see below) |
+| W201 | `import: true` in the frontmatter of a plan or spec | report only (see below) |
 
 ## Behavior
 
@@ -47,7 +47,7 @@ keys verbatim. Reserved-word names are reported but never auto-renamed.
 
 ## W201: `import: true` has no effect
 
-Before SPEC-013, `import: true` in a plan, spec, or ADR added the doc to
+Before SPEC-013, `import: true` in a plan or spec added the doc to
 a managed `@`-import block in `CLAUDE.md`, so Claude loaded it in every
 session. SPEC-013 removed that block. The key is now inert: the doc is
 still linked under `.claude/<bucket>/` and can be `@`-mentioned, but no
@@ -66,9 +66,8 @@ sync-agents sync
 `add rule <name> --from <path>` copies the doc instead of moving it.
 `--link` refuses a source that is already inside `.agents/`.
 
-The check walks `.agents/plans`, `.agents/specs`, and `.agents/adrs`
-recursively, so ADR status directories and OS-scoped subdirectories are
-covered. It never changes the exit code.
+The check walks `.agents/plans` and `.agents/specs` recursively, so
+nested and OS-scoped subdirectories are covered. It never changes the exit code.
 
 ## Relationship to `index`
 

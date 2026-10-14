@@ -48,6 +48,8 @@ func toolSweepDirs(tool Tool, parent string) []string {
 	case "claude":
 		base := filepath.Join(parent, ".claude")
 		var dirs []string
+		// adrs stays swept after the bucket's removal (v4) so links
+		// left by v3 surface as orphaned and `global clean` prunes them.
 		for _, d := range []string{"skills", "commands", "rules", "agents", "plans", "specs", "adrs"} {
 			dirs = append(dirs, filepath.Join(base, d))
 		}

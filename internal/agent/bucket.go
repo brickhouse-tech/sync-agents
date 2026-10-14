@@ -33,11 +33,6 @@ type Bucket struct {
 	// bucket.
 	NewTemplate func() string
 
-	// NewSubdir, when set, is the subdirectory under the bucket dir
-	// where `add` scaffolds new artifacts (ADRs start life in
-	// adrs/proposed/). Empty means the bucket root.
-	NewSubdir string
-
 	// Ext is the artifact file extension for flat buckets. Empty
 	// means ".md"; hooks use ".json".
 	Ext string
@@ -118,13 +113,13 @@ var Buckets = []Bucket{
 	// merged into .claude/settings.json rather than symlinked;
 	// routing handled separately in hooks.go. Not created by init.
 	{Dir: "hooks", Artifact: ArtifactHook, NewTemplate: templates.Hook, Tools: []string{"claude"}, Ext: ".json"},
-	// Architecture Decision Records (SPEC-004 Part F). Status is
-	// encoded by subdirectory: proposed/, accepted/, denied/. Denied
-	// ADRs are kept so past rejections aren't re-proposed. `add adr`
-	// scaffolds into proposed/; the `adr` command moves records between
-	// statuses.
-	{Dir: "adrs", Artifact: ArtifactADR, NewTemplate: templates.ADR, Tools: []string{"claude"}, NewSubdir: "proposed"},
 }
+
+// retiredBucketDirs are buckets an earlier major version linked into
+// tool directories (adrs left in v4). sync prunes the links it made
+// for them and clean removes them, so an upgrade leaves nothing
+// dangling once the user moves the old content out of .agents/.
+var retiredBucketDirs = []string{"adrs"}
 
 // BucketDirs returns the directory names of all registered buckets,
 // in registry order.

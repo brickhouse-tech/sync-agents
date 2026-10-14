@@ -238,49 +238,6 @@ func TestResolveAgentsRel(t *testing.T) {
 	}
 }
 
-func TestListMDFilesRecursive_Nested(t *testing.T) {
-	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "effort-a"), 0o755)
-	os.MkdirAll(filepath.Join(dir, "effort-b"), 0o755)
-	os.WriteFile(filepath.Join(dir, "plan.md"), []byte("root"), 0o644)
-	os.WriteFile(filepath.Join(dir, "effort-a", "rollout.md"), []byte("nested"), 0o644)
-	os.WriteFile(filepath.Join(dir, "effort-b", "testing.md"), []byte("nested2"), 0o644)
-	os.WriteFile(filepath.Join(dir, ".hidden.md"), []byte("hidden"), 0o644)
-	os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("not md"), 0o644)
-
-	names, warns := listMDFilesRecursive(dir)
-	if len(warns) > 0 {
-		t.Errorf("unexpected warnings: %v", warns)
-	}
-	if len(names) != 3 {
-		t.Errorf("expected 3 files, got %d: %v", len(names), names)
-	}
-	want := map[string]bool{
-		"plan":             true,
-		"effort-a/rollout": true,
-		"effort-b/testing": true,
-	}
-	for _, n := range names {
-		if !want[n] {
-			t.Errorf("unexpected file: %q", n)
-		}
-	}
-}
-
-func TestListMDFilesRecursive_MissingDirIsSilent(t *testing.T) {
-	// Optional sections (plans/specs, adrs/{accepted,proposed,denied})
-	// are commonly absent. A missing directory must index as empty
-	// without emitting a warning.
-	missing := filepath.Join(t.TempDir(), "adrs", "accepted")
-	names, warns := listMDFilesRecursive(missing)
-	if len(warns) != 0 {
-		t.Errorf("a missing optional directory must not warn; got: %v", warns)
-	}
-	if len(names) != 0 {
-		t.Errorf("a missing directory must index as empty; got: %v", names)
-	}
-}
-
 func TestCreateSymlink_Repair(t *testing.T) {
 	dir := t.TempDir()
 	var buf strings.Builder

@@ -23,12 +23,11 @@ Every `sync-agents` command and global option, with links to the deep-dive doc w
 | `reject <name>\|--all` | Delete a quarantined artifact without installing it |
 | `git-hook` | Install a pre-commit git hook for auto-sync (`hook` remains as a deprecated alias) |
 | `status` | Show the sync status of all targets and symlinks (`[synced]`, `[merged]`, `[local]`, `[missing]`), `AGENTS.md` ownership, the `CLAUDE.md` decision, and one row per delivery channel |
-| [`add <type> <name>`](./add.md) | Add a new artifact from a template (type is `rule`, `skill`, `workflow`, `agent`, `plan`, `spec`, `hook`, or `adr`) |
+| [`add <type> <name>`](./add.md) | Add a new artifact from a template (type is `rule`, `skill`, `workflow`, `agent`, `plan`, `spec`, or `hook`) |
 | [`add <type> <name> --from <path>`](./add.md) | Import an existing artifact instead of scaffolding one; frontmatter `name:` is normalized, everything else preserved |
 | [`add <type> <name> --from <path> --link`](./add.md) | Symlink the source instead of copying it — the source stays authoritative |
 | `index [--no-fix]` | Regenerate the per-tool delivery files in `.agents/index/`. Backfills fixable skill frontmatter first (`--no-fix` skips the backfill) ([index](./index.md)) |
-| `adr <accept\|deny\|propose> <name>` | **Deprecated (removed in v4).** Move an ADR between status directories and update its `status:` frontmatter ([ADRs](../adrs.md)) |
-| `lint [skills\|all] [--fix]` | Validate SKILL.md frontmatter against [Claude's skill authoring rules](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices) and flag inert `import: true` on plans, specs, and ADRs; `--fix` amends fixable findings in place ([lint](./lint.md)) |
+| `lint [skills\|all] [--fix]` | Validate SKILL.md frontmatter against [Claude's skill authoring rules](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices) and flag inert `import: true` on plans and specs; `--fix` amends fixable findings in place ([lint](./lint.md)) |
 | `clean` | Remove all synced symlinks, delivery links, our `opencode.json` entry, `.agents/index/`, and empty target directories (never touches `AGENTS.md` or the rest of `.agents/`) |
 | `fix [type] [--overwrite]` | Migrate legacy dirs into `.agents/`, convert flat skill files to directory layout, and repair broken symlinks. Type: any bucket dir, or `all` (default) ([fix](./fix.md)) |
 | `promote <type> <name>` | Copy an artifact from the project's `.agents/` to the user-level global store (`~/.agents/`) ([promote](./promote.md)) |

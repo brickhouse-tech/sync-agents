@@ -51,7 +51,7 @@ paragraph.
 - Unfixable findings (reserved-word names, unterminated frontmatter)
   are warned about but never fail `index`.
 - `--no-fix` skips the backfill.
-- `watch`, `add`, `adr`, `import`, and the source commands refresh the
+- `watch`, `add`, `import`, and the source commands refresh the
   index without the backfill, so nothing rewrites a file while you are
   editing it.
 

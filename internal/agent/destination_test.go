@@ -171,7 +171,7 @@ func TestTargetDestination_InvocableWithoutSurfaceSkips(t *testing.T) {
 // longer an index (SPEC-013), so no skip reason may send the user to
 // it.
 func TestTargetDestination_NoSkipReasonMentionsTheIndex(t *testing.T) {
-	types := []ArtifactType{ArtifactRule, ArtifactWorkflow, ArtifactSkill, ArtifactAgent, ArtifactPlan, ArtifactSpec, ArtifactADR, ArtifactHook}
+	types := []ArtifactType{ArtifactRule, ArtifactWorkflow, ArtifactSkill, ArtifactAgent, ArtifactPlan, ArtifactSpec, ArtifactHook}
 	for _, tool := range Tools {
 		for _, typ := range types {
 			for _, sem := range []Semantic{Passive, Invocable, Reference} {
@@ -325,21 +325,6 @@ func TestTargetDestination_ReferenceDocsOtherToolsSkip(t *testing.T) {
 			if d.Strategy != StrategySkip {
 				t.Errorf("[%s] %s strategy = %v, want StrategySkip", id, typ, d.Strategy)
 			}
-		}
-	}
-}
-
-// TestTargetDestination_ADR: ADRs route like reference docs —
-// Claude-only, never concatenated.
-func TestTargetDestination_ADR(t *testing.T) {
-	d := TargetDestination(asTool(t, "claude"), ArtifactADR, "use-postgres", Reference, "", "/home/u")
-	want := filepath.Join("/home/u", ".claude", "adrs", "use-postgres.md")
-	if d.Strategy != StrategySymlink || d.Path != want {
-		t.Errorf("claude adr = (%v, %q), want (symlink, %q)", d.Strategy, d.Path, want)
-	}
-	for _, id := range []string{"codeium", "cursor", "copilot", "codex"} {
-		if d := TargetDestination(asTool(t, id), ArtifactADR, "x", Reference, "", "/home/u"); d.Strategy != StrategySkip {
-			t.Errorf("[%s] adr strategy = %v, want StrategySkip", id, d.Strategy)
 		}
 	}
 }

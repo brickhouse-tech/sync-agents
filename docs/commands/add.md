@@ -13,14 +13,14 @@ artifact that already exists somewhere else.
 | Import a skill with its supporting files | `sync-agents add skill helper --from ~/skills/helper/` |
 
 `<type>` is any registered bucket: `rule`, `skill`, `workflow`,
-`agent`, `plan`, `spec`, `hook`, `adr`.
+`agent`, `plan`, `spec`, `hook`.
 
 ## Template mode (default)
 
 With no flags, `add` writes the bucket's scaffold with `${NAME}`
 substituted, creating the bucket directory if this is the first
 artifact in it. Optional buckets (`agents/`, `plans/`, `specs/`,
-`hooks/`, `adrs/`) activate exactly this way — see
+`hooks/`) activate exactly this way — see
 [topology](../topology.md).
 
 ## Import mode (`--from`)

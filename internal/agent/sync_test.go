@@ -427,3 +427,37 @@ func TestCmdFix_ConflictExitsNonZeroAndKeepsContent(t *testing.T) {
 		t.Errorf("output missing conflict summary:\n%s", buf)
 	}
 }
+
+// TestCmdSync_PrunesRetiredADRLink: a v3 sync linked .claude/adrs ->
+// ../.agents/adrs. v4 dropped the bucket, so sync removes that link and
+// leaves anything else at the path alone.
+func TestCmdSync_PrunesRetiredADRLink(t *testing.T) {
+	app, root, buf := newSyncApp(t, "claude")
+	writeFile(t, filepath.Join(root, ".agents", "adrs", "accepted", "db.md"), "# DB\n")
+	link := filepath.Join(root, ".claude", "adrs")
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("..", ".agents", "adrs"), link); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("CmdSync: %v\n%s", err, buf)
+	}
+	if _, err := os.Lstat(link); !os.IsNotExist(err) {
+		t.Errorf("retired .claude/adrs link survived sync (lstat err = %v)\n%s", err, buf)
+	}
+	assertContent(t, filepath.Join(root, ".agents", "adrs", "accepted", "db.md"), "# DB\n")
+}
+
+func TestCmdSync_KeepsUserOwnedADRDir(t *testing.T) {
+	app, root, buf := newSyncApp(t, "claude")
+	mine := filepath.Join(root, ".claude", "adrs", "notes.md")
+	writeFile(t, mine, "mine")
+
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("CmdSync: %v\n%s", err, buf)
+	}
+	assertContent(t, mine, "mine")
+}

@@ -142,7 +142,7 @@ func main() {
 	var addFromLink bool
 	addCmd := &cobra.Command{
 		Use:   "add [type] [name]",
-		Short: "Add a new rule, skill, workflow, agent, plan, spec, hook, or adr",
+		Short: "Add a new rule, skill, workflow, agent, plan, spec, or hook",
 		Long: "Add a new artifact to .agents/.\n\n" +
 			"By default the artifact is scaffolded from its bucket template.\n" +
 			"With --from, it is seeded from an artifact that already exists\n" +
@@ -459,27 +459,11 @@ func main() {
 	verifyCmd.Flags().StringVar(&verifyExplain, "explain", "", "Explain origin + hashes for one artifact path")
 	rootCmd.AddCommand(verifyCmd)
 
-	// adr — transition Architecture Decision Records between statuses
-	rootCmd.AddCommand(&cobra.Command{
-		Use:   "adr <accept|deny|propose> <name>",
-		Short: "Move an ADR between proposed/accepted/denied (deprecated; removed in v4)",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			var action, name string
-			if len(args) >= 1 {
-				action = args[0]
-			}
-			if len(args) >= 2 {
-				name = args[1]
-			}
-			return app.CmdADR(action, name)
-		},
-	})
-
 	// lint
 	var lintFix bool
 	lintCmd := &cobra.Command{
 		Use:   "lint [skills|all]",
-		Short: "Validate skill frontmatter; flag inert import: true on plans, specs and ADRs",
+		Short: "Validate skill frontmatter; flag inert import: true on plans and specs",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			lintType := ""
 			if len(args) > 0 {

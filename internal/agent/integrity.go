@@ -34,7 +34,7 @@ import (
 // SPEC-003's sources.lock covers only remotely-sourced manifest
 // entries; SPEC-008 closes the gap for locally-authored rules,
 // hand-written skills, imports, linked checkouts, hooks, agents,
-// plans, specs and ADRs, so a single `verify` proves the whole tree
+// plans and specs, so a single `verify` proves the whole tree
 // checks out. See specs/SPEC-008-context-integrity-lock.md.
 
 const (

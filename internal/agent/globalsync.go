@@ -71,7 +71,6 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 		a.Error(fmt.Sprintf("global root %s does not exist; run `sync-agents global init` first", root))
 		return err
 	}
-	a.warnADRsDeprecated(root)
 
 	tools, err := a.resolveSyncTools(opts.Targets)
 	if err != nil {

@@ -408,3 +408,15 @@ func TestCmdAdd_LinkAcceptsFoldedDescription(t *testing.T) {
 		t.Fatalf("folded description should be accepted: %v", err)
 	}
 }
+
+// TestCmdAdd_ADRRemoved: the adrs bucket left in v4, so `add adr` is
+// an unknown type and scaffolds nothing.
+func TestCmdAdd_ADRRemoved(t *testing.T) {
+	app, dir := newTestApp(t)
+	if err := app.CmdAdd("adr", "use-postgres", AddOpts{}); err == nil {
+		t.Fatal("add adr: want unknown-type error, got nil")
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".agents", "adrs")); !os.IsNotExist(err) {
+		t.Errorf("add adr must not create .agents/adrs (stat err = %v)", err)
+	}
+}

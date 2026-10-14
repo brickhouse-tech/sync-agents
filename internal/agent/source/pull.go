@@ -43,7 +43,7 @@ type Puller struct {
 
 	// Buckets is the registered bucket set used by tree fanout. Tree
 	// entries fan out to EVERY registered bucket (agents, plans,
-	// specs, adrs, hooks included), not a hardcoded three — SPEC-004
+	// specs, hooks included), not a hardcoded three — SPEC-004
 	// grew the registry and pull must follow it.
 	Buckets []BucketInfo
 
@@ -731,7 +731,7 @@ func (p *Puller) syncTree(ctx context.Context, e Entry, sha string, res EntryRes
 // registered bucket directory and enumerates installable artifacts:
 // subdirectories for dir-per-artifact buckets (skills), files —
 // recursively, preserving relative paths — for flat buckets (plans
-// and ADRs nest by convention).
+// nest by convention).
 func (p *Puller) discoverTreeArtifacts(base, repoPrefix string) ([]treeArtifact, error) {
 	var arts []treeArtifact
 	for _, b := range p.Buckets {
