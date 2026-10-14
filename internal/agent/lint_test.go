@@ -380,22 +380,20 @@ func TestLint_FoldedDescriptionIsAnalyzed(t *testing.T) {
 }
 
 // TestCmdLint_ImportFlagWarns covers W201: `import: true` on a plan,
-// spec, or ADR (any depth) warns with the SPEC-013 message, never fails
+// or spec (any depth) warns with the SPEC-013 message, never fails
 // the run, and is not reported for rules, for `import: false`, or when
 // only the skills bucket is linted.
 func TestCmdLint_ImportFlagWarns(t *testing.T) {
 	a, _ := newLintApp(t)
 	agents := filepath.Join(a.ProjectRoot, ".agents")
 	files := map[string]string{
-		"plans/rollout.md":            "---\nimport: true\n---\n# Rollout\n",
-		"specs/api.md":                "---\nimport: TRUE\n---\n# API\n",
-		"adrs/accepted/0001-db.md":    "---\nimport: true\n---\n# DB\n",
-		"plans/macos/brew.md":         "---\nimport: true\n---\n# Brew\n",
-		"plans/off.md":                "---\nimport: false\n---\n# Off\n",
-		"specs/plain.md":              "# No frontmatter\n",
-		"rules/security.md":           "---\nimport: true\n---\n# Security\n",
-		"plans/.hidden/ignored.md":    "---\nimport: true\n---\n# Hidden\n",
-		"adrs/proposed/0002-notes.md": "---\ntitle: notes\n---\n",
+		"plans/rollout.md":         "---\nimport: true\n---\n# Rollout\n",
+		"specs/api.md":             "---\nimport: TRUE\n---\n# API\n",
+		"plans/macos/brew.md":      "---\nimport: true\n---\n# Brew\n",
+		"plans/off.md":             "---\nimport: false\n---\n# Off\n",
+		"specs/plain.md":           "# No frontmatter\n",
+		"rules/security.md":        "---\nimport: true\n---\n# Security\n",
+		"plans/.hidden/ignored.md": "---\nimport: true\n---\n# Hidden\n",
 	}
 	for rel, content := range files {
 		p := filepath.Join(agents, rel)
@@ -418,7 +416,7 @@ func TestCmdLint_ImportFlagWarns(t *testing.T) {
 		}
 		got = append(got, f.Path)
 	}
-	want := []string{"plans/macos/brew.md", "plans/rollout.md", "specs/api.md", "adrs/accepted/0001-db.md"}
+	want := []string{"plans/macos/brew.md", "plans/rollout.md", "specs/api.md"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("W201 paths = %v, want %v", got, want)
 	}

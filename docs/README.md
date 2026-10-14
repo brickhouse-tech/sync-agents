@@ -13,8 +13,8 @@ form that's easier to read end-to-end than scattered code comments.
 - [Installation](./install.md) — every install channel (npm, Homebrew,
   `go install`, GitHub Releases) with the trade-offs of each.
 - [Topology & configuration](./topology.md) — the `.agents/` tree
-  layout, optional buckets (`agents/`, `plans/`, `specs/`, `hooks/`,
-  `adrs/`), `STATE.md`, and the `.agents/config` file.
+  layout, optional buckets (`agents/`, `plans/`, `specs/`, `hooks/`),
+  `STATE.md`, and the `.agents/config` file.
 - [Command reference](./commands/README.md) — every command and flag
   in one table, plus common usage.
 
@@ -31,15 +31,14 @@ form that's easier to read end-to-end than scattered code comments.
 - [Linked (editable) sources](./linked-sources.md) — `npm link` for
   agent context: symlink a source at a live local checkout; edits flow
   both ways; recorded declaratively in the manifest.
+- [Migrating to 4.0](./migration-v4.md) — the `adrs/` bucket is
+  removed; where to move ADRs and how leftover links are cleaned up.
 - [Migrating to 2.0](./migration-v2.md) — the breaking changes from
   1.x, the one-time `AGENTS.md` rewrite and its backup, legacy files
   removed, and how to opt out or adjust.
 - [Inheritance](./inheritance.md) — what layers rule content from
   outside a project (`~/.agents/`, sources), and why `## Inherits` in
   `AGENTS.md` is plain text.
-- [ADRs](./adrs.md) — **deprecated, removed in v4.** Architecture Decision Records with status
-  encoded by subdirectory; denied records stay on disk so they aren't
-  re-proposed.
 - [OS-scoped routing](./os-scoped-routing.md) — `macos/`, `linux/`,
   `unix/`, `windows/` subdirectories under any bucket sync only on
   matching hosts.

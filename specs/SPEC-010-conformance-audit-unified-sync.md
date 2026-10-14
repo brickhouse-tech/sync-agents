@@ -52,7 +52,8 @@ Every entry in a managed subdir of a per-tool dir is exactly one of:
 
 **Hard boundary:** the audit and every future phase operate ONLY on the
 known artifact subdirs of each tool (for Claude: `skills/`, `commands/`,
-`rules/`, `agents/`, `plans/`, `specs/`, `adrs/`; for Windsurf:
+`rules/`, `agents/`, `plans/`, `specs/`, `adrs/` (kept after v4 so
+leftover ADR links audit as orphaned); for Windsurf:
 `windsurf/global_workflows/`; for Cursor: `rules/`; Copilot/Codex:
 their concat file). The tool root itself is **application state**
 (credentials, sessions, history, caches) and is never enumerated,

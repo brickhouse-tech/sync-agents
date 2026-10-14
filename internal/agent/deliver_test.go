@@ -224,7 +224,7 @@ func TestDeliver_CleanRestoresPreSyncTree(t *testing.T) {
 }
 
 // TestDeliver_UserAgentsMDByteIdentical: sync, index, and the refresh
-// add/adr/watch run never write a user-owned AGENTS.md (SPEC-013
+// add/watch run never write a user-owned AGENTS.md (SPEC-013
 // §Invariants), even though Codex's override copies it.
 func TestDeliver_UserAgentsMDByteIdentical(t *testing.T) {
 	app, root, buf := newDeliverApp(t, allChannelTargets...)

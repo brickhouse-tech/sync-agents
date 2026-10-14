@@ -65,7 +65,8 @@ See [Delivery channels](../architecture/delivery-channels.md).
 
 After the per-destination rows, `global status` enumerates the managed
 artifact subdirs of each tool (for Claude: `skills/`, `commands/`,
-`rules/`, `agents/`, `plans/`, `specs/`, `adrs/`; Windsurf:
+`rules/`, `agents/`, `plans/`, `specs/`, and `adrs/`, which v3 used for
+ADRs; Windsurf:
 `global_workflows/`; Cursor: `rules/`) and reports entries the
 canonical tree does *not* claim. The tool root itself is application
 state (credentials, sessions, caches) and is never enumerated.

@@ -1625,48 +1625,25 @@ CONF
 }
 
 # --------------------------------------------------------------------------
-# adrs bucket (SPEC-004 Part F)
+# adrs bucket removed in v4
 # --------------------------------------------------------------------------
 
-@test "add adr scaffolds into adrs/proposed/" {
+@test "add adr is an unknown type" {
   "$SCRIPT" -d "$TEST_DIR" init
   run "$SCRIPT" -d "$TEST_DIR" add adr use-postgres
-  [ "$status" -eq 0 ]
-  [ -f "$TEST_DIR/.agents/adrs/proposed/use-postgres.md" ]
-  grep -q "status: proposed" "$TEST_DIR/.agents/adrs/proposed/use-postgres.md"
+  [ "$status" -ne 0 ]
+  [ ! -e "$TEST_DIR/.agents/adrs" ]
 }
 
-@test "adr accept and deny move records" {
+@test "sync removes the .claude/adrs link a 3.x sync left behind" {
   "$SCRIPT" -d "$TEST_DIR" init
-  "$SCRIPT" -d "$TEST_DIR" add adr use-postgres
-  run "$SCRIPT" -d "$TEST_DIR" adr accept use-postgres
-  [ "$status" -eq 0 ]
-  [ -f "$TEST_DIR/.agents/adrs/accepted/use-postgres.md" ]
-  [ ! -f "$TEST_DIR/.agents/adrs/proposed/use-postgres.md" ]
-  grep -q "status: accepted" "$TEST_DIR/.agents/adrs/accepted/use-postgres.md"
-
-  run "$SCRIPT" -d "$TEST_DIR" adr deny use-postgres
-  [ "$status" -eq 0 ]
-  [ -f "$TEST_DIR/.agents/adrs/denied/use-postgres.md" ]
-}
-
-@test "adr commands warn that ADRs are deprecated" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  run "$SCRIPT" -d "$TEST_DIR" add adr use-postgres
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"ADRs are deprecated"* ]]
-  run "$SCRIPT" -d "$TEST_DIR" adr accept use-postgres
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"ADRs are deprecated"* ]]
-}
-
-@test "sync links adrs bucket into .claude only" {
-  "$SCRIPT" -d "$TEST_DIR" init
-  "$SCRIPT" -d "$TEST_DIR" add adr use-postgres
+  mkdir -p "$TEST_DIR/.agents/adrs/accepted" "$TEST_DIR/.claude"
+  echo "# DB" > "$TEST_DIR/.agents/adrs/accepted/db.md"
+  ln -s ../.agents/adrs "$TEST_DIR/.claude/adrs"
   run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
-  [ -L "$TEST_DIR/.claude/adrs" ]
-  [ ! -e "$TEST_DIR/.cursor/adrs" ]
+  [ ! -L "$TEST_DIR/.claude/adrs" ]
+  [ -f "$TEST_DIR/.agents/adrs/accepted/db.md" ]
 }
 
 @test "add hook scaffolds a .json fragment (not .md)" {

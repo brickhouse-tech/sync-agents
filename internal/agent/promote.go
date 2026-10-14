@@ -23,7 +23,6 @@ const (
 	ArtifactPlan     ArtifactType = "plan"
 	ArtifactSpec     ArtifactType = "spec"
 	ArtifactHook     ArtifactType = "hook"
-	ArtifactADR      ArtifactType = "adr"
 )
 
 // NormalizeArtifactType maps user-supplied type strings to their

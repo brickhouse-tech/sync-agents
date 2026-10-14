@@ -341,9 +341,6 @@ func (a *App) CmdAdd(typ, name string, opts AddOpts) error {
 		return fmt.Errorf("unknown type")
 	}
 	typ = bucket.Dir
-	if bucket.Artifact == ArtifactADR {
-		a.Warn(adrDeprecation)
-	}
 
 	if err := a.EnsureAgentsDir(); err != nil {
 		return err
@@ -352,8 +349,6 @@ func (a *App) CmdAdd(typ, name string, opts AddOpts) error {
 	var fpath string
 	if bucket.DirPerArtifact {
 		fpath = filepath.Join(a.ProjectRoot, ".agents", typ, name, "SKILL.md")
-	} else if bucket.NewSubdir != "" {
-		fpath = filepath.Join(a.ProjectRoot, ".agents", typ, bucket.NewSubdir, name+bucket.FileExt())
 	} else {
 		fpath = filepath.Join(a.ProjectRoot, ".agents", typ, name+bucket.FileExt())
 	}
@@ -406,7 +401,6 @@ func (a *App) CmdSync() error {
 	a.dropGlobalOnlyTargets()
 
 	a.deprecateForce()
-	a.warnADRsDeprecated(filepath.Join(a.ProjectRoot, ".agents"))
 
 	a.Info("Syncing .agents/ to agent directories...")
 	a.migrateAgentsMDOrWarn()
@@ -431,6 +425,7 @@ func (a *App) CmdSync() error {
 				conflicts += a.linkBucket(targetDir, agentsRel, b).Conflicts
 			}
 		}
+		a.pruneRetiredBucketLinks(targetDir, agentsRel)
 	}
 
 	// Per-tool delivery channels (SPEC-013, deliver.go): rule bodies
@@ -606,6 +601,27 @@ func (a *App) CmdIndex() error {
 	return nil
 }
 
+// pruneRetiredBucketLinks removes <targetDir>/<dir> for each retired
+// bucket when it is the symlink an older sync made (pointing at
+// agentsRel/<dir>). Anything else at that path is the user's.
+func (a *App) pruneRetiredBucketLinks(targetDir, agentsRel string) {
+	for _, dir := range retiredBucketDirs {
+		link := filepath.Join(targetDir, dir)
+		if dest, err := os.Readlink(link); err != nil || dest != filepath.Join(agentsRel, dir) {
+			continue
+		}
+		if a.DryRun {
+			a.Info(fmt.Sprintf("[dry-run] would remove retired %s link: %s", dir, link))
+			continue
+		}
+		if err := os.Remove(link); err != nil {
+			a.Warn(fmt.Sprintf("remove retired %s link %s: %v", dir, link, err))
+			continue
+		}
+		a.Info(fmt.Sprintf("Removed retired %s link: %s", dir, link))
+	}
+}
+
 func (a *App) CmdClean() error {
 	a.dropGlobalOnlyTargets()
 	a.Info("Removing synced symlinks...")
@@ -617,7 +633,7 @@ func (a *App) CmdClean() error {
 			displayDir = targetDir[len(a.ProjectRoot)+1:]
 		}
 
-		for _, subdir := range BucketDirs() {
+		for _, subdir := range append(BucketDirs(), retiredBucketDirs...) {
 			sub := filepath.Join(targetDir, subdir)
 			fi, err := os.Lstat(sub)
 			if err == nil && fi.Mode()&os.ModeSymlink != 0 {
@@ -1331,50 +1347,6 @@ func (a *App) migrateLegacyState(agentsDir string) {
 
 	os.Remove(legacy)
 	a.Info("Removed legacy .agents/STATE.md (replaced by rules/state.md pattern)")
-}
-
-// listMDFilesRecursive returns the .md files under dir at any depth,
-// as slash-separated paths relative to dir with the extension
-// stripped ("effort-x/plan-a"). ADR status directories allow
-// grouping records in subdirectories (SPEC-004 Part F), so lookups by
-// name walk them recursively.
-//
-// The second return value is a slice of non-fatal warning messages
-// (permission errors, unreadable files) for the caller to surface.
-func listMDFilesRecursive(dir string) ([]string, []string) {
-	var names []string
-	var warns []string
-	// An absent directory is empty, not a fault: every ADR status
-	// subdirectory (accepted/proposed/denied) is optional, so a missing
-	// one must list as empty and stay silent rather than warn.
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		return nil, nil
-	}
-	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			warns = append(warns, fmt.Sprintf("%s: %v", path, err))
-			return nil
-		}
-		name := d.Name()
-		if d.IsDir() {
-			if strings.HasPrefix(name, ".") && path != dir {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(name, ".md") || strings.HasPrefix(name, ".") {
-			return nil
-		}
-		re, err := filepath.Rel(dir, path)
-		if err != nil {
-			warns = append(warns, fmt.Sprintf("%s: %v", path, err))
-			return nil
-		}
-		names = append(names, strings.TrimSuffix(filepath.ToSlash(re), ".md"))
-		return nil
-	})
-	sort.Strings(names)
-	return names, warns
 }
 
 // artifactDescription extracts the frontmatter `description` of the

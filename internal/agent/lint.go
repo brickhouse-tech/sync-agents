@@ -30,7 +30,7 @@ import (
 //
 // Outside the skills bucket, a bare `lint` (or `lint all`) also reports:
 //
-//	W201 `import: true` on a plan/spec/ADR    → report only (SPEC-013)
+//	W201 `import: true` on a plan/spec        → report only (SPEC-013)
 
 const (
 	skillNameMaxLen        = 64
@@ -165,7 +165,7 @@ func (a *App) lintSkills(fix bool) ([]LintFinding, int, error) {
 // CLAUDE.md (SPEC-004 Part D). SPEC-013 deleted that block, so the key
 // no longer does anything; W201 tells the author where always-on
 // content lives now.
-var importFlagBuckets = []string{"plans", "specs", "adrs"}
+var importFlagBuckets = []string{"plans", "specs"}
 
 // importFlagMessage is the W201 text. A rule is the only artifact that
 // every tool receives as content, so it is the replacement for an
@@ -174,7 +174,7 @@ const importFlagMessage = "`import: true` has no effect since SPEC-013; move it 
 
 // lintImportFlags reports W201 for every .md file under the
 // reference-doc buckets whose frontmatter sets `import: true`. The walk
-// is recursive so ADR status dirs and OS-scoped subdirs are covered.
+// is recursive so nested and OS-scoped subdirs are covered.
 // Files whose frontmatter cannot be parsed are skipped: they never
 // carried a readable flag.
 func (a *App) lintImportFlags() ([]LintFinding, error) {

@@ -57,7 +57,7 @@ Each rule section starts with `<!-- OS: <scope> -->` when the rule
 lives in an OS-scoped subdirectory. Rules that do not fit the budget are
 listed under `## Not inlined` as `- name (path): description`.
 
-Skills, subagents, plans, specs, ADRs, and hooks do not go through
+Skills, subagents, plans, specs, and hooks do not go through
 channels. Their per-tool routing is unchanged; see
 [semantic-routing.md](semantic-routing.md).
 
@@ -253,7 +253,7 @@ the same).
 
 ## Refresh and mount
 
-- `index`, `watch`, `add`, `adr`, `import`, and the source commands
+- `index`, `watch`, `add`, `import`, and the source commands
   refresh: they rewrite files inside `.agents/index/` and re-splice
   regions and entries that already exist. They create nothing in a tool
   directory.

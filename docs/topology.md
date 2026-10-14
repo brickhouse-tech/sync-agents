@@ -32,13 +32,6 @@ workflows, and state for your agents:
   │       └── rollout.md
   ├── specs/               # optional: durable design/requirements docs (what/why)
   │   └── SPEC-001.md
-  ├── adrs/                # DEPRECATED (removed in v4): Architecture Decision Records
-  │   ├── proposed/
-  │   │   └── adopt-grpc.md
-  │   ├── accepted/
-  │   │   └── use-postgres.md
-  │   └── denied/          # kept so rejected decisions are not re-proposed
-  │       └── use-mongo.md
   └── STATE.md
 ```
 
@@ -67,11 +60,11 @@ flat skill files to the directory layout automatically.
 
 ## Optional buckets
 
-`agents/`, `plans/`, `specs/`, `hooks/`, and `adrs/` activate only when
+`agents/`, `plans/`, `specs/`, and `hooks/` activate only when
 their directory exists — `init` does not create them,
-`add agent|plan|spec|hook|adr <name>` does.
+`add agent|plan|spec|hook <name>` does.
 
-`plans/`, `specs/`, `hooks/`, and `adrs/` are Claude-only
+`plans/`, `specs/`, and `hooks/` are Claude-only
 (`.claude/plans`, `.claude/specs`, …). Other tools open them from
 `.agents/` when asked.
 
@@ -139,4 +132,3 @@ Other recognized keys:
 - [Scope and target directories](./architecture/scope-and-targets.md)
 - [Semantic routing](./architecture/semantic-routing.md)
 - [Delivery channels](./architecture/delivery-channels.md)
-- [ADRs](./adrs.md)

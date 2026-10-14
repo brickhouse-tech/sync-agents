@@ -2,7 +2,7 @@
 
 **One `.agents/` directory. Every AI coding assistant. Always in sync.**
 
-`sync-agents` is a package manager and sync engine for AI-agent context — the rules, skills, workflows, subagents, plans, specs, and ADRs you feed to Claude, Cursor, Windsurf, Copilot, Codex, opencode, and OpenClaw. Write everything once in `.agents/`, and `sync-agents` delivers it to every tool at the path that tool reads, and lets you pull shared context from other repos as safely and reproducibly as you'd install an npm package.
+`sync-agents` is a package manager and sync engine for AI-agent context — the rules, skills, workflows, subagents, plans, and specs you feed to Claude, Cursor, Windsurf, Copilot, Codex, opencode, and OpenClaw. Write everything once in `.agents/`, and `sync-agents` delivers it to every tool at the path that tool reads, and lets you pull shared context from other repos as safely and reproducibly as you'd install an npm package.
 
 ## Why you want this
 
@@ -68,7 +68,7 @@ That's it. Every supported tool is now wired to load the same rules. `AGENTS.md`
 ## Killer features
 
 ### 📦 Seven buckets, one tree
-Rules, skills, workflows, subagents, plans, specs, and ADRs each get a first-class home under `.agents/`, routed to the right place per tool (ADRs even track proposed/accepted/denied status by directory). [Topology →](docs/topology.md)
+Rules, skills, workflows, subagents, plans, and specs each get a first-class home under `.agents/`, routed to the right place per tool. [Topology →](docs/topology.md)
 
 ### 🤖 Subagents, written once — *new in 1.5.0*
 Define a subagent once in `.agents/agents/` and it lands in `.claude/agents/`, `.cursor/agents/`, and `.opencode/agents/` — the three harnesses with a native subagent surface. Already have one? `add agent <name> --from <path>` imports it, or `--link` leaves the original authoritative. [add →](docs/commands/add.md)
@@ -104,8 +104,8 @@ The full manual lives in [`docs/`](docs/README.md):
 - [Command reference](docs/commands/README.md) — every command and flag
 - [Topology & configuration](docs/topology.md) — the `.agents/` tree, `config`, `STATE.md`
 - [Sources, lockfile & provenance](docs/sources.md) · [Quarantine](docs/quarantine.md) · [Linked sources](docs/linked-sources.md) · [Integrity lock](docs/integrity.md)
-- [Delivery channels](docs/architecture/delivery-channels.md) · [Migrating to 2.0](docs/migration-v2.md)
-- [Inheritance](docs/inheritance.md) · [ADRs (deprecated)](docs/adrs.md) · [OS-scoped routing](docs/os-scoped-routing.md)
+- [Delivery channels](docs/architecture/delivery-channels.md) · [Migrating to 4.0](docs/migration-v4.md) · [Migrating to 2.0](docs/migration-v2.md)
+- [Inheritance](docs/inheritance.md) · [OS-scoped routing](docs/os-scoped-routing.md)
 - [Architecture](docs/README.md#architecture) — scope resolution, semantic routing, global roots
 - [Examples](examples/README.md) — ready-to-import rules, skills, and workflows
 

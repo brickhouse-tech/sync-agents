@@ -24,7 +24,7 @@ type ChannelMode int
 const (
 	// ChannelRefresh rewrites index files and refreshes mounts that
 	// already carry ours. It creates nothing outside .agents/index/.
-	// Used by index, watch, add, adr, import, and the source commands,
+	// Used by index, watch, add, import, and the source commands,
 	// so authoring a rule never edits a tool directory.
 	ChannelRefresh ChannelMode = iota
 
@@ -519,7 +519,7 @@ func (a *App) writeIndex(ch Channel, r Rendered) error {
 }
 
 // refreshIndex is what a command that changed .agents/ runs afterwards
-// (add, adr, the source commands): the one-time AGENTS.md migration,
+// (add, the source commands): the one-time AGENTS.md migration,
 // then a ChannelRefresh of .agents/index/. Failures are warnings,
 // because the command's own change already succeeded.
 func (a *App) refreshIndex() {

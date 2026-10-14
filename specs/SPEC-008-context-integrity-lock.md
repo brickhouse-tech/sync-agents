@@ -28,7 +28,7 @@ bucket, the two questions that matter for an AI-context supply chain:
 SPEC-003's `sources.lock` already does this — but **only for
 remotely-sourced entries** declared in `sources.yaml`. Locally-authored
 rules, hand-written skills, `import`ed one-offs, SPEC-007 linked
-checkouts, hooks, agents, plans, specs, and ADRs are invisible to it.
+checkouts, hooks, agents, plans, and specs are invisible to it.
 SPEC-008 closes that gap: the lock pair covers the **entire AI-context
 picture**, so a single `sync-agents verify` proves (or disproves) that
 what the harnesses are loading is what was reviewed and locked.
@@ -98,7 +98,7 @@ artifacts. Rejected:
 - `sync-agents lock` generates/refreshes `.agents/agents.lock` +
   `.agents/agents.sum` covering every artifact in every registered
   bucket (the `Buckets` registry — rules, skills, workflows, agents,
-  plans, specs, hooks, adrs — plus root-level context files, see
+  plans, specs, hooks — plus root-level context files, see
   Coverage).
 - `sync-agents verify` re-walks the tree, compares against lock + sum,
   exits non-zero on drift, and supports `--json` for CI/agent

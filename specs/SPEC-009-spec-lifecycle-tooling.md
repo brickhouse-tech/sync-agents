@@ -25,9 +25,9 @@ hand doesn't scale past one repo.
 - **`fix` stays judgment-free.** Its contract is structural repair with
   exactly one canonical answer per operation. Spec retirement involves
   a doneness judgment and content deletion — it must not live there.
-- **Split detect from execute**, mirroring the shipped ADR verbs
-  (`adr accept|deny|propose`): `lint` *reports*, a `spec` verb family
-  *acts on declared state*. Judgment lives only in a human/agent
+- **Split detect from execute**, as the former ADR verbs
+  (`adr accept|deny|propose`, removed in v4) did: `lint` *reports*, a
+  `spec` verb family *acts on declared state*. Judgment lives only in a human/agent
   flipping frontmatter `status:`; every command stays mechanical.
 - Git history is the archive. No `specs/completed/` graveyards.
 
@@ -95,7 +95,6 @@ proves annoying in practice.
   future `--suggest` that cross-references closed PRs, report-only).
 - Managing `docs/` promotion content (prose extraction is authorship,
   not tooling).
-- ADR bucket changes (already has its lifecycle verbs).
 
 ## Acceptance
 

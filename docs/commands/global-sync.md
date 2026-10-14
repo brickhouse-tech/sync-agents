@@ -20,7 +20,7 @@ sync-agents global sync [--targets t1,t2] [--dry-run] [--force] [--global-root P
    or the bucket default (see
    [Semantic routing](../architecture/semantic-routing.md)), then:
    - places a per-artifact **symlink** (Claude rules, commands, skills,
-     agents, plans, specs, ADRs; Windsurf workflows; Cursor and
+     agents, plans, specs; Windsurf workflows; Cursor and
      opencode agents);
    - hands **passive** content to the tool's delivery channel;
    - or **skips** with a reason (for example, Codex, Cursor, opencode,
