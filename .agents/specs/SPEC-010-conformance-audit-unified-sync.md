@@ -124,7 +124,7 @@ to `*.replaced-by-sync-agents`; nothing is deleted. `--force` on these
 two commands is deprecated and behaves as `--overwrite`. Fold depth
 starts at the bucket level, so the tool root is never folded. Behavior
 and trade-offs are documented in
-[`docs/commands/sync.md`](../docs/commands/sync.md).
+[`docs/commands/sync.md`](../../docs/commands/sync.md).
 
 ### Open
 

@@ -1,7 +1,7 @@
 # sync-agents documentation
 
 This folder is the prose companion to the code in `internal/` and the
-specs under `specs/`. Code carries doc comments at every exported
+specs under `.agents/specs/`. Code carries doc comments at every exported
 symbol (see `.agents/rules/comments.md`); the files here explain
 **concepts**, **architecture**, and **the why behind decisions** in a
 form that's easier to read end-to-end than scattered code comments.
@@ -100,19 +100,19 @@ form that's easier to read end-to-end than scattered code comments.
 ### Specs
 
 The authoritative source for *what we're building and why* lives in
-[`specs/`](../specs/) at the repo root. This folder may reference SPEC
+[`.agents/specs/`](../.agents/specs/). This folder may reference SPEC
 IDs but is never the source of truth for them.
 
 Only specs with **open work** are kept in the tree; fully-shipped specs
 are promoted into `docs/` and retired to git history. The
-[**spec ledger**](../specs/README.md) is the permanent index — every
+[**spec ledger**](../.agents/specs/README.md) is the permanent index — every
 SPEC ID ever used has a row there (status, retire commit, where its
 durable content lives), so IDs stay resolvable after the file is gone.
 
-- [SPEC-010](../specs/SPEC-010-conformance-audit-unified-sync.md) (conformance audit and fold/drill sync). Fold/drill shipped for
+- [SPEC-010](../.agents/specs/SPEC-010-conformance-audit-unified-sync.md) (conformance audit and fold/drill sync). Fold/drill shipped for
   local `sync` and `fix`. Global sync unification, adoption, and the
   audit are open.
-- [SPEC-011](../specs/SPEC-011-agent-bucket-import-routing.md) — agent
+- [SPEC-011](../.agents/specs/SPEC-011-agent-bucket-import-routing.md) — agent
   bucket: import (`add --from`) and multi-tool subagent routing
   shipped; per-agent selective load (Part D) open.
 
@@ -134,4 +134,4 @@ documentation.
 ## See also
 
 - [The comments and documentation rule](../.agents/rules/comments.md)
-- [All specs](../specs/)
+- [All specs](../.agents/specs/)

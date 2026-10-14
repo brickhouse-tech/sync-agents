@@ -52,4 +52,4 @@ considered and deliberately dropped for this reason.
 ## See also
 
 - [Source manifest, lockfile & provenance](./sources.md)
-- SPEC-005 (retired) — see the [spec ledger](../specs/README.md)
+- SPEC-005 (retired) — see the [spec ledger](../.agents/specs/README.md)

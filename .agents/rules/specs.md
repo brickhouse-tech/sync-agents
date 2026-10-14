@@ -4,13 +4,13 @@ trigger: always_on
 
 # specs lifecycle and precedence
 
-`docs/` and the code are **current truth**. `specs/` contains **active
+`docs/` and the code are **current truth**. `.agents/specs/` contains **active
 proposals only** — never treat a spec (active, retired, or dug out of
 git history) as outranking docs or code; where they conflict, docs/code
 win.
 
 - The permanent index of every spec ever written is
-  [`specs/README.md`](../../specs/README.md) (the ledger). Consult it —
+  [`.agents/specs/README.md`](../specs/README.md) (the ledger). Consult it —
   not git archaeology — to learn whether a SPEC ID shipped and where its
   durable content now lives in `docs/`.
 - When a spec ships **fully**: in the same PR, promote its durable

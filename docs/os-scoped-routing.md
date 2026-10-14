@@ -63,4 +63,4 @@ controls what a skill can *do* once loaded.
 
 - [Topology & configuration](./topology.md)
 - [Delivery channels](./architecture/delivery-channels.md)
-- SPEC-006 (retired; fully shipped) — see the [spec ledger](../specs/README.md)
+- SPEC-006 (retired; fully shipped) — see the [spec ledger](../.agents/specs/README.md)

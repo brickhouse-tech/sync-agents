@@ -35,7 +35,7 @@ import (
 // entries; SPEC-008 closes the gap for locally-authored rules,
 // hand-written skills, imports, linked checkouts, hooks, agents,
 // plans and specs, so a single `verify` proves the whole tree
-// checks out. See specs/SPEC-008-context-integrity-lock.md.
+// checks out. See .agents/specs/SPEC-008-context-integrity-lock.md.
 
 const (
 	// AgentsLockFileName is the provenance record at the .agents/ root.
