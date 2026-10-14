@@ -32,7 +32,7 @@ workflows, and state for your agents:
   │       └── rollout.md
   ├── specs/               # optional: durable design/requirements docs (what/why)
   │   └── SPEC-001.md
-  ├── adrs/                # optional: Architecture Decision Records, status = subdirectory
+  ├── adrs/                # DEPRECATED (removed in v4): Architecture Decision Records
   │   ├── proposed/
   │   │   └── adopt-grpc.md
   │   ├── accepted/

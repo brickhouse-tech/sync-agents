@@ -37,7 +37,7 @@ form that's easier to read end-to-end than scattered code comments.
 - [Inheritance](./inheritance.md) — what layers rule content from
   outside a project (`~/.agents/`, sources), and why `## Inherits` in
   `AGENTS.md` is plain text.
-- [ADRs](./adrs.md) — Architecture Decision Records with status
+- [ADRs](./adrs.md) — **deprecated, removed in v4.** Architecture Decision Records with status
   encoded by subdirectory; denied records stay on disk so they aren't
   re-proposed.
 - [OS-scoped routing](./os-scoped-routing.md) — `macos/`, `linux/`,

@@ -17,6 +17,19 @@ const (
 	ADRStatusDenied   = "denied"
 )
 
+// adrDeprecation is the warning every ADR entry point prints. ADRs
+// record a project's design decisions; they are not context an agent
+// loads, so the bucket leaves sync-agents in v4.
+const adrDeprecation = "ADRs are deprecated and will be removed in sync-agents v4: they are project design records, not agent context. Move .agents/adrs/ into your repo docs (e.g. docs/adr/)."
+
+// warnADRsDeprecated prints adrDeprecation when agentsRoot (a .agents/
+// tree) still holds an adrs/ bucket.
+func (a *App) warnADRsDeprecated(agentsRoot string) {
+	if _, err := os.Stat(filepath.Join(agentsRoot, "adrs")); err == nil {
+		a.Warn(adrDeprecation)
+	}
+}
+
 // ADRStatuses lists the recognised status directories in display
 // order (accepted first in the index; proposed is where new records
 // start; denied is retained but never indexed).
@@ -28,6 +41,7 @@ var ADRStatuses = []string{ADRStatusAccepted, ADRStatusProposed, ADRStatusDenied
 // status directory is what agents see; AGENTS.md no longer lists ADRs
 // (SPEC-013).
 func (a *App) CmdADR(action, name string) error {
+	a.Warn(adrDeprecation)
 	var target string
 	switch action {
 	case "accept", "accepted":

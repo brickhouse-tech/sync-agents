@@ -105,7 +105,7 @@ The full manual lives in [`docs/`](docs/README.md):
 - [Topology & configuration](docs/topology.md) — the `.agents/` tree, `config`, `STATE.md`
 - [Sources, lockfile & provenance](docs/sources.md) · [Quarantine](docs/quarantine.md) · [Linked sources](docs/linked-sources.md) · [Integrity lock](docs/integrity.md)
 - [Delivery channels](docs/architecture/delivery-channels.md) · [Migrating to 2.0](docs/migration-v2.md)
-- [Inheritance](docs/inheritance.md) · [ADRs](docs/adrs.md) · [OS-scoped routing](docs/os-scoped-routing.md)
+- [Inheritance](docs/inheritance.md) · [ADRs (deprecated)](docs/adrs.md) · [OS-scoped routing](docs/os-scoped-routing.md)
 - [Architecture](docs/README.md#architecture) — scope resolution, semantic routing, global roots
 - [Examples](examples/README.md) — ready-to-import rules, skills, and workflows
 

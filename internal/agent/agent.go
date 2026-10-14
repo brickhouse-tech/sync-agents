@@ -341,6 +341,9 @@ func (a *App) CmdAdd(typ, name string, opts AddOpts) error {
 		return fmt.Errorf("unknown type")
 	}
 	typ = bucket.Dir
+	if bucket.Artifact == ArtifactADR {
+		a.Warn(adrDeprecation)
+	}
 
 	if err := a.EnsureAgentsDir(); err != nil {
 		return err
@@ -403,6 +406,7 @@ func (a *App) CmdSync() error {
 	a.dropGlobalOnlyTargets()
 
 	a.deprecateForce()
+	a.warnADRsDeprecated(filepath.Join(a.ProjectRoot, ".agents"))
 
 	a.Info("Syncing .agents/ to agent directories...")
 	a.migrateAgentsMDOrWarn()

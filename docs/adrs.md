@@ -1,5 +1,12 @@
 # ADRs (Architecture Decision Records)
 
+> **Deprecated — removed in v4.** ADRs record a project's design
+> decisions; they are not context an agent loads, so they are out of
+> sync-agents' scope. `adr`, `add adr`, and `sync`/`global sync` (when
+> an `adrs/` bucket exists) print a warning. Move `.agents/adrs/` into
+> your repo docs (for example `docs/adr/`) and keep the "check denied
+> ADRs first" instruction, if you want it, in a rule.
+
 How the `adrs/` bucket encodes decision status by subdirectory and keeps rejected decisions from being re-proposed.
 
 ## Status by subdirectory

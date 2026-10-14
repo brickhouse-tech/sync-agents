@@ -83,3 +83,66 @@ func TestCmdADR_NestedAndErrors(t *testing.T) {
 		t.Fatalf("no-op accept should succeed: %v", err)
 	}
 }
+
+// Every ADR entry point warns that the bucket is going away (v4).
+
+func TestADRDeprecation_ADRCommandWarns(t *testing.T) {
+	a := newADRApp(t)
+	writeADR(t, a, ADRStatusProposed, "use-postgres.md", "# Use Postgres\n")
+	if err := a.CmdADR("accept", "use-postgres"); err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+	if out := a.Stdout.(*bytes.Buffer).String(); !strings.Contains(out, adrDeprecation) {
+		t.Errorf("adr command output missing deprecation warning:\n%s", out)
+	}
+}
+
+func TestADRDeprecation_AddADRWarns(t *testing.T) {
+	a := newADRApp(t)
+	if err := a.CmdAdd("adr", "use-postgres", AddOpts{}); err != nil {
+		t.Fatalf("add adr: %v", err)
+	}
+	if out := a.Stdout.(*bytes.Buffer).String(); !strings.Contains(out, adrDeprecation) {
+		t.Errorf("add adr output missing deprecation warning:\n%s", out)
+	}
+}
+
+func TestADRDeprecation_AddOtherTypeSilent(t *testing.T) {
+	a := newADRApp(t)
+	if err := a.CmdAdd("rule", "style", AddOpts{}); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+	if out := a.Stdout.(*bytes.Buffer).String(); strings.Contains(out, "ADRs are deprecated") {
+		t.Errorf("add rule should not warn about ADRs:\n%s", out)
+	}
+}
+
+func TestADRDeprecation_SyncWarnsOnlyWhenBucketExists(t *testing.T) {
+	app, _, buf := newSyncApp(t, "claude")
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if strings.Contains(buf.String(), "ADRs are deprecated") {
+		t.Fatalf("sync without adrs/ should not warn:\n%s", buf)
+	}
+
+	app, root, buf := newSyncApp(t, "claude")
+	writeFile(t, filepath.Join(root, ".agents", "adrs", "accepted", "db.md"), "# DB\n")
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if !strings.Contains(buf.String(), adrDeprecation) {
+		t.Errorf("sync with adrs/ missing deprecation warning:\n%s", buf)
+	}
+}
+
+func TestADRDeprecation_GlobalSyncWarnsWhenBucketExists(t *testing.T) {
+	a, root, buf := newGlobalSyncTestApp(t)
+	writeArtifact(t, filepath.Join(root, ".agents"), filepath.Join("adrs", "accepted", "db.md"), "# DB\n")
+	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
+		t.Fatalf("global sync: %v", err)
+	}
+	if !strings.Contains(buf.String(), adrDeprecation) {
+		t.Errorf("global sync with adrs/ missing deprecation warning:\n%s", buf)
+	}
+}
