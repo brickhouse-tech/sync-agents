@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [4.0.2](https://github.com/brickhouse-tech/sync-agents/compare/v4.0.1...v4.0.2) (2026-10-15)
+
+### Bug Fixes
+
+* **go:** add /v4 major-version suffix to module path ([f92f7b5](https://github.com/brickhouse-tech/sync-agents/commit/f92f7b519d6d47b0520474f90246e4e47b017de4))
+
 ## [4.0.1](https://github.com/brickhouse-tech/sync-agents/compare/v4.0.0...v4.0.1) (2026-10-14)
 
 ## [4.0.0](https://github.com/brickhouse-tech/sync-agents/compare/v3.1.0...v4.0.0) (2026-10-14)
