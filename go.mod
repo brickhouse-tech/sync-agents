@@ -1,4 +1,4 @@
-module github.com/brickhouse-tech/sync-agents
+module github.com/brickhouse-tech/sync-agents/v4
 
 go 1.25
 

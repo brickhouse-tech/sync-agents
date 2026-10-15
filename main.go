@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/brickhouse-tech/sync-agents/internal/agent"
-	"github.com/brickhouse-tech/sync-agents/internal/version"
+	"github.com/brickhouse-tech/sync-agents/v4/internal/agent"
+	"github.com/brickhouse-tech/sync-agents/v4/internal/version"
 	"github.com/spf13/cobra"
 )
 

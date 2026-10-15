@@ -29,7 +29,7 @@ No more copy-pasting the same instructions into four different tools, and no mor
 
 ```bash
 # go install (Go 1.21+)
-go install github.com/brickhouse-tech/sync-agents@latest
+go install github.com/brickhouse-tech/sync-agents/v4@latest
 
 # Homebrew — prebuilt binary, no Go toolchain needed
 brew install brickhouse-tech/tap/sync-agents

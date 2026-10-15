@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/brickhouse-tech/sync-agents/internal/agent/source"
-	"github.com/brickhouse-tech/sync-agents/internal/agent/templates"
-	"github.com/brickhouse-tech/sync-agents/internal/version"
+	"github.com/brickhouse-tech/sync-agents/v4/internal/agent/source"
+	"github.com/brickhouse-tech/sync-agents/v4/internal/agent/templates"
+	"github.com/brickhouse-tech/sync-agents/v4/internal/version"
 )
 
 var AllTargets = []string{"claude", "windsurf", "cursor", "copilot"}

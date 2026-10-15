@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/brickhouse-tech/sync-agents/internal/agent/source"
+	"github.com/brickhouse-tech/sync-agents/v4/internal/agent/source"
 )
 
 // newIntegrityApp builds an App rooted at a fresh temp project with a

@@ -5,7 +5,7 @@ function ldflags(rootDir = process.cwd()) {
   const pkg = JSON.parse(
     fs.readFileSync(path.join(rootDir, "package.json"), "utf8"),
   );
-  return `-X github.com/brickhouse-tech/sync-agents/internal/version.Version=${pkg.version}`;
+  return `-X github.com/brickhouse-tech/sync-agents/v4/internal/version.Version=${pkg.version}`;
 }
 
 module.exports = { ldflags };

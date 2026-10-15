@@ -5,7 +5,7 @@ Every supported install channel for the `sync-agents` binary, with the trade-off
 ## go install
 
 ```bash
-go install github.com/brickhouse-tech/sync-agents@latest
+go install github.com/brickhouse-tech/sync-agents/v4@latest
 ```
 
 Requires Go 1.21+. The binary is placed in `$GOPATH/bin` (or
