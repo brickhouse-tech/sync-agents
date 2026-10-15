@@ -3,7 +3,7 @@ package agent
 import (
 	"strings"
 
-	"github.com/brickhouse-tech/sync-agents/internal/agent/templates"
+	"github.com/brickhouse-tech/sync-agents/v4/internal/agent/templates"
 )
 
 // Bucket describes one asset bucket under .agents/. Command loops

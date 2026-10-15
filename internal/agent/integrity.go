@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/brickhouse-tech/sync-agents/internal/agent/source"
+	"github.com/brickhouse-tech/sync-agents/v4/internal/agent/source"
 	"gopkg.in/yaml.v3"
 )
 

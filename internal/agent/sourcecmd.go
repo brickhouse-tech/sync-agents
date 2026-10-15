@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/brickhouse-tech/sync-agents/internal/agent/source"
+	"github.com/brickhouse-tech/sync-agents/v4/internal/agent/source"
 )
 
 // sourcecmd.go is the CLI glue between App and the source package
