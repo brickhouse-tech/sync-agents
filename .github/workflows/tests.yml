@@ -68,9 +68,23 @@ jobs:
           path: coverage.out
           retention-days: 7
 
+  go-major:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: go.mod /vN suffix matches release major
+        run: |
+          if [[ -n "${{ github.base_ref }}" ]]; then
+            scripts/check-go-major.sh "origin/${{ github.base_ref }}..HEAD"
+          else
+            scripts/check-go-major.sh
+          fi
+
   gate:
     name: gate
-    needs: [test, coverage]
+    needs: [test, coverage, go-major]
     runs-on: ubuntu-latest
     if: always()
     steps:
