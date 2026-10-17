@@ -35,7 +35,7 @@
     "@commitlint/cli": "^21",
     "@commitlint/config-conventional": "^21",
     "commitlint": "21",
-    "concurrently": "^10.0.3",
+    "concurrently": "^10.0.6",
     "sort-package-json": ">=3"
   }
 }
