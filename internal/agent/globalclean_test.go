@@ -257,6 +257,25 @@ func TestCmdGlobalClean_RoundTripWithSync(t *testing.T) {
 	}
 }
 
+func TestCmdGlobalClean_ConfigTargetsLimitClean(t *testing.T) {
+	a, root, _ := newCleanTestApp(t)
+	seedRule(t, a.ResolveGlobalRoot(), "x", "body\n")
+	mkdirs(t, filepath.Join(root, ".codex"))
+	globalSync(t, a, "claude", "codex")
+	writeArtifact(t, a.GlobalRoot, "config", "targets = claude\n")
+
+	if err := a.CmdGlobalClean(GlobalCleanOpts{}); err != nil {
+		t.Fatalf("clean: %v", err)
+	}
+
+	if exists(filepath.Join(root, ".claude", "rules", "x.md")) {
+		t.Error("claude is in the config list but its link survived clean")
+	}
+	if !strings.Contains(readFile(t, filepath.Join(root, ".codex", "AGENTS.md")), "body") {
+		t.Error("codex region removed although the config list names only claude")
+	}
+}
+
 // TestCmdGlobalClean_NoGlobalRootErrors verifies the missing-root
 // error path.
 func TestCmdGlobalClean_NoGlobalRootErrors(t *testing.T) {

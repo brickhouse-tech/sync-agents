@@ -31,9 +31,16 @@ sync-agents global sync [--targets t1,t2] [--dry-run] [--force] [--global-root P
    A file whose rendered bytes are unchanged is not rewritten, so its
    mtime is kept.
 
-A tool is served only when its home directory exists (it is installed)
-or `--targets` names it. Editing a file you own needs one `--targets`
-run; see [Consent](#consent).
+The tools in scope are the ones `--targets` names. Without the flag
+they come from the `targets =` line in `~/.agents/config`, and without
+that line every registered tool is in scope. A tool in scope is served
+only when its home directory exists (it is installed) or `--targets`
+names it. Editing a file you own needs one `--targets` run; listing the
+tool in the config is not consent. See [Consent](#consent).
+
+Through 4.0.4, global sync ignored the config line and
+served every installed tool. If your line omits a tool you rely on
+(the `global init` default omits `opencode` and `openclaw`), add it.
 
 ## Per-tool routing reference
 
@@ -146,7 +153,7 @@ instead.
 
 | Flag | Default | Effect |
 |---|---|---|
-| `--targets <list>` | every installed tool | Comma-separated tool IDs to sync. Aliases honored: `windsurf` resolves to `codeium`. Unknown names produce a warning and are skipped. Naming a tool consents to editing a file of yours it reads, and creates its home when missing (see [Consent](#consent)). |
+| `--targets <list>` | `targets =` in `~/.agents/config`, else every registered tool (each served only when installed) | Comma-separated tool IDs to sync. Aliases honored: `windsurf` resolves to `codeium`. Unknown names produce a warning and are skipped. Naming a tool consents to editing a file of yours it reads, and creates its home when missing (see [Consent](#consent)). |
 | `--dry-run` | false | Print every planned operation prefixed with `[dry-run]`. No filesystem writes. |
 | `--force` | false | Replace non-symlink files in the way (saved as `*.replaced-by-sync-agents`). |
 | `--global-root <path>` | `$HOME/.agents` | Override the global root. See [Global root resolution](../architecture/global-root-resolution.md). |

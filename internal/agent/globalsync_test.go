@@ -305,6 +305,90 @@ func TestCmdGlobalSync_TargetsFilter(t *testing.T) {
 	}
 }
 
+// The `targets =` line in ~/.agents/config picks the tools when no
+// --targets flag is given (issue #102).
+func TestCmdGlobalSync_ConfigTargetsLimitTools(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	seedRule(t, a.GlobalRoot, "x", "body\n")
+	writeArtifact(t, a.GlobalRoot, "config", "# comment\ntargets = claude\n")
+	mkdirs(t, filepath.Join(root, ".codex"))
+
+	globalSync(t, a)
+
+	if !exists(filepath.Join(root, ".claude", "rules", "x.md")) {
+		t.Error("claude is in the config list but was not synced")
+	}
+	if exists(filepath.Join(root, ".codex", "AGENTS.md")) {
+		t.Error("codex delivered although the config list names only claude")
+	}
+}
+
+func TestCmdGlobalSync_FlagOverridesConfigTargets(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	seedRule(t, a.GlobalRoot, "x", "body\n")
+	writeArtifact(t, a.GlobalRoot, "config", "targets = claude\n")
+	mkdirs(t, filepath.Join(root, ".codex"))
+
+	globalSync(t, a, "codex")
+
+	if !exists(filepath.Join(root, ".codex", "AGENTS.md")) {
+		t.Error("--targets codex did not deliver to codex")
+	}
+	if exists(filepath.Join(root, ".claude", "rules", "x.md")) {
+		t.Error("claude synced from the config list although --targets named only codex")
+	}
+}
+
+// Without a usable `targets =` line, every installed global tool is
+// still synced.
+func TestCmdGlobalSync_NoConfigTargetsKeepsRegistryDefault(t *testing.T) {
+	for name, config := range map[string]string{
+		"no config file":  "",
+		"commented line":  "# targets = claude\n",
+		"empty line":      "targets =\n",
+		"other keys only": "foo = bar\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			a, root, _ := newGlobalSyncTestApp(t)
+			seedRule(t, a.GlobalRoot, "x", "body\n")
+			if config != "" {
+				writeArtifact(t, a.GlobalRoot, "config", config)
+			}
+			mkdirs(t, filepath.Join(root, ".codex"))
+
+			globalSync(t, a)
+
+			for _, p := range []string{filepath.Join(".claude", "rules", "x.md"), filepath.Join(".codex", "AGENTS.md")} {
+				if !exists(filepath.Join(root, p)) {
+					t.Errorf("default sync skipped %s", p)
+				}
+			}
+		})
+	}
+}
+
+// Naming a tool in the config selects it but is not consent to edit a
+// file the user owns; only --targets is (SPEC-012).
+func TestCmdGlobalSync_ConfigTargetsGrantNoConsent(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	seedRule(t, a.GlobalRoot, "x", "body\n")
+	writeArtifact(t, a.GlobalRoot, "config", "targets = codex\n")
+	user := "# My Codex notes\n"
+	host := writeArtifact(t, root, filepath.Join(".codex", "AGENTS.md"), user)
+
+	globalSync(t, a)
+
+	if got := readFile(t, host); got != user {
+		t.Fatalf("a config-only target edited the user's file:\n%s", got)
+	}
+	if exists(filepath.Join(root, ".claude", "rules", "x.md")) {
+		t.Error("claude synced although the config list names only codex")
+	}
+	if out := globalStatusOut(t, a); !strings.Contains(out, "run once with --targets codex") {
+		t.Errorf("status should ask for --targets consent:\n%s", out)
+	}
+}
+
 // TestCmdGlobalSync_DryRun confirms no filesystem writes occur and
 // the plan is printed.
 func TestCmdGlobalSync_DryRun(t *testing.T) {

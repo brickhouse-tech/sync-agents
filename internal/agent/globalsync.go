@@ -257,17 +257,27 @@ func anyMountable(chans []Channel) bool {
 	return false
 }
 
-// resolveSyncTools filters the Tools registry by the --targets list
-// (if any), mapping each name through ResolveTool so aliases work.
-// Unknown names are reported as warnings; the function returns
-// successfully even when some targets are unknown, because partial
-// progress is more useful than failing the whole sync.
+// resolveSyncTools filters the Tools registry by the --targets list,
+// else by the `targets =` line in <global root>/config, else returns
+// every tool with a global scope. Names map through ResolveTool so
+// aliases work. Unknown names are reported as warnings; the function
+// returns successfully even when some targets are unknown, because
+// partial progress is more useful than failing the whole sync.
+//
+// The config list only selects tools. Consent to edit a user's file
+// comes from the --targets flag alone (ChannelRun.Explicit), which
+// callers pass separately, so listing a tool in the config never
+// grants it.
 //
 // Every returned tool is bound (see bindTool): a tool with a resolved
 // global dir carries it as an absolute DirByScope entry. Whether a
 // tool is installed, and whether a file it reads may be edited, is
 // decided per channel by mayMount, not here.
 func (a *App) resolveSyncTools(targets []string) ([]Tool, error) {
+	if len(targets) == 0 {
+		data, _ := os.ReadFile(filepath.Join(a.ResolveGlobalRoot(), "config"))
+		targets = parseConfigTargets(data)
+	}
 	if len(targets) == 0 {
 		// Default: all tools with a global mapping.
 		var out []Tool

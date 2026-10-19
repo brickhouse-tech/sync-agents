@@ -209,6 +209,25 @@ func TestCmdGlobalStatus_TargetsFilter(t *testing.T) {
 	}
 }
 
+func TestCmdGlobalStatus_ConfigTargetsLimitReport(t *testing.T) {
+	a, _, stdout := newStatusTestApp(t)
+	seedRule(t, a.ResolveGlobalRoot(), "x", "body\n")
+	writeArtifact(t, a.GlobalRoot, "config", "targets = claude\n")
+
+	if err := a.CmdGlobalStatus(GlobalStatusOpts{}); err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "claude/") {
+		t.Errorf("expected claude/ lines:\n%s", out)
+	}
+	for _, other := range []string{"codeium/", "cursor/", "copilot/", "codex/"} {
+		if strings.Contains(out, other) {
+			t.Errorf("report contains %s although the config list names only claude:\n%s", other, out)
+		}
+	}
+}
+
 // TestCmdGlobalStatus_OSScopedChannelReadsSynced pins that status
 // renders a channel with the same bytes sync writes. An OS-scoped rule
 // gets an `<!-- OS: x -->` header; a status render that omitted it

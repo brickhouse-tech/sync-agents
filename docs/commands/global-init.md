@@ -26,15 +26,19 @@ The `config` file looks like:
 # sync-agents global configuration
 # Comma-separated list of sync targets (available: claude, codeium, cursor, copilot, codex, opencode, openclaw)
 # Note: 'codeium' is the user-scope name for Windsurf; the project-scope dir is .windsurf/
-# Note: global sync does not read this line; it serves every tool whose home directory exists.
+# global sync, status, and clean use this list when --targets is omitted; without it, every tool.
 # Override per-command with: sync-agents global sync --targets claude,cursor
-# Naming a tool in --targets also consents to editing a file of yours that it reads.
+# Only naming a tool in --targets consents to editing a file of yours that it reads; this list does not.
 targets = claude,codeium,cursor,copilot,codex
 ```
 
-`global sync` does not read the `targets` line. It serves every tool
-whose home directory exists, or the tools `--targets` names (see
-[global sync § Consent](./global-sync.md#consent)).
+`global sync`, `global status`, and `global clean` operate on the tools
+`--targets` names. Without the flag they use the `targets` line, and
+without the line every registered tool. Sync still serves a listed tool
+only when its home directory exists. The line selects tools but is not
+consent to edit a file you own; that takes one `--targets` run (see
+[global sync § Consent](./global-sync.md#consent)). The default line
+omits `opencode` and `openclaw`, so add them to opt in.
 
 The target list is fixed at five tools and **not** derived from any
 project's local `.agents/config`. SPEC-002 AC-11 mandates this
