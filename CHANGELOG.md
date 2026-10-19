@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [4.0.5](https://github.com/brickhouse-tech/sync-agents/compare/v4.0.4...v4.0.5) (2026-10-19)
+
+### Bug Fixes
+
+* **global:** honor targets = in ~/.agents/config ([51fa19c](https://github.com/brickhouse-tech/sync-agents/commit/51fa19c5f71353d0452dab113177e2d573fa788f)), closes [#102](https://github.com/brickhouse-tech/sync-agents/issues/102)
+
 ## [4.0.4](https://github.com/brickhouse-tech/sync-agents/compare/v4.0.3...v4.0.4) (2026-10-17)
 
 ## [4.0.3](https://github.com/brickhouse-tech/sync-agents/compare/v4.0.2...v4.0.3) (2026-10-17)
