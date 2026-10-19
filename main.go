@@ -621,7 +621,7 @@ func main() {
 			})
 		},
 	}
-	globalSyncCmd.Flags().StringVar(&globalSyncTargets, "targets", "", "Comma-separated tools to sync (default: every installed tool; naming a tool also consents to editing a file of yours it reads)")
+	globalSyncCmd.Flags().StringVar(&globalSyncTargets, "targets", "", "Comma-separated tools to sync (default: targets = in ~/.agents/config, else every installed tool; naming a tool also consents to editing a file of yours it reads)")
 	globalCmd.AddCommand(globalSyncCmd)
 
 	// global status — read-only report of every per-tool destination's
@@ -637,7 +637,7 @@ func main() {
 			})
 		},
 	}
-	globalStatusCmd.Flags().StringVar(&globalStatusTargets, "targets", "", "Comma-separated tools to report on (default: all registered)")
+	globalStatusCmd.Flags().StringVar(&globalStatusTargets, "targets", "", "Comma-separated tools to report on (default: targets = in ~/.agents/config, else all registered)")
 	globalCmd.AddCommand(globalStatusCmd)
 
 	// global clean — remove sync-agents-owned symlinks, regions, and
@@ -654,7 +654,7 @@ func main() {
 			})
 		},
 	}
-	globalCleanCmd.Flags().StringVar(&globalCleanTargets, "targets", "", "Comma-separated tools to clean (default: all registered)")
+	globalCleanCmd.Flags().StringVar(&globalCleanTargets, "targets", "", "Comma-separated tools to clean (default: targets = in ~/.agents/config, else all registered)")
 	globalCmd.AddCommand(globalCleanCmd)
 
 	rootCmd.AddCommand(globalCmd)

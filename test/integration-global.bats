@@ -509,6 +509,7 @@ EOF
   "$SCRIPT" global init --global-root "$GLOBAL_ROOT"
   make_global_passive_rule "my-rule"
   mkdir -p "$OPENCODE_DIR"
+  echo "targets = opencode" > "$GLOBAL_ROOT/config"
 
   run "$SCRIPT" global sync --global-root "$GLOBAL_ROOT"
   [ "$status" -eq 0 ]
@@ -734,7 +735,7 @@ EOF
   printf '# Mine\n' > "$CODEX_DIR/AGENTS.md"
   "$SCRIPT" global sync --global-root "$GLOBAL_ROOT" --targets copilot,codex,opencode
 
-  run "$SCRIPT" global clean --global-root "$GLOBAL_ROOT"
+  run "$SCRIPT" global clean --global-root "$GLOBAL_ROOT" --targets copilot,codex,opencode
   [ "$status" -eq 0 ]
   [ ! -e "$COPILOT_DIR/instructions" ]
   [ -f "$COPILOT_DIR/config.json" ]

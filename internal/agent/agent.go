@@ -171,32 +171,37 @@ func ResolveAgentsRel(target string) string {
 
 func ReadConfigTargets(projectRoot string) []string {
 	configFile := filepath.Join(projectRoot, ".agents", "config")
-	data, err := os.ReadFile(configFile)
-	if err != nil {
-		return copyTargets(AllTargets)
+	data, _ := os.ReadFile(configFile)
+	if targets := parseConfigTargets(data); targets != nil {
+		return targets
 	}
+	return copyTargets(AllTargets)
+}
+
+// parseConfigTargets returns the first non-empty `targets =` list in
+// a .agents/config body, or nil when there is none, so each caller
+// picks its own default.
+func parseConfigTargets(data []byte) []string {
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "#") || !strings.Contains(line, "=") {
 			continue
 		}
 		parts := strings.SplitN(line, "=", 2)
-		key := strings.TrimSpace(parts[0])
-		if key == "targets" {
-			val := strings.TrimSpace(parts[1])
-			var result []string
-			for _, t := range strings.Split(val, ",") {
-				t = strings.TrimSpace(t)
-				if t != "" {
-					result = append(result, t)
-				}
-			}
-			if len(result) > 0 {
-				return result
+		if strings.TrimSpace(parts[0]) != "targets" {
+			continue
+		}
+		var result []string
+		for _, t := range strings.Split(parts[1], ",") {
+			if t = strings.TrimSpace(t); t != "" {
+				result = append(result, t)
 			}
 		}
+		if len(result) > 0 {
+			return result
+		}
 	}
-	return copyTargets(AllTargets)
+	return nil
 }
 
 func copyTargets(t []string) []string {

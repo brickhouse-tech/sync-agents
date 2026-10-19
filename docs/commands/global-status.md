@@ -89,7 +89,7 @@ The report ends with a one-line summary counting every state, e.g.
 
 | Flag | Default | Effect |
 |---|---|---|
-| `--targets <list>` | all | Comma-separated tool IDs (or aliases) to report on. |
+| `--targets <list>` | `targets =` in `~/.agents/config`, else all registered | Comma-separated tool IDs (or aliases) to report on. |
 | `--global-root <path>` | `$HOME/.agents` | Override the global root. |
 
 ## Examples

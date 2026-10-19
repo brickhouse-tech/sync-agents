@@ -74,7 +74,7 @@ errs on the side of preservation, sync errs on the side of detection.
 
 | Flag | Default | Effect |
 |---|---|---|
-| `--targets <list>` | all | Comma-separated tool IDs to clean. Other tools' dirs are not touched. |
+| `--targets <list>` | `targets =` in `~/.agents/config`, else all registered | Comma-separated tool IDs to clean. Other tools' dirs are not touched, so name a tool you removed from the config line to clean it. |
 | `--dry-run` | false | Print the planned removals prefixed with `[dry-run]`. No filesystem writes. |
 | `--global-root <path>` | `$HOME/.agents` | Override the global root. |
 
