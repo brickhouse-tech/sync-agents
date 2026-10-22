@@ -231,8 +231,19 @@ type claudeMDFacts struct {
 
 	// Shadowing is the nearest instruction file in a directory above the
 	// project that stops Claude Code from reading AGENTS.md here (see
-	// shadowingClaudeMD), or "" when there is none.
-	Shadowing string
+	// shadowingClaudeMD). Its Path is "" when there is none.
+	Shadowing Shadow
+}
+
+// Shadow is an instruction file in a directory above the project.
+type Shadow struct {
+	Path string
+
+	// Stale is true when Path is a CLAUDE.md -> AGENTS.md symlink, the
+	// link sync-agents itself makes. On Claude Code >= 2.1.281 sync
+	// removes such a link in its own directory, so it is leftover state
+	// to clean up, not a reason to link every project below it.
+	Stale bool
 }
 
 // decideClaudeMD is the CLAUDE.md policy (SPEC-013 §CLAUDE.md policy).
@@ -248,7 +259,10 @@ type claudeMDFacts struct {
 //	claude-md = link                   -> LinkIt
 //	auto, CLAUDE.local.md present      -> LinkIt: it suppresses native AGENTS.md reading
 //	auto, CLAUDE.md in a parent dir    -> LinkIt: it suppresses native AGENTS.md reading
+//	  (unless that file is a stale CLAUDE.md -> AGENTS.md link; see below)
 //	auto, version < 2.1.281            -> LinkIt: that version needs CLAUDE.md
+//	auto, version >= 2.1.281, stale
+//	  CLAUDE.md -> AGENTS.md in a parent -> Keep, Warn: remove that link instead
 //	auto, version >= 2.1.281, our link -> Unlink: it hides nested AGENTS.md files
 //	auto, version >= 2.1.281, absent   -> Keep: none created
 //	auto, version unknown              -> Keep, Warn, naming probe.Err and the claude-md key
@@ -285,8 +299,8 @@ func decideClaudeMD(f claudeMDFacts, probe func() ClaudeProbe) ClaudeMDDecision 
 		return link("-> AGENTS.md (claude-md = link)")
 	case f.LocalMD:
 		return link("-> AGENTS.md: CLAUDE.local.md stops Claude Code from reading AGENTS.md on its own")
-	case f.Shadowing != "":
-		return link(fmt.Sprintf("-> AGENTS.md: %s stops Claude Code from reading AGENTS.md on its own here", f.Shadowing))
+	case f.Shadowing.Path != "" && !f.Shadowing.Stale:
+		return link(fmt.Sprintf("-> AGENTS.md: %s stops Claude Code from reading AGENTS.md on its own here", f.Shadowing.Path))
 	}
 
 	p := probe()
@@ -297,6 +311,13 @@ func decideClaudeMD(f claudeMDFacts, probe func() ClaudeProbe) ClaudeMDDecision 
 	case p.Version.Less(ClaudeNativeAgentsMD):
 		return link(fmt.Sprintf("-> AGENTS.md: Claude Code %s reads CLAUDE.md, not AGENTS.md (native from %s)",
 			p.Version, ClaudeNativeAgentsMD))
+	case f.Shadowing.Stale:
+		// Linking here would spread the stale link to every project
+		// below it, and unlinking here would leave this AGENTS.md hidden
+		// until the parent link goes, so change nothing and name it.
+		return keep(fmt.Sprintf("left unchanged: %s is a leftover CLAUDE.md -> AGENTS.md link that stops "+
+			"Claude Code %s from reading AGENTS.md here; remove it, or run sync-agents sync in %s",
+			f.Shadowing.Path, p.Version, filepath.Dir(f.Shadowing.Path)), true)
 	case f.Current == ClaudeMDOurLink:
 		d.Action = ClaudeMDUnlink
 		d.Reason = fmt.Sprintf("-> AGENTS.md removed: Claude Code %s reads AGENTS.md natively (>= %s), "+
@@ -345,8 +366,9 @@ func pathExists(path string) (bool, error) {
 // of these exists in the working directory or above it. The user-level
 // home/.claude/CLAUDE.md does not count (Claude Code docs, "AGENTS.md").
 // A home directory that is itself a project with CLAUDE.md -> AGENTS.md
-// therefore hides AGENTS.md from every project below it.
-func shadowingClaudeMD(root, home string) (string, error) {
+// therefore hides AGENTS.md from every project below it; the returned
+// Shadow marks such a link Stale.
+func shadowingClaudeMD(root, home string) (Shadow, error) {
 	userLevel := ""
 	if home != "" {
 		userLevel = filepath.Join(home, ".claude", "CLAUDE.md")
@@ -355,7 +377,7 @@ func shadowingClaudeMD(root, home string) (string, error) {
 	for {
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", nil
+			return Shadow{}, nil
 		}
 		dir = parent
 		for _, rel := range []string{"CLAUDE.md", filepath.Join(".claude", "CLAUDE.md"), "CLAUDE.local.md"} {
@@ -365,11 +387,20 @@ func shadowingClaudeMD(root, home string) (string, error) {
 			}
 			ok, err := pathExists(path)
 			if err != nil {
-				return "", err
+				return Shadow{}, err
 			}
-			if ok {
-				return path, nil
+			if !ok {
+				continue
 			}
+			s := Shadow{Path: path}
+			if rel == "CLAUDE.md" {
+				state, err := classifyClaudeMD(dir)
+				if err != nil {
+					return Shadow{}, err
+				}
+				s.Stale = state == ClaudeMDOurLink
+			}
+			return s, nil
 		}
 	}
 }

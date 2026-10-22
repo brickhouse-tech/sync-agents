@@ -193,6 +193,7 @@ Rows are checked in order.
 | `auto`, `CLAUDE.local.md` exists in the project root | ensure the link |
 | `auto`, a `CLAUDE.md`, `.claude/CLAUDE.md`, or `CLAUDE.local.md` in a parent directory (not `~/.claude/CLAUDE.md`) | ensure the link; the reason names the parent file |
 | `auto`, `claude --version` < 2.1.281 | ensure the link |
+| `auto`, version >= 2.1.281, the parent file is a leftover `CLAUDE.md -> AGENTS.md` link | change nothing; warn, naming the parent link and how to remove it |
 | `auto`, version >= 2.1.281, our link exists | remove our link (status `[stale]` until sync runs) |
 | `auto`, version >= 2.1.281, no link | create nothing |
 | `auto`, version unknown | change nothing; warn once, naming the error and the `claude-md` key |
@@ -210,6 +211,13 @@ Rows are checked in order.
   it. A `CLAUDE.md -> AGENTS.md` link at the project root hides nested
   `AGENTS.md` files in subdirectories; one in a home directory that is
   itself a project hides `AGENTS.md` in every project under it.
+- Why a leftover parent link does not spread: on a native Claude, sync
+  removes a `CLAUDE.md -> AGENTS.md` link in its own directory, so a
+  parent one (often `~/CLAUDE.md` from 1.x) is stale state. Linking
+  every project below it would copy that state into each project.
+  Removing the project link while the parent link remains would hide
+  the project `AGENTS.md`. sync therefore warns and changes nothing
+  until the parent link is removed.
 
 ### What Claude reads
 

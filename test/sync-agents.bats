@@ -303,6 +303,17 @@ fake_claude() {
   [ "$(readlink "$TEST_DIR/proj/CLAUDE.md")" = "AGENTS.md" ]
 }
 
+@test "a leftover CLAUDE.md -> AGENTS.md link in a parent does not spread under Claude Code 2.1.286" {
+  mkdir -p "$TEST_DIR/proj"
+  echo "# parent" > "$TEST_DIR/AGENTS.md"
+  ln -s AGENTS.md "$TEST_DIR/CLAUDE.md"
+  "$SCRIPT" -d "$TEST_DIR/proj" init
+  run "$SCRIPT" -d "$TEST_DIR/proj" sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$TEST_DIR/CLAUDE.md is a leftover CLAUDE.md -> AGENTS.md link"* ]] || return 1
+  [ ! -e "$TEST_DIR/proj/CLAUDE.md" ] && [ ! -L "$TEST_DIR/proj/CLAUDE.md" ]
+}
+
 @test "sync changes nothing and warns once when claude --version fails" {
   fake_claude fail
   "$SCRIPT" -d "$TEST_DIR" init
