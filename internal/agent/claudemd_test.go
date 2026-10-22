@@ -171,10 +171,17 @@ func TestDecideClaudeMD_Rows(t *testing.T) {
 		{"new version, absent", base, probeNew, ClaudeMDKeep, false, true, true, "not created: Claude Code 2.1.286"},
 		{"new version, our link is removed", with(func(f *claudeMDFacts) { f.Current = ClaudeMDOurLink }), probeNew, ClaudeMDUnlink, false, true, true, "removed"},
 		{"2.1.281, our link is removed", with(func(f *claudeMDFacts) { f.Current = ClaudeMDOurLink }), probeNative, ClaudeMDUnlink, false, true, true, "subdirectories"},
-		{"parent CLAUDE.md, new version", with(func(f *claudeMDFacts) { f.Shadowing = "/home/u/CLAUDE.md" }), probeNew, ClaudeMDLinkIt, false, true, false, "/home/u/CLAUDE.md stops"},
-		{"parent CLAUDE.md, unknown version", with(func(f *claudeMDFacts) { f.Shadowing = "/home/u/CLAUDE.md" }), probeUnknown, ClaudeMDLinkIt, false, true, false, "/home/u/CLAUDE.md"},
-		{"parent CLAUDE.md keeps our link", with(func(f *claudeMDFacts) { f.Shadowing = "/w/CLAUDE.local.md"; f.Current = ClaudeMDOurLink }), probeNew, ClaudeMDLinkIt, false, true, false, "CLAUDE.local.md"},
-		{"parent CLAUDE.md, off", with(func(f *claudeMDFacts) { f.Shadowing = "/w/CLAUDE.md"; f.Mode = ClaudeMDOff }), probeNew, ClaudeMDKeep, false, false, false, "claude-md = off"},
+		{"parent CLAUDE.md, new version", with(func(f *claudeMDFacts) { f.Shadowing = Shadow{Path: "/home/u/CLAUDE.md"} }), probeNew, ClaudeMDLinkIt, false, true, false, "/home/u/CLAUDE.md stops"},
+		{"parent CLAUDE.md, unknown version", with(func(f *claudeMDFacts) { f.Shadowing = Shadow{Path: "/home/u/CLAUDE.md"} }), probeUnknown, ClaudeMDLinkIt, false, true, false, "/home/u/CLAUDE.md"},
+		{"parent CLAUDE.md keeps our link", with(func(f *claudeMDFacts) { f.Shadowing = Shadow{Path: "/w/CLAUDE.local.md"}; f.Current = ClaudeMDOurLink }), probeNew, ClaudeMDLinkIt, false, true, false, "CLAUDE.local.md"},
+		{"stale parent link, new version, absent", with(func(f *claudeMDFacts) { f.Shadowing = Shadow{Path: "/home/u/CLAUDE.md", Stale: true} }), probeNew, ClaudeMDKeep, true, true, true, "leftover CLAUDE.md -> AGENTS.md link"},
+		{"stale parent link, new version, our link kept", with(func(f *claudeMDFacts) {
+			f.Shadowing = Shadow{Path: "/home/u/CLAUDE.md", Stale: true}
+			f.Current = ClaudeMDOurLink
+		}), probeNew, ClaudeMDKeep, true, true, true, "sync-agents sync in /home/u"},
+		{"stale parent link, old version", with(func(f *claudeMDFacts) { f.Shadowing = Shadow{Path: "/home/u/CLAUDE.md", Stale: true} }), probeOld, ClaudeMDLinkIt, false, true, true, "2.1.276 reads CLAUDE.md"},
+		{"stale parent link, unknown version", with(func(f *claudeMDFacts) { f.Shadowing = Shadow{Path: "/home/u/CLAUDE.md", Stale: true} }), probeUnknown, ClaudeMDKeep, true, true, true, "cannot tell"},
+		{"parent CLAUDE.md, off", with(func(f *claudeMDFacts) { f.Shadowing = Shadow{Path: "/w/CLAUDE.md"}; f.Mode = ClaudeMDOff }), probeNew, ClaudeMDKeep, false, false, false, "claude-md = off"},
 		{"unknown version, absent", base, probeUnknown, ClaudeMDKeep, true, true, true, "claude-md = link"},
 		{"unknown version, our link", with(func(f *claudeMDFacts) { f.Current = ClaudeMDOurLink }), probeUnknown, ClaudeMDKeep, true, true, true, "exit status 1"},
 	}
@@ -203,19 +210,19 @@ func TestDecideClaudeMD_TruthTable(t *testing.T) {
 	states := []ClaudeMDState{ClaudeMDAbsent, ClaudeMDOurLink, ClaudeMDForeignLink, ClaudeMDRealFile}
 	probes := []ClaudeProbe{probeOld, probeBoundary, probeNative, probeNew, probeUnknown}
 	bools := []bool{false, true}
+	shadows := []Shadow{{}, {Path: "/parent/CLAUDE.md"}, {Path: "/parent/CLAUDE.md", Stale: true}}
 	n := 0
 	for _, mode := range modes {
 		for _, active := range bools {
 			for _, agentsMD := range bools {
 				for _, local := range bools {
-					for _, shadowed := range bools {
+					for _, shadow := range shadows {
 						for _, cur := range states {
 							for _, p := range probes {
 								n++
-								f := claudeMDFacts{Mode: mode, ClaudeActive: active, AgentsMD: agentsMD, LocalMD: local, Current: cur}
-								if shadowed {
-									f.Shadowing = "/parent/CLAUDE.md"
-								}
+								f := claudeMDFacts{Mode: mode, ClaudeActive: active, AgentsMD: agentsMD, LocalMD: local, Current: cur, Shadowing: shadow}
+								shadowed := shadow.Path != "" && !shadow.Stale
+								staleShadow := shadow.Stale
 								probed := false
 								d := decideClaudeMD(f, func() ClaudeProbe { probed = true; return p })
 								label := fmt.Sprintf("%+v probe=%+v -> %+v", f, p, d)
@@ -235,7 +242,8 @@ func TestDecideClaudeMD_TruthTable(t *testing.T) {
 								if d.Warn && d.Action != ClaudeMDKeep {
 									t.Errorf("warns but acts: %s", label)
 								}
-								wantWarn := d.Managed && (userOwned || (wantProbe && !p.Known))
+								native := p.Known && !p.Version.Less(ClaudeNativeAgentsMD)
+								wantWarn := d.Managed && (userOwned || (wantProbe && (!p.Known || (native && staleShadow))))
 								if d.Warn != wantWarn {
 									t.Errorf("warn=%v, want %v: %s", d.Warn, wantWarn, label)
 								}
@@ -252,7 +260,7 @@ func TestDecideClaudeMD_TruthTable(t *testing.T) {
 								}
 								// Only our own link is ever removed, and only when
 								// a native Claude Code would read AGENTS.md here.
-								wantUnlink := wantProbe && p.Known && !p.Version.Less(ClaudeNativeAgentsMD) && cur == ClaudeMDOurLink
+								wantUnlink := wantProbe && native && !staleShadow && cur == ClaudeMDOurLink
 								if (d.Action == ClaudeMDUnlink) != wantUnlink {
 									t.Errorf("unlink=%v, want %v: %s", d.Action == ClaudeMDUnlink, wantUnlink, label)
 								}
@@ -266,8 +274,8 @@ func TestDecideClaudeMD_TruthTable(t *testing.T) {
 			}
 		}
 	}
-	if n != 960 {
-		t.Fatalf("walked %d combinations, want 960", n)
+	if n != 1440 {
+		t.Fatalf("walked %d combinations, want 1440", n)
 	}
 }
 
@@ -715,8 +723,49 @@ func TestShadowingClaudeMD(t *testing.T) {
 			if tt.want != "" {
 				want = filepath.Join(root, tt.want)
 			}
+			if got.Stale {
+				t.Errorf("plain file reported stale: %+v", got)
+			}
+			if got.Path != want {
+				t.Errorf("got %q, want %q", got.Path, want)
+			}
+		})
+	}
+}
+
+// TestShadowingClaudeMD_StaleLink pins which parent CLAUDE.md symlinks
+// count as a leftover sync-agents link: only one that resolves to the
+// AGENTS.md beside it.
+func TestShadowingClaudeMD_StaleLink(t *testing.T) {
+	tests := []struct {
+		name   string
+		target string // CLAUDE.md symlink target inside home
+		stale  bool
+	}{
+		{"relative link to AGENTS.md", "AGENTS.md", true},
+		{"link to another file", "NOTES.md", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			home := filepath.Join(root, "home")
+			proj := filepath.Join(home, "code", "proj")
+			if err := os.MkdirAll(proj, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(home, tt.target), []byte("x\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(tt.target, filepath.Join(home, "CLAUDE.md")); err != nil {
+				t.Fatal(err)
+			}
+			got, err := shadowingClaudeMD(proj, home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := Shadow{Path: filepath.Join(home, "CLAUDE.md"), Stale: tt.stale}
 			if got != want {
-				t.Errorf("got %q, want %q", got, want)
+				t.Errorf("got %+v, want %+v", got, want)
 			}
 		})
 	}
