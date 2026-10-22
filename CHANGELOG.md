@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [4.0.6](https://github.com/brickhouse-tech/sync-agents/compare/v4.0.5...v4.0.6) (2026-10-22)
+
+### Bug Fixes
+
+* **claude:** stop a leftover parent CLAUDE.md link spreading to projects ([98727fd](https://github.com/brickhouse-tech/sync-agents/commit/98727fd2560975a225542e06f345c0f66e585489))
+
 ## [4.0.5](https://github.com/brickhouse-tech/sync-agents/compare/v4.0.4...v4.0.5) (2026-10-19)
 
 ### Bug Fixes
