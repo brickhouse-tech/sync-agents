@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -608,22 +609,11 @@ func (a *App) CmdStatus() error {
 // status. A tool with no project directory (antigravity) is left out.
 func (a *App) statusTargets() []string {
 	var targets []string
-	for _, t := range AllTargets {
-		if tool, ok := ResolveTool(t); !ok || tool.HasScope(ScopeLocal) {
-			targets = append(targets, t)
+	for _, t := range append(copyTargets(AllTargets), a.ActiveTargets...) {
+		if tool, ok := ResolveTool(t); (ok && !tool.HasScope(ScopeLocal)) || slices.Contains(targets, t) {
+			continue
 		}
-	}
-	for _, t := range a.ActiveTargets {
-		known := false
-		for _, k := range targets {
-			if k == t {
-				known = true
-				break
-			}
-		}
-		if !known {
-			targets = append(targets, t)
-		}
+		targets = append(targets, t)
 	}
 	return targets
 }
