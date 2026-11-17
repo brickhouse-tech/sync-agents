@@ -20,7 +20,8 @@ sync-agents global sync [--targets t1,t2] [--dry-run] [--force] [--global-root P
    or the bucket default (see
    [Semantic routing](../architecture/semantic-routing.md)), then:
    - places a per-artifact **symlink** (Claude rules, commands, skills,
-     agents, plans, specs; Cursor, Devin, and opencode agents);
+     agents, plans, specs; Antigravity rules, skills, and agents;
+     Cursor, Devin, Gemini CLI, and opencode agents);
    - hands **passive** content to the tool's delivery channel;
    - or **skips** with a reason (for example, Codex, Cursor, opencode,
      and OpenClaw load `~/.agents/skills` natively).
@@ -32,7 +33,8 @@ sync-agents global sync [--targets t1,t2] [--dry-run] [--force] [--global-root P
 
 The tools in scope are the ones `--targets` names. Without the flag
 they come from the `targets =` line in `~/.agents/config`, and without
-that line every registered tool is in scope. A tool in scope is served
+that line every registered tool except the opt-in `gemini` is in
+scope. A tool in scope is served
 only when its home directory exists (it is installed) or `--targets`
 names it. Editing a file you own needs one `--targets` run; listing the
 tool in the config is not consent. See [Consent](#consent).
@@ -52,13 +54,30 @@ served every installed tool. If your line omits a tool you rely on
 | `codex` | skipped (skills load natively) | region `codex-rules` in `$CODEX_HOME/AGENTS.md` (default `~/.codex`) |
 | `opencode` | skipped (skills load natively) | entry `"<home>/.agents/index/opencode.md"` in `~/.config/opencode/opencode.json` `instructions` |
 | `openclaw` | skipped (skills load natively) | region `openclaw-rules` in `<workspace>/AGENTS.md` |
+| `antigravity` | skill: `~/.gemini/config/skills/<name>/SKILL.md`; rule/workflow: skipped (Antigravity workflows are deprecated, so the reason says to make it a skill) | `~/.gemini/config/rules/<name>.md` (one link per rule; `macos/brew` becomes `macos-brew.md`) |
+| `gemini` (opt-in) | skipped (skills load natively; TOML commands are not generated) | region `gemini-rules` in `~/.gemini/GEMINI.md` |
 
 Rules over a tool's size limit become one-line pointers; sync names
 them and the setting that raises the limit. See
 [Budgets](../architecture/delivery-channels.md#budgets).
 
-Skipped cases with a warning:
+Antigravity and Devin drop a rule file without a valid `trigger:`
+(`always_on`, `model_decision`, `glob`, `manual`), with no warning of
+their own. When `antigravity` is in scope, global sync prints one
+warning that lists such rules and the `lint --fix` command that adds
+`trigger: always_on` where the key is missing. Devin is not named here:
+its user rules arrive inlined in the `devin-rules` region. See
+[lint](lint.md#e010-rule-trigger).
 
+Antigravity CLI also reads `~/.gemini/GEMINI.md`. When both
+`antigravity` and `gemini` are in scope, the global rules load twice
+(once from `~/.gemini/config/rules/`, once from the `gemini-rules`
+region), and global sync warns. Target one of them.
+
+Antigravity is not gated on an installed home: like Claude, it has no
+delivery channel, so its links are placed whenever it is in scope.
+
+Skipped cases with a warning:
 - **Passive skill → Claude**: a directory marked `invocable: false`
   has no clean Claude destination (Claude's passive surface is a
   single `rules/*.md` file). Decide whether to split the skill into
@@ -68,8 +87,8 @@ Skipped cases with a warning:
 
 - **Creating** a file that does not exist needs no consent:
   `~/.codex/AGENTS.md` when `~/.codex` exists,
-  `~/.config/devin/AGENTS.md` when `~/.config/devin` exists, a new
-  `opencode.json`.
+  `~/.config/devin/AGENTS.md` when `~/.config/devin` exists,
+  `~/.gemini/GEMINI.md` when `~/.gemini` exists, a new `opencode.json`.
 - **Editing** a file that exists with your content needs one run that
   names the tool, for example `sync-agents global sync --targets codex`.
   After that, the region markers or the config entry carry consent and
@@ -149,7 +168,7 @@ instead.
 
 | Flag | Default | Effect |
 |---|---|---|
-| `--targets <list>` | `targets =` in `~/.agents/config`, else every registered tool (each served only when installed) | Comma-separated tool IDs to sync. The deprecated names `windsurf` and `codeium` resolve to `devin`, with one warning on stderr per run. Unknown names produce a warning and are skipped. Naming a tool consents to editing a file of yours it reads, and creates its home when missing (see [Consent](#consent)). |
+| `--targets <list>` | `targets =` in `~/.agents/config`, else every registered tool except `gemini` (each served only when installed) | Comma-separated tool IDs to sync. The deprecated names `windsurf` and `codeium` resolve to `devin`, with one warning on stderr per run. Unknown names produce a warning and are skipped. Naming a tool consents to editing a file of yours it reads, and creates its home when missing (see [Consent](#consent)). |
 | `--dry-run` | false | Print every planned operation prefixed with `[dry-run]`. No filesystem writes. |
 | `--force` | false | Replace non-symlink files in the way (saved as `*.replaced-by-sync-agents`). |
 | `--global-root <path>` | `$HOME/.agents` | Override the global root. See [Global root resolution](../architecture/global-root-resolution.md). |
@@ -167,6 +186,10 @@ sync-agents global sync --targets claude,cursor
 
 # Sync Devin (formerly Windsurf).
 sync-agents global sync --targets devin
+
+# Sync Antigravity, and Gemini CLI, which is opt-in.
+sync-agents global sync --targets antigravity
+sync-agents global sync --targets gemini
 
 # Preview without writing.
 sync-agents global sync --dry-run

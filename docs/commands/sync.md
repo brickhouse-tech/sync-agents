@@ -11,7 +11,7 @@ sync-agents sync [--targets t1,t2] [--dry-run] [--overwrite] [--dir PATH]
 ## What it does
 
 For every active target (from `--targets`, else `.agents/config`, else
-`claude,devin,cursor,copilot`) and every bucket that exists under
+`claude,devin,cursor,copilot,antigravity`) and every bucket that exists under
 `.agents/`, sync makes `<tool>/<bucket>` resolve to `.agents/<bucket>`.
 Devin receives only `rules`: it reads `.agents/skills` and
 `.agents/agents` itself and has no workflow surface. While an earlier
@@ -26,6 +26,22 @@ the fold as well: `~/.devin/rules` is Devin's user rules directory, and
 link into `.agents/skills` left by 4.0.x: Devin imports it and reads
 `.agents/skills` too, so every skill loaded twice. A real
 `.windsurf/skills/` directory, or a link elsewhere, stays.
+
+Antigravity reads the project's `.agents/` itself, so sync prints
+`antigravity reads .agents/ natively` and places nothing for it.
+
+Gemini CLI (`gemini`, opt-in) receives only `agents`, as
+`.gemini/agents`: it reads `.agents/skills` itself and has TOML commands
+only. Rules go into the `gemini-rules` region of the project's
+`GEMINI.md`, and only when that file exists. Without one, sync says
+that Gemini CLI reads `AGENTS.md` only when `context.fileName` lists
+it, and writes nothing. Like every edit to a file you own, the first
+region needs a run that names `gemini` in `--targets`.
+
+When the active targets include `antigravity` or `devin`, both of which
+drop a rule without a valid `trigger:` and say nothing, sync prints one
+warning listing those rules and the `lint --fix` command that repairs
+them. See [lint](lint.md#e010-rule-trigger).
 
 The target names `windsurf` and `codeium` are deprecated. Sync treats
 each as `devin` and prints one warning to stderr per run. See
@@ -110,7 +126,7 @@ To recover a backup, see [Recovering a backup](#recovering-a-backup).
 
 | Flag | Default | Effect |
 |---|---|---|
-| `--targets <list>` | `.agents/config`, else `claude,devin,cursor,copilot` | Comma-separated targets to sync. Naming a tool also consents to editing a file of yours it reads (an existing `opencode.json`). |
+| `--targets <list>` | `.agents/config`, else `claude,devin,cursor,copilot,antigravity` | Comma-separated targets to sync. Naming a tool also consents to editing a file of yours it reads (an existing `opencode.json`). |
 | `--dry-run` | false | Print each planned link without writing. |
 | `--overwrite` | false | Rename each conflicting entry to `<path>.replaced-by-sync-agents` and link in its place. Never deletes. |
 | `--force` | false | **Deprecated on `sync`.** Prints a deprecation warning and behaves as `--overwrite`. Nothing is deleted. Will be removed from `sync` in a later release. |

@@ -11,8 +11,8 @@ of two scopes:
 
 | Scope | Canonical tree | Per-tool fan-out |
 |---|---|---|
-| **Local** (project) | `<project>/.agents/` | `<project>/.claude/`, `<project>/.devin/`, `<project>/.cursor/`, `<project>/.github/copilot/`, `<project>/.codex/`, `<project>/.opencode/` |
-| **Global** (user) | `$HOME/.agents/` (overridable, see [global-root-resolution.md](./global-root-resolution.md)) | `$HOME/.claude/`, `$HOME/.config/devin/`, `$HOME/.cursor/`, `$HOME/.copilot/`, `$HOME/.codex/`, `$HOME/.config/opencode/` |
+| **Local** (project) | `<project>/.agents/` | `<project>/.claude/`, `<project>/.devin/`, `<project>/.cursor/`, `<project>/.github/copilot/`, `<project>/.codex/`, `<project>/.opencode/`, `<project>/.gemini/` |
+| **Global** (user) | `$HOME/.agents/` (overridable, see [global-root-resolution.md](./global-root-resolution.md)) | `$HOME/.claude/`, `$HOME/.config/devin/`, `$HOME/.cursor/`, `$HOME/.copilot/`, `$HOME/.codex/`, `$HOME/.config/opencode/`, `$HOME/.gemini/config/`, `$HOME/.gemini/` |
 
 The canonical tree is the **single source of truth**. The per-tool
 directories are derived from it: `sync` creates symlinks that point
@@ -48,6 +48,8 @@ known tools.
 | `codex` | `.codex/` | `~/.codex/` |
 | `opencode` | `.opencode/` | `~/.config/opencode/` |
 | `openclaw` | none (global only) | resolved OpenClaw workspace, default `~/.openclaw/workspace/` |
+| `antigravity` | none (reads `.agents/` natively) | `~/.gemini/config/` |
+| `gemini` (opt-in) | `.gemini/` | `~/.gemini/` |
 | `codeium` (retired) | `.windsurf/` | `~/.codeium/` |
 
 ## Retired tools and deprecated names
@@ -108,6 +110,32 @@ never owns a file, it splices one marker region into the workspace
 `AGENTS.md` OpenClaw created, and a plain `global sync` touches it only
 after an explicit `--targets openclaw` has put the markers there. See
 [global sync § OpenClaw](../commands/global-sync.md#openclaw).
+
+`antigravity` has no project directory (SPEC-015). Antigravity App and
+CLI read a project's `.agents/` tree natively, so a local `sync
+--targets antigravity` reports `antigravity reads .agents/ natively`
+and writes nothing. Its user-scope home is `~/.gemini/config/`, where
+global sync links each passive rule into `rules/` (flat: Antigravity
+scans only the top level, so `macos/brew` becomes `macos-brew.md`),
+each skill into `skills/<name>/`, and each agent into `agents/`.
+Invocable rules and workflows are skipped, since Antigravity workflows
+are deprecated. `init` and `global init` write `antigravity` in the
+default targets.
+
+`gemini` is Gemini CLI, which Google now keeps for enterprise and
+paid-API users. It is registered **opt-in** (`Tool.OptIn`): no default
+target list names it, including the every-tool default of `global
+sync`, because Antigravity CLI also reads `~/.gemini/GEMINI.md` and
+would load the global rules twice. `global sync` warns when both are
+targeted. Its home `~/.gemini/` contains Antigravity's
+`~/.gemini/config/`, so `global clean --targets gemini` skips that
+directory.
+
+Antigravity and Devin drop a rule file without a valid `trigger:`
+(`always_on`, `model_decision`, `glob`, `manual`), with no warning.
+Those two tools carry `Tool.RequiresRuleTrigger`, and sync prints one
+warning listing such rules wherever they read rules as files. See
+[lint](../commands/lint.md) for E010 and its `--fix`.
 
 The directory is the tool's home. What sync-agents writes inside it
 for rule content (a link, a region, or a config entry) is the tool's

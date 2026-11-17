@@ -24,22 +24,25 @@ The `config` file looks like:
 
 ```text
 # sync-agents global configuration
-# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode, openclaw)
+# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode, openclaw, antigravity, gemini)
 # global sync, status, and clean use this list when --targets is omitted; without it, every tool.
 # Override per-command with: sync-agents global sync --targets claude,cursor
 # Only naming a tool in --targets consents to editing a file of yours that it reads; this list does not.
-targets = claude,devin,cursor,copilot,codex
+targets = claude,devin,cursor,copilot,codex,antigravity
 ```
 
 `global sync`, `global status`, and `global clean` operate on the tools
 `--targets` names. Without the flag they use the `targets` line, and
-without the line every registered tool. Sync still serves a listed tool
+without the line every registered tool except the opt-in `gemini`. Sync
+still serves a listed tool
 only when its home directory exists. The line selects tools but is not
 consent to edit a file you own; that takes one `--targets` run (see
 [global sync § Consent](./global-sync.md#consent)). The default line
-omits `opencode` and `openclaw`, so add them to opt in.
+omits `opencode`, `openclaw`, and `gemini`, so add them to opt in.
+Gemini CLI and Antigravity CLI both read `~/.gemini/GEMINI.md`, so
+list `gemini` only if you drop `antigravity`.
 
-The target list is fixed at five tools and **not** derived from any
+The target list is fixed at six tools and **not** derived from any
 project's local `.agents/config`. SPEC-002 AC-11 mandates this
 independence — the global config should not change based on which
 directory happens to be `cwd` when `global init` runs.
@@ -85,7 +88,8 @@ tree. After init:
 
 1. `promote` artifacts from a project into `~/.agents/`.
 2. (Future PR) `global sync` to fan them out into `~/.claude/`,
-   `~/.config/devin/`, `~/.cursor/`, `~/.copilot/`, `~/.codex/`.
+   `~/.config/devin/`, `~/.cursor/`, `~/.copilot/`, `~/.codex/`,
+   `~/.gemini/config/`.
 
 If you already have a `~/.agents/` from manual setup (as documented
 in the README's Inheritance section), running `global init` will

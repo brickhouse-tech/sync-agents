@@ -1,8 +1,9 @@
-# `sync-agents lint [skills|all] [--fix]`
+# `sync-agents lint [skills|rules|all] [--fix]`
 
 Validates every `.agents/skills/<dir>/SKILL.md` against Claude's
-[skill authoring rules](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
-and, with `--fix`, mechanically amends what's fixable (SPEC-004 Part E).
+[skill authoring rules](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices),
+and the `trigger:` of every rule under `.agents/rules/` (SPEC-015), and
+with `--fix` mechanically amends what's fixable (SPEC-004 Part E).
 
 Claude discovers skills through their `SKILL.md` YAML frontmatter, with
 published requirements: `name` (≤64 chars, lowercase
@@ -30,6 +31,8 @@ keys verbatim. Reserved-word names are reported but never auto-renamed.
 | W101 | first-person description ("I can…", "You can…") | report only (third person required) |
 | W102 | description lacks a when-to-use clause | report only |
 | W103 | SKILL.md body > 500 lines | report only |
+| E010 | rule `trigger:` missing, or not one of `always_on`, `model_decision`, `glob`, `manual` | missing: set `trigger: always_on`; invalid value: report only |
+| W104 | rule `trigger: model_decision` without `description`, or `trigger: glob` without `globs` | report only |
 | W201 | `import: true` in the frontmatter of a plan or spec | report only (see below) |
 
 ## Behavior
@@ -43,7 +46,31 @@ keys verbatim. Reserved-word names are reported but never auto-renamed.
 - Skill directories without a `SKILL.md` are treated as scratch dirs and
   skipped, matching artifact discovery.
 - `lint` and `lint all` run every check. `lint skills` runs only the
-  E0xx and W1xx skill checks.
+  skill checks (E001 to E009, W101 to W103). `lint rules` runs only
+  E010 and W104.
+
+## E010: rule trigger
+
+Antigravity and Devin read a rule's `trigger:` frontmatter to decide
+when to load it, and drop a rule whose trigger is missing or invalid
+without a warning. E010 checks every `.md` under `.agents/rules/`,
+OS-scoped subdirectories included. `--fix` adds `trigger: always_on`
+when the key is missing (and injects a frontmatter block when there is
+none), keeping every other key, comment, and the body byte for byte. An
+invalid value is left for you, because only you know which mode was
+meant.
+
+```text
+[error] rules/style.md: E010 rule has no `trigger:`, so Antigravity and Devin drop it (want always_on, model_decision, glob, manual)
+```
+
+`sync` and `global sync` print one warning listing the rules that fail
+E010 when a targeted tool would drop them: `antigravity` or `devin` in
+a project, `antigravity` at user scope. The warning names the `lint
+--fix` command to run.
+
+W104 flags a mode that cannot work as written: `model_decision` needs a
+`description` for the agent to decide from, and `glob` needs `globs`.
 
 ## W201: `import: true` has no effect
 

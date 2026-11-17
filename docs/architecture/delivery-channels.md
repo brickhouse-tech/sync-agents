@@ -9,7 +9,9 @@ scope and at user scope, as implemented since SPEC-013.
   [semantic](semantic-routing.md) is passive are the content every tool
   should load.
 - Claude and Devin read a rules directory natively. They get the
-  folded `.claude/rules` and `.devin/rules` links.
+  folded `.claude/rules` and `.devin/rules` links. Antigravity reads
+  `.agents/rules` itself in a project and gets one link per rule in
+  `~/.gemini/config/rules/` at user scope.
 - Every other tool gets one generated file per tool, rendered into
   `.agents/index/` (project) or `~/.agents/index/` (user), and one
   mount at a path the vendor documents.
@@ -40,9 +42,24 @@ size limit).
 | opencode | user | `~/.config/opencode/opencode.json` `instructions` | `~/.agents/index/opencode.md`; absolute-path entry | config list | none |
 | OpenClaw | project | none (global-only target, SPEC-012) | nothing | none | n/a |
 | OpenClaw | user | `<workspace>/AGENTS.md`, raw text | `~/.agents/index/openclaw.md`; region `openclaw-rules` | region | 20,000 UTF-16 units, whole file |
+| Antigravity | project | `AGENTS.md`, `.agents/AGENTS.md`, `.agents/rules/*.md` (top level, `trigger:` required) | nothing: native | none | 24,000 bytes per file; 20,000 tokens across global and `always_on` |
+| Antigravity | user | `~/.gemini/config/rules/*.md` (top level), `~/.gemini/GEMINI.md` | one link per rule into `~/.agents/rules/`, OS-scoped rules flattened | per artifact | as above |
+| Gemini CLI (opt-in) | project | `GEMINI.md` (`context.fileName` configurable) | `.agents/index/gemini.md`; region `gemini-rules` in `GEMINI.md`, only when the file exists | region | none |
+| Gemini CLI (opt-in) | user | `~/.gemini/GEMINI.md` | `~/.agents/index/gemini.md`; region `gemini-rules` | region | none |
 
 `$CODEX_HOME` defaults to `~/.codex`. The OpenClaw workspace comes from
 `openclaw.json`, as in [global-sync.md](../commands/global-sync.md).
+
+Antigravity has no channel (SPEC-015). Each rule stays its own file, so
+nothing is aggregated and sync-agents enforces neither Antigravity
+limit. Antigravity and Devin drop a rule file without a valid
+`trigger:`, so sync warns about such rules where either tool reads rule
+files; see [lint](../commands/lint.md#e010-rule-trigger). Gemini CLI is
+opt-in because Antigravity CLI also reads `~/.gemini/GEMINI.md`. A
+project's `GEMINI.md` is the team's file: sync never creates it, and
+without one it reports that Gemini CLI reads `AGENTS.md` only when
+`context.fileName` lists it, and writes nothing, not even
+`.agents/index/gemini.md`.
 
 Windsurf is now Devin (SPEC-014), so the table has no Windsurf rows.
 What earlier versions wrote for Windsurf stays in place during 4.x: the
@@ -61,7 +78,7 @@ The generated files:
 | `cursor.mdc` | MDC frontmatter (`description`, `alwaysApply: true`), the banner, then one `## <name>` section per rule. Under `index = local` it also carries your user-level rules (Cursor has no user-rules file). A project rule wins over a user rule of the same name. |
 | `copilot.md` | `applyTo: "**"` frontmatter, the banner, then the rules. |
 | `codex.md` | The project's `AGENTS.md` with every `sync-agents:*` region removed, a note, the banner, then the rules. Codex reads the override instead of `AGENTS.md`, so the override has to carry `AGENTS.md`'s text. |
-| `opencode.md`, `devin.md`, `openclaw.md` | The banner, then the rules. Region bodies use the same bytes. |
+| `opencode.md`, `devin.md`, `gemini.md`, `openclaw.md` | The banner, then the rules. Region bodies use the same bytes. |
 
 Each rule section starts with `<!-- OS: <scope> -->` when the rule
 lives in an OS-scoped subdirectory. Rules that do not fit the budget are
@@ -116,7 +133,7 @@ names the tool. `global status` shows it as `unmounted` with the reason.
 | Codex, project | 32,768 | bytes | the user-level `AGENTS.md` plus the override | same |
 | OpenClaw | 20,000 | UTF-16 units | the whole workspace `AGENTS.md` | `agents.defaults.bootstrapMaxChars` in `openclaw.json` |
 
-Cursor, Copilot, Devin, and opencode document no limit, so their files
+Cursor, Copilot, Devin, Gemini CLI, and opencode document no limit, so their files
 inline every rule.
 
 Fitting is first fit in name order. A rule is inlined when the fixed
@@ -310,7 +327,9 @@ nothing.
 | opencode loads an `instructions` entry that is a symlink, and ignores a missing one | **unverified** |
 | OpenClaw counts UTF-16 units | inferred: OpenClaw is TypeScript |
 | Devin reads `~/.config/devin/AGENTS.md` in Devin Local, not only Devin CLI | **unverified**. Devin Local docs name `~/.devin/global_rules.md` (SPEC-014 open question 1) |
-| Devin treats a rule with no `trigger:` frontmatter as always on | **unverified** (SPEC-014 open question 2) |
+| Devin treats a rule with no `trigger:` frontmatter as always on | **unverified** (SPEC-014 open question 2). SPEC-015 treats it as dropped and warns |
+| Antigravity follows a symlinked rule, skill, or agent in `~/.gemini/config/` | **unverified** (SPEC-015 open question 1). If not, those links become copies |
+| Antigravity drops a rule with missing or invalid `trigger:` frontmatter, without a warning | Antigravity docs |
 
 None of the Cursor, Copilot, Codex, or opencode CLIs was installed where
 this was built, so the four rows above stay unverified until someone

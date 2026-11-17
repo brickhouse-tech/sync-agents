@@ -115,8 +115,20 @@ channel (see [Delivery channels](./delivery-channels.md)). At user scope
 they have no command surface that sync-agents writes, so invocable rules
 and workflows are skipped. Devin's skip reason says to make the
 workflow a skill, because Devin has no workflow surface. Codex, Cursor,
-Devin, opencode, and OpenClaw load `~/.agents/skills` natively, so
-skills are not linked into their trees.
+Devin, Gemini CLI, opencode, and OpenClaw load `~/.agents/skills`
+natively, so skills are not linked into their trees. Gemini CLI's skip
+reason for workflows is that TOML commands are not generated.
+
+## What about Antigravity?
+
+Antigravity reads a rules directory of per-artifact files at user scope
+(`~/.gemini/config/rules/`), as Claude does, so it routes like Claude:
+a passive rule or workflow is linked into `rules/` (flat, because
+Antigravity scans only the top level), a skill into
+`skills/<name>/SKILL.md`, and an agent into `agents/`. It has no
+command surface, since Antigravity workflows are deprecated, so an
+invocable rule or workflow is skipped with a reason that says to make
+it a skill. In a project Antigravity reads `.agents/` itself.
 
 ## Multi-file invocable skills
 
@@ -127,8 +139,8 @@ comes up.
 
 ## Delivery channels
 
-Passive content for Devin (user scope), Cursor, Copilot, Codex,
-opencode, and OpenClaw is not linked per artifact. Each tool gets one
+Passive content for Devin (user scope), Cursor, Copilot, Codex, Gemini
+CLI, opencode, and OpenClaw is not linked per artifact. Each tool gets one
 generated file in `.agents/index/` or `~/.agents/index/`, mounted as a
 link, a marked region, or a config entry at the path the tool reads,
 and sized to the tool's limit. Source artifacts stay authoritative; the

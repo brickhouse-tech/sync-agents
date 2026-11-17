@@ -52,9 +52,10 @@ form that's easier to read end-to-end than scattered code comments.
 - [Scope and target directories](./architecture/scope-and-targets.md) —
   How project scope (local) and user scope (global) compose with the
   per-tool target directories (`.claude/`, `.devin/`, `.cursor/`,
-  `.github/copilot/`, `.codex/`). Explains the per-scope asymmetry
-  (`.devin/` in a project, `~/.config/devin/` for the user) and the
-  deprecated `windsurf` and `codeium` target names.
+  `.github/copilot/`, `.codex/`, `.gemini/`). Explains the per-scope
+  asymmetry (`.devin/` in a project, `~/.config/devin/` for the user),
+  Antigravity's lack of a project directory, the opt-in `gemini`
+  target, and the deprecated `windsurf` and `codeium` target names.
 - [Global root resolution](./architecture/global-root-resolution.md) —
   The precedence chain that determines where the global `.agents/`
   tree lives: programmatic field → env var → `$HOME/.agents`. Also

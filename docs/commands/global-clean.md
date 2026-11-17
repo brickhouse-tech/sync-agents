@@ -35,14 +35,18 @@ errs on the side of preservation, sync errs on the side of detection.
 ## What gets removed
 
 - **Per-artifact symlinks** under each tool's per-scope dir
-  (`~/.claude/`, `~/.config/devin/`, `~/.cursor/`, `~/.codex/`) — whether or not the underlying canonical artifact
-  still exists.
+  (`~/.claude/`, `~/.config/devin/`, `~/.cursor/`, `~/.codex/`,
+  `~/.gemini/config/`, `~/.gemini/`) — whether or not the underlying
+  canonical artifact still exists. A tool's walk skips another tool's
+  home inside it, so cleaning `gemini` (`~/.gemini/`) leaves
+  Antigravity's `~/.gemini/config/` alone.
 - **Delivery channels**: the
   `~/.copilot/instructions/sync-agents.instructions.md` link, the
   `codex-rules` region in `$CODEX_HOME/AGENTS.md`, the `devin-rules`
-  region in `~/.config/devin/AGENTS.md`, our entry in
+  region in `~/.config/devin/AGENTS.md`, the `gemini-rules` region in
+  `~/.gemini/GEMINI.md`, our entry in
   `~/.config/opencode/opencode.json`, the `openclaw-rules` region, and
-  the files in `~/.agents/index/`. A Codex or Devin host that holds
+  the files in `~/.agents/index/`. A Codex, Devin, or Gemini CLI host that holds
   nothing but our region is removed, because sync created it. The
   OpenClaw host is always kept.
 - Nothing an earlier version wrote for the retired `codeium` target
