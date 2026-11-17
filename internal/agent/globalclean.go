@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -69,7 +70,7 @@ func (a *App) CmdGlobalClean(opts GlobalCleanOpts) error {
 		if dir == "" || hostOwnedHome(tool.ID) {
 			continue
 		}
-		removed, err := a.cleanToolDir(tool.ID, dir, root)
+		removed, err := a.cleanToolDir(tool.ID, dir, root, nestedHomes(dir, parent))
 		if err != nil {
 			a.Warn(fmt.Sprintf("[%s] %v", tool.ID, err))
 		}
@@ -116,14 +117,28 @@ func hostOwnedHome(toolID string) bool {
 	return ok && !rm.CreateHost
 }
 
+// nestedHomes lists the global homes of other registered tools inside
+// dir: ~/.gemini/config (Antigravity) inside ~/.gemini (Gemini CLI).
+// Cleaning one tool must not remove another tool's links.
+func nestedHomes(dir, parent string) []string {
+	var out []string
+	for _, t := range Tools {
+		if home := t.DirForScope(ScopeGlobal, parent); home != "" && strings.HasPrefix(home, dir+string(filepath.Separator)) {
+			out = append(out, home)
+		}
+	}
+	return out
+}
+
 // cleanToolDir walks one tool's per-scope directory and removes
-// sync-agents-owned artifacts. Returns the count of items removed
-// (or that would be removed in dry-run mode).
+// sync-agents-owned artifacts, skipping the homes of other tools in
+// skip. Returns the count of items removed (or that would be removed
+// in dry-run mode).
 //
 // Walk order is depth-first so file removal happens before directory
 // removal — that way the empty-parent pruning at the end sees the
 // actual final state.
-func (a *App) cleanToolDir(toolID, dir, agentsRoot string) (int, error) {
+func (a *App) cleanToolDir(toolID, dir, agentsRoot string, skip []string) (int, error) {
 	info, err := os.Stat(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -146,6 +161,9 @@ func (a *App) cleanToolDir(toolID, dir, agentsRoot string) (int, error) {
 		}
 		if path == dir {
 			return nil
+		}
+		if d.IsDir() && slices.Contains(skip, path) {
+			return filepath.SkipDir
 		}
 
 		info, err := os.Lstat(path)

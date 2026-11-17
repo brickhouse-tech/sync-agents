@@ -150,3 +150,36 @@ func TestGlobalSync_GeminiAgentsLink(t *testing.T) {
 	globalSync(t, a, "gemini")
 	assertResolvesTo(t, filepath.Join(root, ".gemini", "agents", "reviewer.md"), filepath.Join(a.GlobalRoot, "agents", "reviewer.md"))
 }
+
+// SPEC-015 edge audit: ~/.gemini/config is Antigravity's home inside
+// Gemini CLI's, so cleaning gemini leaves Antigravity's links.
+func TestGlobalClean_GeminiLeavesAntigravityLinks(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	seedRule(t, a.GlobalRoot, "security", "---\ntrigger: always_on\n---\nNever commit secrets.\n")
+	globalSync(t, a, "antigravity", "gemini")
+	if err := a.CmdGlobalClean(GlobalCleanOpts{Targets: []string{"gemini"}}); err != nil {
+		t.Fatalf("global clean: %v", err)
+	}
+	assertResolvesTo(t, filepath.Join(root, ".gemini", "config", "rules", "security.md"), filepath.Join(a.GlobalRoot, "rules", "security.md"))
+	if exists(filepath.Join(root, ".gemini", "GEMINI.md")) {
+		t.Error("global clean --targets gemini left the GEMINI.md it created")
+	}
+}
+
+// SPEC-015 edge audit: Antigravity CLI also reads ~/.gemini/GEMINI.md,
+// so targeting both loads global rules twice.
+func TestGlobalSync_WarnsWhenAntigravityAndGeminiBothTargeted(t *testing.T) {
+	const both = "antigravity and gemini are both targeted"
+	a, _, buf := newGlobalSyncTestApp(t)
+	seedRule(t, a.GlobalRoot, "security", "---\ntrigger: always_on\n---\nNever commit secrets.\n")
+	globalSync(t, a, "antigravity", "gemini")
+	if n := strings.Count(buf.String(), both); n != 1 {
+		t.Errorf("%d double-load warnings, want 1:\n%s", n, buf.String())
+	}
+	buf.Reset()
+	globalSync(t, a, "antigravity")
+	globalSync(t, a, "gemini")
+	if strings.Contains(buf.String(), both) {
+		t.Errorf("double-load warning with one of the two targeted:\n%s", buf.String())
+	}
+}
