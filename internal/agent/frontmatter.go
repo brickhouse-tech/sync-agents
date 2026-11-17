@@ -162,6 +162,20 @@ func (b fmBlock) value(key string) string {
 	return strings.TrimSpace(strings.Join(parts, sep))
 }
 
+// hasValue reports whether a top-level key holds a non-empty scalar or
+// a non-empty list (`globs: "*.go"` or `globs: [a, b]`).
+func (b fmBlock) hasValue(key string) bool {
+	if b.value(key) != "" {
+		return true
+	}
+	var m map[string]any
+	if err := yaml.Unmarshal([]byte(strings.Join(b.lines, "\n")), &m); err != nil {
+		return false
+	}
+	list, ok := m[key].([]any)
+	return ok && len(list) > 0
+}
+
 // set replaces the key's line in place, or appends a new line to the
 // end of the block when the key is absent. Values that would confuse
 // a YAML parser as a plain scalar are double-quoted.

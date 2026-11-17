@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -27,6 +28,12 @@ import (
 //	W101 first-person description             → report only
 //	W102 description lacks when-to-use clause → report only
 //	W103 SKILL.md body > 500 lines            → report only
+//
+// For rules (SPEC-015 Part C), `lint rules`, `lint`, and `lint all`:
+//
+//	E010 rule `trigger:` missing or invalid   → fix (missing only): always_on
+//	W104 model_decision without description,
+//	     glob without globs                   → report only
 //
 // Outside the skills bucket, a bare `lint` (or `lint all`) also reports:
 //
@@ -58,18 +65,21 @@ type LintFinding struct {
 	Fixed    bool
 }
 
-// CmdLint validates skill frontmatter, optionally amending fixable
-// findings in place. typ "skills" lints the skills bucket only; an
-// empty typ or "all" also runs the cross-bucket checks (W201). The
-// [typ] argument exists so future buckets slot in per the registry.
+// CmdLint validates skill and rule frontmatter, optionally amending
+// fixable findings in place. typ "skills" lints the skills bucket only,
+// "rules" the rules bucket only; an empty typ or "all" runs both plus
+// the cross-bucket checks (W201).
 func (a *App) CmdLint(typ string, fix bool) error {
-	var withImportCheck bool
+	var withSkills, withRules, withImportCheck bool
 	switch typ {
 	case "", "all":
-		withImportCheck = true
+		withSkills, withRules, withImportCheck = true, true, true
 	case "skill", "skills":
+		withSkills = true
+	case "rule", "rules":
+		withRules = true
 	default:
-		a.Error(fmt.Sprintf("lint currently supports: skills, all (got %q)", typ))
+		a.Error(fmt.Sprintf("lint currently supports: skills, rules, all (got %q)", typ))
 		return fmt.Errorf("unsupported lint type")
 	}
 
@@ -77,9 +87,21 @@ func (a *App) CmdLint(typ string, fix bool) error {
 		return err
 	}
 
-	findings, checked, err := a.lintSkills(fix)
-	if err != nil {
-		return err
+	var findings []LintFinding
+	skills, rules := 0, 0
+	if withSkills {
+		fs, n, err := a.lintSkills(fix)
+		if err != nil {
+			return err
+		}
+		findings, skills = append(findings, fs...), n
+	}
+	if withRules {
+		fs, n, err := a.lintRules(fix)
+		if err != nil {
+			return err
+		}
+		findings, rules = append(findings, fs...), n
 	}
 	if withImportCheck {
 		importFindings, err := a.lintImportFlags()
@@ -110,7 +132,7 @@ func (a *App) CmdLint(typ string, fix bool) error {
 		}
 	}
 
-	a.Info(fmt.Sprintf("linted %d skill(s): %d fixed, %d error(s), %d warning(s)", checked, fixed, errsLeft, warns))
+	a.Info(fmt.Sprintf("linted %d skill(s) and %d rule(s): %d fixed, %d error(s), %d warning(s)", skills, rules, fixed, errsLeft, warns))
 	if errsLeft > 0 {
 		if !fix {
 			a.Info("run `sync-agents lint --fix` to amend fixable findings")
@@ -158,6 +180,122 @@ func (a *App) lintSkills(fix bool) ([]LintFinding, int, error) {
 		findings = append(findings, fs...)
 	}
 	return findings, checked, nil
+}
+
+// ruleTriggers are the values a rule's `trigger:` may take. Antigravity
+// and Devin drop a rule file whose trigger is missing or outside this
+// set, without a warning (SPEC-015 C1).
+var ruleTriggers = []string{"always_on", "model_decision", "glob", "manual"}
+
+// walkRules calls fn for every .md file under tree/rules at any depth
+// (OS-scoped subdirs included, hidden entries skipped). name is the
+// path below rules/ without .md, slash-separated ("macos/brew"). A
+// missing rules directory has nothing to walk.
+func walkRules(tree string, fn func(path, name string) error) error {
+	root := filepath.Join(tree, "rules")
+	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) && path == root {
+				return filepath.SkipDir
+			}
+			return err
+		}
+		if strings.HasPrefix(d.Name(), ".") && path != root {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() || !strings.HasSuffix(d.Name(), ".md") {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		return fn(path, strings.TrimSuffix(filepath.ToSlash(rel), ".md"))
+	})
+}
+
+// triggerProblem returns the E010 message for a rule's frontmatter, or
+// "" when its trigger is valid. missing reports the fixable case: no
+// frontmatter, or no `trigger:` key.
+func triggerProblem(b fmBlock) (msg string, missing bool) {
+	if _, idx := b.get("trigger"); !b.present || idx == -1 {
+		return "rule has no `trigger:`, so Antigravity and Devin drop it (want " + strings.Join(ruleTriggers, ", ") + ")", true
+	}
+	if v := b.value("trigger"); !slices.Contains(ruleTriggers, v) {
+		return fmt.Sprintf("trigger %q is not one of %s; fix it by hand", v, strings.Join(ruleTriggers, ", ")), false
+	}
+	return "", false
+}
+
+// untriggeredRules names every rule under tree/rules that fails E010,
+// in walk order. A rule whose frontmatter does not parse fails too: the
+// tools cannot read its trigger either.
+func untriggeredRules(tree string) ([]string, error) {
+	var names []string
+	err := walkRules(tree, func(path, name string) error {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		b, err := parseFMBlock(string(raw))
+		if msg, _ := triggerProblem(b); err != nil || msg != "" {
+			names = append(names, name)
+		}
+		return nil
+	})
+	return names, err
+}
+
+// lintRules runs the rule checks (E010, W104) over .agents/rules and
+// returns the findings and the number of rules checked. With fix, a
+// missing trigger is set to always_on; every other key and the body
+// are kept byte for byte.
+func (a *App) lintRules(fix bool) ([]LintFinding, int, error) {
+	var findings []LintFinding
+	checked := 0
+	err := walkRules(filepath.Join(a.ProjectRoot, ".agents"), func(path, name string) error {
+		checked++
+		display := "rules/" + name + ".md"
+		add := func(code, severity, msg string, fixed bool) {
+			findings = append(findings, LintFinding{Path: display, Code: code, Severity: severity, Message: msg, Fixed: fixed})
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		b, err := parseFMBlock(string(raw))
+		if err != nil {
+			add("E010", "error", err.Error(), false)
+			return nil
+		}
+		msg, missing := triggerProblem(b)
+		switch {
+		case missing:
+			add("E010", "error", msg, fix)
+			if !fix {
+				return nil
+			}
+			if !b.present {
+				b = fmBlock{present: true, body: string(raw)}
+			}
+			b.set("trigger", "always_on")
+			return writeFileAtomic(path, []byte(b.render()), 0o644)
+		case msg != "":
+			add("E010", "error", msg, false)
+			return nil
+		}
+		switch t := b.value("trigger"); {
+		case t == "model_decision" && b.value("description") == "":
+			add("W104", "warn", "trigger: model_decision needs a description; the agent decides from it", false)
+		case t == "glob" && !b.hasValue("globs"):
+			add("W104", "warn", "trigger: glob needs globs; without them the rule never applies", false)
+		}
+		return nil
+	})
+	return findings, checked, err
 }
 
 // importFlagBuckets are the reference-doc buckets whose `import: true`

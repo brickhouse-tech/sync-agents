@@ -462,8 +462,8 @@ func main() {
 	// lint
 	var lintFix bool
 	lintCmd := &cobra.Command{
-		Use:   "lint [skills|all]",
-		Short: "Validate skill frontmatter; flag inert import: true on plans and specs",
+		Use:   "lint [skills|rules|all]",
+		Short: "Validate skill and rule frontmatter; flag inert import: true on plans and specs",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			lintType := ""
 			if len(args) > 0 {
