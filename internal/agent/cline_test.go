@@ -411,3 +411,31 @@ func TestStatus_ClineDuplicateSkills(t *testing.T) {
 		}
 	}
 }
+
+// SPEC-016 E3: clean removes the flat links sync placed and keeps the
+// user's rules.
+func TestClean_ClineRemovesFlatLinks(t *testing.T) {
+	app, root, _ := newSyncApp(t, "cline")
+	seedOSScopedRules(t, filepath.Join(root, ".agents"))
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if err := app.CmdClean(); err != nil {
+		t.Fatalf("clean: %v", err)
+	}
+	if exists(filepath.Join(root, ".cline")) {
+		t.Error("clean left .cline/ although sync created everything in it")
+	}
+
+	writeFile(t, filepath.Join(root, ".cline", "rules", "mine.md"), "hand-written")
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if err := app.CmdClean(); err != nil {
+		t.Fatalf("clean: %v", err)
+	}
+	entries, _ := os.ReadDir(filepath.Join(root, ".cline", "rules"))
+	if len(entries) != 1 || entries[0].Name() != "mine.md" {
+		t.Errorf(".cline/rules after clean = %v, want only mine.md", entries)
+	}
+}

@@ -687,9 +687,11 @@ func (a *App) CmdClean() error {
 		}
 
 		// Only a link sync could have placed goes: one into .agents/, at
-		// a bucket dir sync links for this tool. projectBuckets limits
-		// a tool that never received the others (devin), so a link
-		// there is the user's even when it points into .agents/.
+		// a bucket dir sync links for this tool, or one into
+		// .agents/<bucket> drilled into a real bucket dir, which goes too
+		// once it is empty. projectBuckets limits a tool that never
+		// received the others (devin), so a link there is the user's even
+		// when it points into .agents/.
 		dirs := append(BucketDirs(), retiredBucketDirs...)
 		if only, limited := projectBuckets[target]; limited {
 			dirs = only
@@ -697,9 +699,23 @@ func (a *App) CmdClean() error {
 		for _, subdir := range dirs {
 			sub := filepath.Join(targetDir, subdir)
 			fi, err := os.Lstat(sub)
-			if err == nil && fi.Mode()&os.ModeSymlink != 0 && pointsInto(sub, filepath.Join(a.ProjectRoot, ".agents")) {
+			if err != nil {
+				continue
+			}
+			if fi.Mode()&os.ModeSymlink != 0 {
+				if pointsInto(sub, filepath.Join(a.ProjectRoot, ".agents")) {
+					os.Remove(sub)
+					a.Info(fmt.Sprintf("Removed: %s/%s", displayDir, subdir))
+				}
+				continue
+			}
+			links := a.agentsLinks(sub, Bucket{Dir: subdir})
+			for _, link := range links {
+				os.Remove(link)
+				a.Info(fmt.Sprintf("Removed: %s/%s/%s", displayDir, subdir, filepath.Base(link)))
+			}
+			if rest, _ := os.ReadDir(sub); len(links) > 0 && len(rest) == 0 {
 				os.Remove(sub)
-				a.Info(fmt.Sprintf("Removed: %s/%s", displayDir, subdir))
 			}
 		}
 
