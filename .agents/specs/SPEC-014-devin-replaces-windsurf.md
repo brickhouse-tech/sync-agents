@@ -4,7 +4,7 @@ title: "`devin` target replaces `windsurf`/`codeium` (deprecate in 4.x, remove i
 status: 📝 draft
 owner: nmccready
 created: 2026-11-17
-updated: 2026-11-17
+updated: 2026-11-17  # rev 2: duplicate-load and global-path decisions
 related: SPEC-002, SPEC-011, SPEC-013
 ---
 
@@ -46,6 +46,10 @@ character `global_rules.md` cap was Windsurf's.
 - **E2.** When local sync targets `devin`, sync shall fold
   `.devin/rules -> ../.agents/rules`, the same way it folds
   `.claude/rules`.
+- **E2a.** While a `.windsurf/rules` symlink resolves into `.agents/`,
+  sync shall skip the `.devin/rules` fold and report
+  `devin rules served by legacy .windsurf/rules link` (Devin imports
+  `.windsurf/rules` by default, so both would load every rule twice).
 - **E3.** When global sync targets `devin`, sync shall write the
   passive index into a `devin-rules` region of
   `~/.config/devin/AGENTS.md`, creating the file if absent, with no
@@ -104,7 +108,7 @@ character `global_rules.md` cap was Windsurf's.
 - `.windsurf/rules` and `.devin/rules` both folded during 4.x: Devin
   imports both, so rules load twice. E2 plus E10 cause this. Accept
   for the deprecation window, or skip the `.devin/rules` fold when the
-  `.windsurf/rules` fold exists. **Decision needed.**
+  `.windsurf/rules` fold exists. **Decided 2026-11-17: skip (E2a).**
 - Global rules reach Devin twice if it also reads `~/.claude/CLAUDE.md`
   (CLI doc) and the user targets `claude`. Same exposure Codex has.
 
@@ -112,9 +116,10 @@ character `global_rules.md` cap was Windsurf's.
 
 1. **Global instructions path.** CLI docs name
    `~/.config/devin/AGENTS.md`; Devin Local docs name
-   `~/.devin/global_rules.md`. E3 picks the CLI path because both
-   agents share a harness. Verify on a real install before 4.x ships.
+   `~/.devin/global_rules.md`. **Decided 2026-11-17: the CLI path
+   (E3)**, because both agents share a harness. Still unverified on a
+   real install; if Devin Local ignores it, E3 adds the second host.
 2. **Rule frontmatter.** `.agents/rules/*.md` files carry no
    `trigger:`. Confirm Devin treats a rule without `trigger:` as
    `always_on`; if not, E2 needs a rendered dialect like Cursor's.
-3. Duplicate load in the edge audit above.
+
