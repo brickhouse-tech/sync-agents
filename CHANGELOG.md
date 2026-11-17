@@ -2,18 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
-## Unreleased
+## [4.1.0](https://github.com/brickhouse-tech/sync-agents/compare/v4.0.8...v4.1.0) (2026-11-17)
 
 ### Features
 
-* **targets:** add the `devin` target for Devin Local and Devin CLI, which replaced Windsurf (SPEC-014). A project gets `.devin/rules -> ../.agents/rules`. User rules go to the `devin-rules` region of `~/.config/devin/AGENTS.md`, and user subagents link into `~/.config/devin/agents/`. Skills and workflows are skipped, because Devin loads `.agents/skills` itself and has no workflow surface.
-* **targets:** `init` and `global init` write `devin` in the default `targets =` line.
-* **status:** `status` and `global status` list what an earlier version wrote for Windsurf as `deprecated (removed in 5.0.0)`.
+* **init:** write devin in the default targets (SPEC-014 E7) ([102f89a](https://github.com/brickhouse-tech/sync-agents/commit/102f89a390b043fd9e85347b7f85eea202596d90))
+* **status:** report codeium leftovers as deprecated (SPEC-014 E11) ([9da666b](https://github.com/brickhouse-tech/sync-agents/commit/9da666b99c30d68bfbd47ac16b858bc0f48076de))
+* **sync:** remove the legacy .windsurf/skills fold when syncing devin (SPEC-014 E10a) ([562dcf7](https://github.com/brickhouse-tech/sync-agents/commit/562dcf7f32529405ddf5528c68f2b5d663f9e594))
+* **targets:** add devin target (SPEC-014 E1-E6) ([52fbf13](https://github.com/brickhouse-tech/sync-agents/commit/52fbf13f46bf42aa57ab38263b6f536f4528403f))
+* **targets:** deprecate windsurf and codeium as names for devin (SPEC-014 E8-E10) ([dc1df5e](https://github.com/brickhouse-tech/sync-agents/commit/dc1df5e2b52b8128f96b875ffa611dce0eeee5da))
 
-### Deprecations
+### Bug Fixes
 
-* **targets:** the target names `windsurf` and `codeium` now sync `devin` and print one warning per run. They stop working in 5.0.0. Replace them with `devin` in `.agents/config`, `~/.agents/config`, and scripts that pass `--targets`.
-* **targets:** sync no longer writes the `.windsurf/` folds, the `codeium-rules` region, or the `~/.codeium/windsurf/global_workflows/` links. What earlier versions wrote stays in place during 4.x for legacy Cascade. While a `.windsurf/rules` link into `.agents/` exists, sync skips the `.devin/rules` fold, because Devin imports `.windsurf/rules` too.
+* **clean:** list the Windsurf leftovers a deprecated target leaves (SPEC-014 E11a) ([f5db1c1](https://github.com/brickhouse-tech/sync-agents/commit/f5db1c1286e7032527e336cc68500189909b42b7))
+* **clean:** remove only the bucket links sync places (SPEC-014 E6a) ([50c68ba](https://github.com/brickhouse-tech/sync-agents/commit/50c68bac3dc227b0b3a1ad005dcd18e6ba318736))
+* **sync:** skip the .devin/rules fold when the project is $HOME (SPEC-014 E2b) ([70534a8](https://github.com/brickhouse-tech/sync-agents/commit/70534a83456ad9192eb1048b1b0936b79eba6f50))
+* **sync:** treat drilled .windsurf/rules links as legacy Devin rules (SPEC-014 E2a, E11) ([70f124b](https://github.com/brickhouse-tech/sync-agents/commit/70f124b38f81795e0a1f1ffec449dd6cc35cc142))
 
 ## [4.0.8](https://github.com/brickhouse-tech/sync-agents/compare/v4.0.7...v4.0.8) (2026-11-14)
 
