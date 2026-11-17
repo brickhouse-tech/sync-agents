@@ -191,3 +191,133 @@ func TestGlobalStatusAndClean_ClineLinks(t *testing.T) {
 		t.Errorf("global clean left %s", filepath.Join(root, ".cline"))
 	}
 }
+
+// seedOSScopedRules writes one rule per OS scope and pins discovery to
+// darwin, so macos/ and unix/ match and linux/ does not.
+func seedOSScopedRules(t *testing.T, agentsDir string) {
+	t.Helper()
+	writeFile(t, filepath.Join(agentsDir, "config"), "os = darwin\n")
+	writeFile(t, filepath.Join(agentsDir, "rules", "macos", "brew.md"), "brew")
+	writeFile(t, filepath.Join(agentsDir, "rules", "unix", "posix.md"), "posix")
+	writeFile(t, filepath.Join(agentsDir, "rules", "linux", "apt.md"), "apt")
+}
+
+// SPEC-016 E3: Cline scans .cline/rules one level deep, so a fold would
+// hide macos/brew.md. The rules are linked flat into a real directory.
+func TestSync_ClineLinksOSScopedRulesFlat(t *testing.T) {
+	app, root, _ := newSyncApp(t, "cline")
+	agents := filepath.Join(root, ".agents")
+	seedOSScopedRules(t, agents)
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	dest := filepath.Join(root, ".cline", "rules")
+	if fi, err := os.Lstat(dest); err != nil || !fi.IsDir() {
+		t.Fatalf(".cline/rules is not a real directory: %v", err)
+	}
+	assertResolvesTo(t, filepath.Join(dest, "r.md"), filepath.Join(agents, "rules", "r.md"))
+	assertResolvesTo(t, filepath.Join(dest, "macos-brew.md"), filepath.Join(agents, "rules", "macos", "brew.md"))
+	assertResolvesTo(t, filepath.Join(dest, "unix-posix.md"), filepath.Join(agents, "rules", "unix", "posix.md"))
+	for _, name := range []string{"linux-apt.md", "macos", "unix", "linux"} {
+		if exists(filepath.Join(dest, name)) {
+			t.Errorf(".cline/rules/%s was linked", name)
+		}
+	}
+}
+
+// SPEC-016 E3: a fold made before the first OS-scoped rule is replaced
+// by the flat directory, and the next sync changes nothing.
+func TestSync_ClineUnfoldsWhenOSScopedRuleAppears(t *testing.T) {
+	app, root, buf := newSyncApp(t, "cline")
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	agents := filepath.Join(root, ".agents")
+	seedOSScopedRules(t, agents)
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+	assertResolvesTo(t, filepath.Join(root, ".cline", "rules", "macos-brew.md"), filepath.Join(agents, "rules", "macos", "brew.md"))
+
+	buf.Reset()
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("third sync: %v", err)
+	}
+	if strings.Contains(buf.String(), "Linked") || strings.Contains(buf.String(), "Removed") {
+		t.Errorf("third sync changed links:\n%s", buf.String())
+	}
+}
+
+// SPEC-016 E3: a real .cline/rules is the user's; flat links go in
+// beside their files.
+func TestSync_ClineFlatLinksBesideUserRules(t *testing.T) {
+	app, root, _ := newSyncApp(t, "cline")
+	agents := filepath.Join(root, ".agents")
+	seedOSScopedRules(t, agents)
+	writeFile(t, filepath.Join(root, ".cline", "rules", "mine.md"), "hand-written")
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if got := readFile(t, filepath.Join(root, ".cline", "rules", "mine.md")); got != "hand-written" {
+		t.Errorf("mine.md = %q", got)
+	}
+	assertResolvesTo(t, filepath.Join(root, ".cline", "rules", "macos-brew.md"), filepath.Join(agents, "rules", "macos", "brew.md"))
+}
+
+// SPEC-016 E3: status counts the flat links, not the scope directories.
+func TestStatus_ClineFlatRulesMerged(t *testing.T) {
+	app, root, buf := newSyncApp(t, "cline")
+	seedOSScopedRules(t, filepath.Join(root, ".agents"))
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	buf.Reset()
+	if err := app.CmdStatus(); err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if want := "[merged] rules (3/3 linked)"; !strings.Contains(buf.String(), want) {
+		t.Errorf("missing %q in:\n%s", want, buf.String())
+	}
+}
+
+// SPEC-016 E3: a scope that does not match the host hides nothing Cline
+// would read, so the fold stays.
+func TestSync_ClineFoldsWhenNoScopeMatchesHost(t *testing.T) {
+	app, root, _ := newSyncApp(t, "cline")
+	agents := filepath.Join(root, ".agents")
+	writeFile(t, filepath.Join(agents, "config"), "os = darwin\n")
+	writeFile(t, filepath.Join(agents, "rules", "linux", "apt.md"), "apt")
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	assertResolvesTo(t, filepath.Join(root, ".cline", "rules"), filepath.Join(agents, "rules"))
+}
+
+// SPEC-016 E3 at user scope: the host's OS-scoped rules are linked flat.
+func TestGlobalSync_ClineOSScopedRulesFlat(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	seedOSScopedRules(t, a.GlobalRoot)
+	globalSync(t, a, "cline")
+	assertResolvesTo(t, filepath.Join(root, ".cline", "rules", "macos-brew.md"), filepath.Join(a.GlobalRoot, "rules", "macos", "brew.md"))
+	assertResolvesTo(t, filepath.Join(root, ".cline", "rules", "unix-posix.md"), filepath.Join(a.GlobalRoot, "rules", "unix", "posix.md"))
+	if exists(filepath.Join(root, ".cline", "rules", "linux-apt.md")) {
+		t.Error("a linux rule was linked on darwin")
+	}
+}
+
+// SPEC-016 E3: a fold that hides an OS-scoped rule from Cline is not
+// reported as synced.
+func TestStatus_ClineFoldHidingScopedRulesIsStale(t *testing.T) {
+	app, root, buf := newSyncApp(t, "cline")
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	seedOSScopedRules(t, filepath.Join(root, ".agents"))
+	buf.Reset()
+	if err := app.CmdStatus(); err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if want := "[stale] rules -> ../.agents/rules (cline reads one level deep; sync links the OS-scoped entries flat)"; !strings.Contains(buf.String(), want) {
+		t.Errorf("missing %q in:\n%s", want, buf.String())
+	}
+}

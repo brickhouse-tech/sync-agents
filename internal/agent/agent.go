@@ -449,7 +449,7 @@ func (a *App) CmdSync() error {
 				a.Info(why)
 				continue
 			}
-			conflicts += a.linkBucket(targetDir, agentsRel, b).Conflicts
+			conflicts += a.linkBucket(target, targetDir, agentsRel, b).Conflicts
 		}
 		a.pruneRetiredBucketLinks(targetDir, agentsRel)
 		a.pruneImportedTwice(target)
@@ -567,9 +567,14 @@ func (a *App) CmdStatus() error {
 					fmt.Fprintf(a.Stdout, "  [skipped] %s (%s)\n", b.Dir, why)
 				} else if serr == nil && sfi.Mode()&os.ModeSymlink != 0 {
 					lt, _ := os.Readlink(sub)
-					fmt.Fprintf(a.Stdout, "  [synced] %s -> %s\n", b.Dir, lt)
+					if _, flat := a.bucketClaims(target, b); flat {
+						fmt.Fprintf(a.Stdout, "  [stale] %s -> %s (%s reads one level deep; sync links the OS-scoped entries flat)\n", b.Dir, lt, target)
+					} else {
+						fmt.Fprintf(a.Stdout, "  [synced] %s -> %s\n", b.Dir, lt)
+					}
 				} else if serr == nil && sfi.IsDir() {
-					stats := bucketMergeStats(sub, filepath.Join(a.ProjectRoot, ".agents", b.Dir))
+					claims, _ := a.bucketClaims(target, b)
+					stats := bucketMergeStats(sub, claims)
 					conflictNote := ""
 					if stats.Conflicts > 0 {
 						conflictNote = fmt.Sprintf(", %d conflict(s)", stats.Conflicts)
@@ -1291,7 +1296,7 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 				a.Info(why)
 				continue
 			}
-			res := a.linkBucket(targetDir, agentsRel, b)
+			res := a.linkBucket(target, targetDir, agentsRel, b)
 			conflicts += res.Conflicts
 			if res.changed() {
 				repaired++
