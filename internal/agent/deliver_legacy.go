@@ -372,6 +372,31 @@ func (a *App) retiredLinks(t Tool) []string {
 	return links
 }
 
+// importedTwice lists, per tool, the bucket dirs it imports from the
+// project directory of the retired tool it replaced while it also reads
+// the same bucket from .agents/ itself. Devin imports .windsurf/skills
+// and loads .agents/skills natively.
+var importedTwice = map[string][]string{"devin": {"skills"}}
+
+// pruneImportedTwice removes each importedTwice fold an earlier sync
+// made in a retired tool's directory, so target loads the bucket once
+// (SPEC-014 E10a). Only a symlink resolving into .agents/<bucket> goes:
+// a real directory or a link elsewhere is the user's.
+func (a *App) pruneImportedTwice(target string) {
+	for _, retired := range retiredFor([]string{target}) {
+		for _, dir := range importedTwice[target] {
+			link := filepath.Join(retired.DirForScope(ScopeLocal, a.ProjectRoot), dir)
+			fi, err := os.Lstat(link)
+			if err != nil || fi.Mode()&os.ModeSymlink == 0 || !pointsInto(link, filepath.Join(a.ProjectRoot, ".agents", dir)) {
+				continue
+			}
+			if a.removePath(link) {
+				a.Info(fmt.Sprintf("%s loads .agents/%s itself; the legacy %s link loaded each one twice", target, dir, a.display(link)))
+			}
+		}
+	}
+}
+
 // retiredFor returns the retired tools whose replacement is in ids, in
 // registry order.
 func retiredFor(ids []string) []Tool {

@@ -189,6 +189,56 @@ func TestClean_KeepsBucketLinksOutsideAgents(t *testing.T) {
 	}
 }
 
+// SPEC-014 E10a: Devin imports .windsurf/skills and reads .agents/skills
+// itself, so the 4.0.x fold loaded every skill twice. Sync removes that
+// fold, and only that: workflows stay for legacy Cascade.
+func TestSync_DevinRemovesLegacyWindsurfSkillsFold(t *testing.T) {
+	app, root, buf := newSyncApp(t, "devin")
+	writeFile(t, filepath.Join(root, ".agents", "workflows", "ship.md"), "workflow")
+	mkdirs(t, filepath.Join(root, ".windsurf"))
+	for _, b := range []string{"skills", "workflows"} {
+		if err := os.Symlink(filepath.Join("..", ".agents", b), filepath.Join(root, ".windsurf", b)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if exists(filepath.Join(root, ".windsurf", "skills")) {
+		t.Error("sync left .windsurf/skills, which Devin loads beside .agents/skills")
+	}
+	if want := "Removed: .windsurf/skills"; !strings.Contains(buf.String(), want) {
+		t.Errorf("missing %q in:\n%s", want, buf.String())
+	}
+	assertResolvesTo(t, filepath.Join(root, ".windsurf", "workflows"), filepath.Join(root, ".agents", "workflows"))
+}
+
+// SPEC-014 E10a: a real .windsurf/skills, or a link elsewhere, is the
+// user's.
+func TestSync_DevinKeepsForeignWindsurfSkills(t *testing.T) {
+	for name, place := range map[string]func(t *testing.T, path string){
+		"real dir": func(t *testing.T, path string) { writeFile(t, filepath.Join(path, "mine", "SKILL.md"), "mine") },
+		"foreign link": func(t *testing.T, path string) {
+			mkdirs(t, filepath.Dir(path))
+			if err := os.Symlink(filepath.Join("..", "vendor", "skills"), path); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			app, root, _ := newSyncApp(t, "devin")
+			path := filepath.Join(root, ".windsurf", "skills")
+			place(t, path)
+			if err := app.CmdSync(); err != nil {
+				t.Fatalf("sync: %v", err)
+			}
+			if !exists(path) {
+				t.Errorf("sync removed the user's .windsurf/skills (%s)", name)
+			}
+		})
+	}
+}
+
 // SPEC-014 E3
 func TestGlobalSync_DevinRulesRegion(t *testing.T) {
 	a, root, _ := newGlobalSyncTestApp(t)

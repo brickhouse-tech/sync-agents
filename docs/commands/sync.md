@@ -22,7 +22,10 @@ version's links in `.windsurf/rules` point into `.agents/rules` (the
 in .windsurf/rules`), because Devin imports `.windsurf/rules` too. Run in `$HOME`, where `.agents/` is the global root, sync skips
 the fold as well: `~/.devin/rules` is Devin's user rules directory, and
 `sync-agents global sync` already delivers those rules through
-`~/.config/devin/AGENTS.md`.
+`~/.config/devin/AGENTS.md`. Sync also removes a `.windsurf/skills`
+link into `.agents/skills` left by 4.0.x: Devin imports it and reads
+`.agents/skills` too, so every skill loaded twice. A real
+`.windsurf/skills/` directory, or a link elsewhere, stays.
 
 The target names `windsurf` and `codeium` are deprecated. Sync treats
 each as `devin` and prints one warning to stderr per run. See

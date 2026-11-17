@@ -92,7 +92,14 @@ character `global_rules.md` cap was Windsurf's.
 - **E10.** Paths written by earlier versions for `codeium`
   (`~/.codeium/windsurf/global_workflows/*` links, the `codeium-rules`
   region, `.windsurf/rules` fold) shall be left in place during 4.x.
-  Legacy Cascade still reads them.
+  Legacy Cascade still reads them. E10a is the one exception.
+- **E10a.** When local sync targets `devin`, it shall remove a
+  `.windsurf/skills` symlink that resolves into `.agents/skills` (the
+  fold 4.0.x made) and report it. Devin imports `.windsurf/skills` and
+  also reads `.agents/skills`, so the fold loads every skill twice. A
+  real `.windsurf/skills/` directory or a symlink elsewhere is the
+  user's and stays. `.windsurf/workflows` stays: only legacy Cascade
+  reads it, so nothing loads twice.
 - **E11.** `status` and `global status` shall list each surviving
   `codeium` placement as `deprecated (removed in 5.0.0)`. In a project
   that is each `.windsurf/<bucket>` fold and each link drilled into a

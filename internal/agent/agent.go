@@ -449,6 +449,7 @@ func (a *App) CmdSync() error {
 			conflicts += a.linkBucket(targetDir, agentsRel, b).Conflicts
 		}
 		a.pruneRetiredBucketLinks(targetDir, agentsRel)
+		a.pruneImportedTwice(target)
 	}
 
 	// Per-tool delivery channels (SPEC-013, deliver.go): rule bodies

@@ -74,7 +74,10 @@ entries still describe what earlier versions wrote: the
 `.windsurf/<bucket>/`), the `codeium-rules` region in
 `~/.codeium/windsurf/memories/global_rules.md`, and the workflow links
 in `~/.codeium/windsurf/global_workflows/`. Sync leaves these in place
-during 4.x because legacy Cascade still reads them. `status` and
+during 4.x because legacy Cascade still reads them. The exception is a
+`.windsurf/skills` link into `.agents/skills`: Devin imports it and
+reads `.agents/skills` as well, so sync removes it when it targets
+`devin`. `status` and
 `global status` list each one as `deprecated (removed in 5.0.0)`.
 `clean` and `global clean` given `windsurf` or `codeium` clean `devin`
 and list the Windsurf placements they left.
