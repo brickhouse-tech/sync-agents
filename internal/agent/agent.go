@@ -152,9 +152,13 @@ func ResolveTargetDir(target, root string) string {
 // target dir as <project>/.<target>, so without this a `--targets
 // openclaw` would create .openclaw/ inside the repo. Unregistered names
 // (wave, ...) pass through untouched.
-func (a *App) resolveProjectTargets() {
+//
+// It returns the resolved names before that removal: every tool the
+// run was asked about, including the ones with nothing to place.
+func (a *App) resolveProjectTargets() []string {
+	requested := a.resolveTargetNames(a.ActiveTargets)
 	var kept []string
-	for _, t := range a.resolveTargetNames(a.ActiveTargets) {
+	for _, t := range requested {
 		tool, ok := ResolveTool(t)
 		switch {
 		case !ok || tool.HasScope(ScopeLocal):
@@ -166,6 +170,7 @@ func (a *App) resolveProjectTargets() {
 		}
 	}
 	a.ActiveTargets = kept
+	return requested
 }
 
 // resolveTargetNames rewrites deprecated target names to the tool that
@@ -420,7 +425,8 @@ func (a *App) CmdSync() error {
 	if err := a.EnsureAgentsDir(); err != nil {
 		return err
 	}
-	a.resolveProjectTargets()
+	requested := a.resolveProjectTargets()
+	a.warnUntriggeredRules(ScopeLocal, filepath.Join(a.ProjectRoot, ".agents"), requested)
 
 	a.deprecateForce()
 

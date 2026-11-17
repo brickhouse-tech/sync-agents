@@ -249,6 +249,32 @@ func untriggeredRules(tree string) ([]string, error) {
 	return names, err
 }
 
+// warnUntriggeredRules prints one warning listing the rules under tree
+// that fail E010, when any tool in ids drops such rules at scope (SPEC-015
+// C4). A tool with a channel at scope gets the rules inlined, where the
+// trigger plays no part, so it is not counted there: Devin's user-scope
+// rules arrive in its devin-rules region.
+func (a *App) warnUntriggeredRules(scope Scope, tree string, ids []string) {
+	var dropping []string
+	for _, t := range Tools {
+		if _, channel := channelSpecs[t.ID][scope]; t.RequiresRuleTrigger && !channel && slices.Contains(ids, t.ID) {
+			dropping = append(dropping, t.ID)
+		}
+	}
+	if len(dropping) == 0 {
+		return
+	}
+	names, err := untriggeredRules(tree)
+	if err != nil {
+		a.Warn(fmt.Sprintf("check rule triggers: %v", err))
+		return
+	}
+	if len(names) > 0 {
+		a.Warn(fmt.Sprintf("rules without a valid `trigger:` (%s) are dropped by %s: %s. Run `sync-agents -d %s lint --fix` to set trigger: always_on where it is missing.",
+			strings.Join(ruleTriggers, ", "), strings.Join(dropping, ", "), strings.Join(names, ", "), filepath.Dir(tree)))
+	}
+}
+
 // lintRules runs the rule checks (E010, W104) over .agents/rules and
 // returns the findings and the number of rules checked. With fix, a
 // missing trigger is set to always_on; every other key and the body

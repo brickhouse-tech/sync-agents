@@ -62,6 +62,12 @@ type Tool struct {
 	// synced only when a targets list names it.
 	OptIn bool
 
+	// RequiresRuleTrigger: the tool drops a rule file without a valid
+	// `trigger:` and says nothing. Sync warns about such rules at each
+	// scope where the tool reads rules as files rather than through a
+	// channel (warnUntriggeredRules).
+	RequiresRuleTrigger bool
+
 	// ResolveGlobalDir computes the global directory for a tool whose
 	// root is not <parent>/<segment>: Codex honors $CODEX_HOME, and
 	// OpenClaw's workspace moves with env vars and its own config. Nil
@@ -160,6 +166,7 @@ var Tools = []Tool{
 			ScopeLocal:  ".devin",
 			ScopeGlobal: filepath.Join(".config", "devin"),
 		},
+		RequiresRuleTrigger: true,
 	},
 	{
 		ID: "cursor",
@@ -242,7 +249,8 @@ var Tools = []Tool{
 		DirByScope: map[Scope]string{
 			ScopeGlobal: filepath.Join(".gemini", "config"),
 		},
-		ReadsProjectAgents: true,
+		ReadsProjectAgents:  true,
+		RequiresRuleTrigger: true,
 	},
 	{
 		// Gemini CLI (SPEC-015 Part B), now for enterprise and paid-API
