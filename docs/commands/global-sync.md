@@ -20,7 +20,8 @@ sync-agents global sync [--targets t1,t2] [--dry-run] [--force] [--global-root P
    or the bucket default (see
    [Semantic routing](../architecture/semantic-routing.md)), then:
    - places a per-artifact **symlink** (Claude rules, commands, skills,
-     agents, plans, specs; Cursor, Devin, and opencode agents);
+     agents, plans, specs; Cline rules and workflows; Cursor, Devin,
+     and opencode agents);
    - hands **passive** content to the tool's delivery channel;
    - or **skips** with a reason (for example, Codex, Cursor, opencode,
      and OpenClaw load `~/.agents/skills` natively).
@@ -32,14 +33,15 @@ sync-agents global sync [--targets t1,t2] [--dry-run] [--force] [--global-root P
 
 The tools in scope are the ones `--targets` names. Without the flag
 they come from the `targets =` line in `~/.agents/config`, and without
-that line every registered tool is in scope. A tool in scope is served
-only when its home directory exists (it is installed) or `--targets`
-names it. Editing a file you own needs one `--targets` run; listing the
+that line every registered tool except the opt-in `cline` is in scope.
+A tool in scope is served only when its home directory exists (it is
+installed) or `--targets` names it. Editing a file you own needs one `--targets` run; listing the
 tool in the config is not consent. See [Consent](#consent).
 
 Through 4.0.4, global sync ignored the config line and
 served every installed tool. If your line omits a tool you rely on
-(the `global init` default omits `opencode` and `openclaw`), add it.
+(the `global init` default omits `opencode`, `cline`, and `openclaw`),
+add it.
 
 ## Per-tool routing reference
 
@@ -51,6 +53,7 @@ served every installed tool. If your line omits a tool you rely on
 | `copilot` | skipped | link `~/.copilot/instructions/sync-agents.instructions.md` -> `~/.agents/index/copilot.md` |
 | `codex` | skipped (skills load natively) | region `codex-rules` in `$CODEX_HOME/AGENTS.md` (default `~/.codex`) |
 | `opencode` | skipped (skills load natively) | entry `"<home>/.agents/index/opencode.md"` in `~/.config/opencode/opencode.json` `instructions` |
+| `cline` | workflows: `$CLINE_DIR/workflows/<name>.md`; an invocable rule stays in `rules/`; skills skipped (load natively) | `$CLINE_DIR/rules/<name>.md` (default `~/.cline`; one link per rule, `macos/brew` as `macos-brew.md`) |
 | `openclaw` | skipped (skills load natively) | region `openclaw-rules` in `<workspace>/AGENTS.md` |
 
 Rules over a tool's size limit become one-line pointers; sync names

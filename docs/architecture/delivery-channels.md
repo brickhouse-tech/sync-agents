@@ -8,8 +8,8 @@ scope and at user scope, as implemented since SPEC-013.
 - `.agents/` is the source. Rules, workflows, and skills whose
   [semantic](semantic-routing.md) is passive are the content every tool
   should load.
-- Claude and Devin read a rules directory natively. They get the
-  folded `.claude/rules` and `.devin/rules` links.
+- Claude, Devin, and Cline read a rules directory natively. They get
+  the folded `.claude/rules`, `.devin/rules`, and `.cline/rules` links.
 - Every other tool gets one generated file per tool, rendered into
   `.agents/index/` (project) or `~/.agents/index/` (user), and one
   mount at a path the vendor documents.
@@ -30,6 +30,8 @@ size limit).
 | Claude | user | `~/.claude/rules/*.md` | one link per rule into `~/.agents/rules/` | per artifact | none |
 | Devin | project | `.devin/rules/*.md`, `.windsurf/rules/*.md`, root `AGENTS.md` | `.devin/rules -> ../.agents/rules`, skipped while legacy `.windsurf/rules` links into `.agents/rules` exist, and in `$HOME` (global sync delivers there) | fold | none |
 | Devin | user | `~/.config/devin/AGENTS.md` | `~/.agents/index/devin.md`; region `devin-rules` | region | none |
+| Cline | project | `.cline/rules/*.md` and `.clinerules/` (one level deep), root `AGENTS.md` | `.cline/rules -> ../.agents/rules`; a real `.cline/rules/` with flat links when an OS-scoped subdirectory matches the host; nothing in `$HOME` (global sync delivers there) | fold | none |
+| Cline | user | `$CLINE_DIR/rules/*.md` (default `~/.cline/rules`) | one link per rule, OS-scoped ones as `<scope>-<name>.md` | per artifact | none |
 | Cursor | project | `.cursor/rules/*.mdc`, `AGENTS.md` | `.agents/index/cursor.mdc`; link `.cursor/rules/sync-agents.mdc` | link | none |
 | Cursor | user | app settings only, no file | nothing (status shows a `gap` row) | none | n/a |
 | Copilot | project | `.github/instructions/**/*.instructions.md`, `.github/copilot-instructions.md`, `AGENTS.md` | `.agents/index/copilot.md`; link `.github/instructions/sync-agents.instructions.md` | link | none |
@@ -43,6 +45,15 @@ size limit).
 
 `$CODEX_HOME` defaults to `~/.codex`. The OpenClaw workspace comes from
 `openclaw.json`, as in [global-sync.md](../commands/global-sync.md).
+
+Cline (SPEC-016) scans its rules directory one level deep, so a fold
+would hide `.agents/rules/macos/brew.md`. When `.agents/rules` has an
+OS-scoped subdirectory for this host, sync makes `.cline/rules/` a real
+directory instead. Each root rule is linked under its own name and each
+scoped rule as `<scope>-<name>.md`, for example `macos-brew.md`.
+Scopes for other hosts are left out. Workflows get the same treatment
+in `.cline/workflows/` and `~/.cline/workflows/`. sync leaves a real
+`.clinerules/` alone and reports that Cline reads it as well.
 
 Windsurf is now Devin (SPEC-014), so the table has no Windsurf rows.
 What earlier versions wrote for Windsurf stays in place during 4.x: the
@@ -165,7 +176,7 @@ are the same on every contributor's machine.
 `sync` then appends exact lines when they are missing:
 
 - one `<tool dir>/` line per active target (`.claude/`, `.devin/`,
-  `.cursor/`, `.github/copilot/`, `.codex/`, `.opencode/`);
+  `.cursor/`, `.github/copilot/`, `.codex/`, `.opencode/`, `.cline/`);
 - under `index = local`: `.agents/index/` and each link path it placed
   (`.cursor/rules/sync-agents.mdc`,
   `.github/instructions/sync-agents.instructions.md`,
@@ -311,6 +322,9 @@ nothing.
 | OpenClaw counts UTF-16 units | inferred: OpenClaw is TypeScript |
 | Devin reads `~/.config/devin/AGENTS.md` in Devin Local, not only Devin CLI | **unverified**. Devin Local docs name `~/.devin/global_rules.md` (SPEC-014 open question 1) |
 | Devin treats a rule with no `trigger:` frontmatter as always on | **unverified** (SPEC-014 open question 2) |
+| Cline follows symlinked rule and workflow files, scans one level deep, and skips broken links | Cline SDK source (`user-instruction-config-loader.ts`) |
+| The Cline VS Code extension reads the same paths as the SDK | **unverified** (SPEC-016 open question 1) |
+| Cline ignores rule frontmatter keys other than `paths:`, such as `trigger:` | **unverified** (SPEC-016 edge audit) |
 
 None of the Cursor, Copilot, Codex, or opencode CLIs was installed where
 this was built, so the four rows above stay unverified until someone

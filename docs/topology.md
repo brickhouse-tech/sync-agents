@@ -37,7 +37,8 @@ workflows, and state for your agents:
 
 Running `sync-agents sync` creates symlinks from `.agents/`
 subdirectories into `.claude/`, `.devin/` (rules only), `.cursor/`,
-`.github/copilot/`, and, when enabled, `.codex/` and `.opencode/`.
+`.github/copilot/`, and, when enabled, `.codex/`, `.opencode/`, and
+`.cline/` (rules and workflows only).
 Changes to `.agents/` show up in those directories at once, because they
 are symlinks, not copies.
 
@@ -104,7 +105,7 @@ sync with progress.
 
 ```
 # sync-agents configuration
-# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode)
+# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode, cline)
 # Override per-command with: sync-agents sync --targets claude,cursor
 targets = claude,devin,cursor,copilot
 # index = local      # local (default: .agents/index/ and its links are gitignored) | commit
