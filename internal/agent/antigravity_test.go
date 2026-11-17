@@ -130,3 +130,15 @@ func TestInit_DefaultTargetsNameAntigravityNotGemini(t *testing.T) {
 		t.Errorf("AllTargets = %v, want %v", got, want)
 	}
 }
+
+// SPEC-015 A1: status lists no project dir for antigravity, which is in
+// the default targets.
+func TestStatus_NoAntigravityDir(t *testing.T) {
+	app, _, buf := newSyncApp(t, AllTargets...)
+	if err := app.CmdStatus(); err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if strings.Contains(buf.String(), ".antigravity") {
+		t.Errorf("status lists a project dir for antigravity:\n%s", buf.String())
+	}
+}

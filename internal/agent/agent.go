@@ -599,9 +599,14 @@ func (a *App) CmdStatus() error {
 
 // statusTargets is AllTargets plus any configured extra target (such
 // as wave), so a directory sync merges into is never missing from
-// status.
+// status. A tool with no project directory (antigravity) is left out.
 func (a *App) statusTargets() []string {
-	targets := copyTargets(AllTargets)
+	var targets []string
+	for _, t := range AllTargets {
+		if tool, ok := ResolveTool(t); !ok || tool.HasScope(ScopeLocal) {
+			targets = append(targets, t)
+		}
+	}
 	for _, t := range a.ActiveTargets {
 		known := false
 		for _, k := range targets {
