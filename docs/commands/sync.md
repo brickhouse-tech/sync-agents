@@ -18,7 +18,10 @@ Devin receives only `rules`: it reads `.agents/skills` and
 `.windsurf/rules` link from an earlier version points into `.agents/`,
 sync skips the `.devin/rules` fold and prints `devin rules served by
 legacy .windsurf/rules link`, because Devin imports `.windsurf/rules`
-too.
+too. Run in `$HOME`, where `.agents/` is the global root, sync skips
+the fold as well: `~/.devin/rules` is Devin's user rules directory, and
+`sync-agents global sync` already delivers those rules through
+`~/.config/devin/AGENTS.md`.
 
 The target names `windsurf` and `codeium` are deprecated. Sync treats
 each as `devin` and prints one warning to stderr per run. See

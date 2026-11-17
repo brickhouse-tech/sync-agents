@@ -72,6 +72,24 @@ func TestSync_DevinFoldsRulesBesideForeignWindsurfRules(t *testing.T) {
 	assertResolvesTo(t, filepath.Join(root, ".devin", "rules"), filepath.Join(root, ".agents", "rules"))
 }
 
+// SPEC-014 E2b: in $HOME the project tree is the global tree, and
+// ~/.devin/rules is Devin's user rules dir. Global sync already delivers
+// those rules through ~/.config/devin/AGENTS.md, so a fold would load
+// every rule twice.
+func TestSync_DevinRulesNotFoldedWhenProjectIsGlobalRoot(t *testing.T) {
+	app, root, buf := newSyncApp(t, "devin")
+	app.GlobalRoot = filepath.Join(root, ".agents")
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if exists(filepath.Join(root, ".devin", "rules")) {
+		t.Error("sync folded ~/.devin/rules although global sync delivers the same rules to Devin")
+	}
+	if want := "devin rules: skipped at project scope: this project's .agents/ is the global root, so `sync-agents global sync` delivers it"; !strings.Contains(buf.String(), want) {
+		t.Errorf("missing %q in:\n%s", want, buf.String())
+	}
+}
+
 // SPEC-014 E3
 func TestGlobalSync_DevinRulesRegion(t *testing.T) {
 	a, root, _ := newGlobalSyncTestApp(t)

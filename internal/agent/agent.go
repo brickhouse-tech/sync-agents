@@ -442,7 +442,7 @@ func (a *App) CmdSync() error {
 			if fi, err := os.Stat(subdirPath); err != nil || !fi.IsDir() {
 				continue
 			}
-			if why := a.withheldByLegacy(target, b); why != "" {
+			if why := a.withheldFold(target, b); why != "" {
 				a.Info(why)
 				continue
 			}
@@ -546,7 +546,7 @@ func (a *App) CmdStatus() error {
 			hasDirOrLinks = true
 		}
 		for _, b := range Buckets {
-			if linksBucket(target, b) && a.withheldByLegacy(target, b) != "" {
+			if linksBucket(target, b) && a.withheldFold(target, b) != "" {
 				hasDirOrLinks = true
 			}
 		}
@@ -559,7 +559,7 @@ func (a *App) CmdStatus() error {
 				}
 				sub := filepath.Join(targetDir, b.Dir)
 				sfi, serr := os.Lstat(sub)
-				if why := a.withheldByLegacy(target, b); why != "" && serr != nil {
+				if why := a.withheldFold(target, b); why != "" && serr != nil {
 					fmt.Fprintf(a.Stdout, "  [skipped] %s (%s)\n", b.Dir, why)
 				} else if serr == nil && sfi.Mode()&os.ModeSymlink != 0 {
 					lt, _ := os.Readlink(sub)
@@ -1273,7 +1273,7 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 			if fi, err := os.Stat(filepath.Join(agentsAbs, subdir)); err != nil || !fi.IsDir() {
 				continue
 			}
-			if why := a.withheldByLegacy(target, b); why != "" {
+			if why := a.withheldFold(target, b); why != "" {
 				a.Info(why)
 				continue
 			}

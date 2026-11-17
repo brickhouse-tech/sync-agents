@@ -28,7 +28,7 @@ size limit).
 |---|---|---|---|---|---|
 | Claude | project | `.claude/rules/*.md`; `CLAUDE.md`, else `AGENTS.md` | `.claude/rules -> ../.agents/rules`; `CLAUDE.md -> AGENTS.md` per the [CLAUDE.md policy](#claudemd-policy) | fold | none |
 | Claude | user | `~/.claude/rules/*.md` | one link per rule into `~/.agents/rules/` | per artifact | none |
-| Devin | project | `.devin/rules/*.md`, `.windsurf/rules/*.md`, root `AGENTS.md` | `.devin/rules -> ../.agents/rules`, skipped while a legacy `.windsurf/rules` link into `.agents/` exists | fold | none |
+| Devin | project | `.devin/rules/*.md`, `.windsurf/rules/*.md`, root `AGENTS.md` | `.devin/rules -> ../.agents/rules`, skipped while a legacy `.windsurf/rules` link into `.agents/` exists, and in `$HOME` (global sync delivers there) | fold | none |
 | Devin | user | `~/.config/devin/AGENTS.md` | `~/.agents/index/devin.md`; region `devin-rules` | region | none |
 | Cursor | project | `.cursor/rules/*.mdc`, `AGENTS.md` | `.agents/index/cursor.mdc`; link `.cursor/rules/sync-agents.mdc` | link | none |
 | Cursor | user | app settings only, no file | nothing (status shows a `gap` row) | none | n/a |

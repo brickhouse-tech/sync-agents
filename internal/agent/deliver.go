@@ -167,18 +167,34 @@ func channelWithholds(target string, b Bucket) bool {
 	return hasChannel && BucketDefaultSemantic(b.Artifact) == Passive
 }
 
-// withheldByLegacy returns why local sync does not fold bucket b into
-// target's directory although linksBucket allows it, or "". A tool
-// that replaced a retired one may still read the retired tool's folds:
-// Devin imports .windsurf/rules by default, so while that fold is in
-// place a .devin/rules fold would load every rule twice (SPEC-014 E2a).
-func (a *App) withheldByLegacy(target string, b Bucket) string {
+// withheldFold returns why local sync does not fold bucket b into
+// target's directory although linksBucket allows it, or "". Both
+// reasons keep a tool from loading the same rules twice:
+//
+//   - In $HOME the project's .agents/ is the global root (sameTree). A
+//     tool with a global channel gets the passive bucket from global
+//     sync, as bindChannels defers its local channel. Devin also reads
+//     ~/.devin/rules as user rules (SPEC-014 E2b).
+//   - A tool that replaced a retired one may still read the retired
+//     tool's folds: Devin imports .windsurf/rules by default (E2a).
+func (a *App) withheldFold(target string, b Bucket) string {
+	if tool, ok := ResolveTool(target); ok && BucketDefaultSemantic(b.Artifact) == Passive {
+		if _, global := channelSpecs[tool.ID][ScopeGlobal]; global && a.sameTree() {
+			return deferredToGlobal(target + " " + b.Dir)
+		}
+	}
 	for _, retired := range retiredFor([]string{target}) {
 		if link := filepath.Join(retired.DirForScope(ScopeLocal, a.ProjectRoot), b.Dir); a.isAgentsFold(link) {
 			return fmt.Sprintf("%s %s served by legacy %s link", target, b.Dir, a.display(link))
 		}
 	}
 	return ""
+}
+
+// deferredToGlobal is the report for what local sync leaves to global
+// sync because the project's .agents/ is the global root.
+func deferredToGlobal(what string) string {
+	return what + ": skipped at project scope: this project's .agents/ is the global root, so `sync-agents global sync` delivers it"
 }
 
 // isAgentsFold reports whether link is a symlink that resolves into the
@@ -501,7 +517,7 @@ func (a *App) deliverChannels(run ChannelRun) ([]ChannelResult, error) {
 	}
 	if run.Mode == ChannelMount {
 		for _, id := range deferred {
-			a.Info(fmt.Sprintf("%s: skipped at project scope: this project's .agents/ is the global root, so `sync-agents global sync` delivers it", id))
+			a.Info(deferredToGlobal(id))
 		}
 	}
 	if len(chans) == 0 {

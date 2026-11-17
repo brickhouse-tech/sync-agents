@@ -50,6 +50,12 @@ character `global_rules.md` cap was Windsurf's.
   sync shall skip the `.devin/rules` fold and report
   `devin rules served by legacy .windsurf/rules link` (Devin imports
   `.windsurf/rules` by default, so both would load every rule twice).
+- **E2b.** While the project's `.agents/` is the global root (the
+  project is `$HOME`), local sync shall skip the `.devin/rules` fold
+  and report `devin rules: skipped at project scope`, with the same
+  reason sync prints for a channel it defers to global sync.
+  `~/.devin/rules` is Devin's user rules directory, and E3 already
+  delivers the same rules through `~/.config/devin/AGENTS.md`.
 - **E3.** When global sync targets `devin`, sync shall write the
   passive index into a `devin-rules` region of
   `~/.config/devin/AGENTS.md`, creating the file if absent, with no
