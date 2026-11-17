@@ -307,13 +307,11 @@ func (a *App) retiredRows(tools []Tool) ([]StatusEntry, error) {
 // tool's project directory still holds: <dir>/<bucket> as a symlink into
 // .agents/.
 func (a *App) printRetiredFolds(targets []string) {
-	agents := filepath.Join(a.ProjectRoot, ".agents")
 	for _, t := range retiredFor(targets) {
 		dir := t.DirForScope(ScopeLocal, a.ProjectRoot)
 		for _, b := range Buckets {
 			link := filepath.Join(dir, b.Dir)
-			fi, err := os.Lstat(link)
-			if err != nil || fi.Mode()&os.ModeSymlink == 0 || !pointsInto(link, agents) {
+			if !a.isAgentsFold(link) {
 				continue
 			}
 			dest, _ := os.Readlink(link)

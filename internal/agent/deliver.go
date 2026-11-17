@@ -168,21 +168,22 @@ func channelWithholds(target string, b Bucket) bool {
 }
 
 // withheldByLegacy returns why local sync does not fold bucket b into
-// target's directory although linksBucket allows it, or "". Devin
-// imports .windsurf/rules by default, so while the fold an earlier
-// version made for Windsurf is in place, a .devin/rules fold would load
-// every rule twice (SPEC-014 E2a).
+// target's directory although linksBucket allows it, or "". A tool
+// that replaced a retired one may still read the retired tool's folds:
+// Devin imports .windsurf/rules by default, so while that fold is in
+// place a .devin/rules fold would load every rule twice (SPEC-014 E2a).
 func (a *App) withheldByLegacy(target string, b Bucket) string {
-	if target == "devin" && b.Dir == "rules" && a.windsurfRulesFold() {
-		return "devin rules served by legacy .windsurf/rules link"
+	for _, retired := range retiredFor([]string{target}) {
+		if link := filepath.Join(retired.DirForScope(ScopeLocal, a.ProjectRoot), b.Dir); a.isAgentsFold(link) {
+			return fmt.Sprintf("%s %s served by legacy %s link", target, b.Dir, a.display(link))
+		}
 	}
 	return ""
 }
 
-// windsurfRulesFold reports whether .windsurf/rules is the symlink into
-// .agents/ that sync made for the windsurf target before SPEC-014.
-func (a *App) windsurfRulesFold() bool {
-	link := filepath.Join(a.ProjectRoot, ".windsurf", "rules")
+// isAgentsFold reports whether link is a symlink that resolves into the
+// project's .agents/.
+func (a *App) isAgentsFold(link string) bool {
 	fi, err := os.Lstat(link)
 	return err == nil && fi.Mode()&os.ModeSymlink != 0 && pointsInto(link, filepath.Join(a.ProjectRoot, ".agents"))
 }
