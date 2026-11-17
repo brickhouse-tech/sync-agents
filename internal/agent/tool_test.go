@@ -58,7 +58,7 @@ func TestResolveTool_CaseSensitivity(t *testing.T) {
 // Anything that changes that set should require an update here and a
 // corresponding spec change.
 func TestTools_Registry_HasExpectedIDs(t *testing.T) {
-	want := []string{"claude", "codeium", "devin", "cursor", "copilot", "codex", "opencode", "openclaw", "antigravity"}
+	want := []string{"claude", "codeium", "devin", "cursor", "copilot", "codex", "opencode", "openclaw", "antigravity", "gemini"}
 	if got := ToolIDs(); !reflect.DeepEqual(got, want) {
 		t.Errorf("ToolIDs() = %v, want %v", got, want)
 	}

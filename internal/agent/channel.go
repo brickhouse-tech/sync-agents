@@ -87,6 +87,28 @@ var channelSpecs = map[string]map[Scope]ChannelSpec{
 			},
 		},
 	},
+	"gemini": {
+		// Gemini CLI reads GEMINI.md always-on at both scopes and
+		// documents no size limit. A project's GEMINI.md is the team's,
+		// so sync edits one that exists and never creates it; AGENTS.md
+		// reaches Gemini CLI only through settings (context.fileName).
+		ScopeLocal: {
+			Format: FormatMarkdown,
+			Mount: RegionMount{
+				Host:        NativePath{AnchorBase, "GEMINI.md"},
+				Region:      GeminiRulesRegion,
+				MissingHost: "no GEMINI.md here; Gemini CLI reads AGENTS.md only when context.fileName lists it. Create GEMINI.md to receive the rules",
+			},
+		},
+		ScopeGlobal: {
+			Format: FormatMarkdown,
+			Mount: RegionMount{
+				Host:       NativePath{AnchorHome, "GEMINI.md"}, // home: ~/.gemini
+				Region:     GeminiRulesRegion,
+				CreateHost: true,
+			},
+		},
+	},
 	"cursor": {
 		// Cursor reads .mdc rules only; .md files in .cursor/rules are
 		// ignored. There is no user-scope rules file (channelGaps), so
@@ -176,6 +198,10 @@ var (
 	// DevinRulesRegion carries the global rules in
 	// ~/.config/devin/AGENTS.md.
 	DevinRulesRegion = ManagedRegion{Name: "devin-rules"}
+
+	// GeminiRulesRegion carries the rules in GEMINI.md, at the project
+	// root and in ~/.gemini.
+	GeminiRulesRegion = ManagedRegion{Name: "gemini-rules"}
 )
 
 // Format is the dialect of a channel's index file. Every format carries
@@ -259,6 +285,10 @@ type RegionMount struct {
 	// region. It is false when another program seeds the host
 	// (OpenClaw's workspace AGENTS.md).
 	CreateHost bool
+
+	// MissingHost, when set, replaces the generic reason mayMount gives
+	// for a missing host that sync may not create.
+	MissingHost string
 }
 
 // ConfigListMount: the tool loads extra instruction files listed in a
@@ -348,6 +378,9 @@ func mayMount(m Mount, f MountFacts) (ok bool, why string) {
 		return false, whyNotInstalled
 	}
 	if rm, isRegion := m.(RegionMount); isRegion && !rm.CreateHost && !f.NativeExists {
+		if rm.MissingHost != "" {
+			return false, rm.MissingHost
+		}
 		return false, whyHostOwned
 	}
 	if m.editsSharedFile() && f.NativeExists && !f.Explicit {

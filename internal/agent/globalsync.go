@@ -260,7 +260,7 @@ func anyMountable(chans []Channel) bool {
 
 // resolveSyncTools filters the Tools registry by the --targets list,
 // else by the `targets =` line in <global root>/config, else returns
-// every tool with a global scope except retired ones. It is the
+// every tool with a global scope except retired and opt-in ones. It is the
 // target boundary of the global commands: deprecated names resolve to
 // their replacement with a warning (resolveTargetNames). Unknown names
 // are reported as warnings; the function returns successfully even
@@ -282,10 +282,11 @@ func (a *App) resolveSyncTools(targets []string) ([]Tool, error) {
 		targets = parseConfigTargets(data)
 	}
 	if len(targets) == 0 {
-		// Default: all tools with a global mapping, except retired ones.
+		// Default: all tools with a global mapping, except retired and
+		// opt-in ones.
 		var out []Tool
 		for _, t := range Tools {
-			if !t.HasScope(ScopeGlobal) || t.retired() {
+			if !t.HasScope(ScopeGlobal) || t.retired() || t.OptIn {
 				continue
 			}
 			if bound, ok := a.bindTool(t); ok {

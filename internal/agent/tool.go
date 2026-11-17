@@ -58,6 +58,10 @@ type Tool struct {
 	// global-only.
 	ReadsProjectAgents bool
 
+	// OptIn keeps the tool out of every default target list: it is
+	// synced only when a targets list names it.
+	OptIn bool
+
 	// ResolveGlobalDir computes the global directory for a tool whose
 	// root is not <parent>/<segment>: Codex honors $CODEX_HOME, and
 	// OpenClaw's workspace moves with env vars and its own config. Nil
@@ -239,6 +243,19 @@ var Tools = []Tool{
 			ScopeGlobal: filepath.Join(".gemini", "config"),
 		},
 		ReadsProjectAgents: true,
+	},
+	{
+		// Gemini CLI (SPEC-015 Part B), now for enterprise and paid-API
+		// users. Rules go to the gemini-rules region of GEMINI.md
+		// (channelSpecs); agents link into .gemini/agents. It reads
+		// .agents/skills itself. Opt-in, because Antigravity CLI also
+		// reads ~/.gemini/GEMINI.md and would load the rules twice.
+		ID: "gemini",
+		DirByScope: map[Scope]string{
+			ScopeLocal:  ".gemini",
+			ScopeGlobal: ".gemini",
+		},
+		OptIn: true,
 	},
 }
 

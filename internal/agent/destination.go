@@ -194,6 +194,7 @@ var skillsNative = map[string]string{
 	"codex":    "Codex",
 	"cursor":   "Cursor",
 	"devin":    "Devin",
+	"gemini":   "Gemini CLI",
 	"opencode": "opencode",
 	"openclaw": "OpenClaw",
 }
@@ -204,6 +205,7 @@ var skillsNative = map[string]string{
 var commandSkips = map[string]string{
 	"devin":       "Devin has no workflow surface; make it a skill",
 	"antigravity": "Antigravity workflows are deprecated; make it a skill",
+	"gemini":      "TOML commands are not generated",
 }
 
 // invocableSkip is the Skip for an invocable artifact sent to a tool
