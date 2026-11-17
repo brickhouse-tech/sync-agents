@@ -99,12 +99,12 @@ func TestCmdGlobalStatus_Empty(t *testing.T) {
 
 // TestCmdGlobalStatus_AfterSync exercises the happy path: seed a
 // rule, run sync, then status should report [synced] for every
-// per-tool symlink destination and one synced row for the Windsurf
+// per-tool symlink destination and one synced row for the Devin
 // channel (its home exists).
 func TestCmdGlobalStatus_AfterSync(t *testing.T) {
 	a, root, stdout := newStatusTestApp(t)
 	seedRule(t, a.ResolveGlobalRoot(), "security", "body\n")
-	mkdirs(t, filepath.Join(root, ".codeium"))
+	mkdirs(t, filepath.Join(root, ".config", "devin"))
 
 	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
 		t.Fatalf("sync: %v", err)
@@ -119,9 +119,9 @@ func TestCmdGlobalStatus_AfterSync(t *testing.T) {
 	if !strings.Contains(out, "[synced]") {
 		t.Errorf("expected at least one [synced] line:\n%s", out)
 	}
-	host := filepath.Join(root, ".codeium", "windsurf", "memories", "global_rules.md")
-	if !strings.Contains(out, "[synced] codeium -> "+host) {
-		t.Errorf("expected a synced codeium channel row:\n%s", out)
+	host := filepath.Join(root, ".config", "devin", "AGENTS.md")
+	if !strings.Contains(out, "[synced] devin -> "+host) {
+		t.Errorf("expected a synced devin channel row:\n%s", out)
 	}
 }
 

@@ -45,7 +45,7 @@ and cross-compile CI.
 ### How scoped artifacts are shown
 
 - **Delivery channel files** (`.agents/index/*`, and the regions in
-  Windsurf's `global_rules.md`, `~/.codex/AGENTS.md`, and the OpenClaw
+  `~/.config/devin/AGENTS.md`, `~/.codex/AGENTS.md`, and the OpenClaw
   workspace) put an `<!-- OS: macos -->` comment before each OS-scoped
   section. It is invisible when the tool renders Markdown.
 - Under `index = local` (the default) those files hold only the rules

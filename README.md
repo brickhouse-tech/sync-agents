@@ -2,11 +2,11 @@
 
 **One `.agents/` directory. Every AI coding assistant. Always in sync.**
 
-`sync-agents` is a package manager and sync engine for AI-agent context — the rules, skills, workflows, subagents, plans, and specs you feed to Claude, Cursor, Windsurf, Copilot, Codex, opencode, and OpenClaw. Write everything once in `.agents/`, and `sync-agents` delivers it to every tool at the path that tool reads, and lets you pull shared context from other repos as safely and reproducibly as you'd install an npm package.
+`sync-agents` is a package manager and sync engine for AI-agent context — the rules, skills, workflows, subagents, plans, and specs you feed to Claude, Cursor, Devin, Copilot, Codex, opencode, and OpenClaw. Write everything once in `.agents/`, and `sync-agents` delivers it to every tool at the path that tool reads, and lets you pull shared context from other repos as safely and reproducibly as you'd install an npm package.
 
 ## Why you want this
 
-If you use more than one AI coding tool — or more than one repo — you already know the pain: the same rules copy-pasted into `.claude/`, `.cursor/`, `.windsurf/`, and `.github/copilot/`, drifting apart the moment you edit one of them. Team conventions living in a wiki nobody's agent reads. A "cool skill" pasted from the internet with zero review of what it actually tells your agent to do.
+If you use more than one AI coding tool — or more than one repo — you already know the pain: the same rules copy-pasted into `.claude/`, `.cursor/`, `.devin/`, and `.github/copilot/`, drifting apart the moment you edit one of them. Team conventions living in a wiki nobody's agent reads. A "cool skill" pasted from the internet with zero review of what it actually tells your agent to do.
 
 `sync-agents` fixes all three:
 
@@ -49,7 +49,7 @@ sync-agents init
 sync-agents add rule no-secrets
 sync-agents add skill code-review
 
-# 3. Deliver to every tool: rules folders for Claude and Windsurf, .agents/index/ for the rest
+# 3. Deliver to every tool: rules folders for Claude and Devin, .agents/index/ for the rest
 sync-agents sync
 
 # 4. Install a shared skill from another repo (SHA-pinned + scanned + quarantined)
@@ -71,7 +71,7 @@ That's it. Every supported tool is now wired to load the same rules. `AGENTS.md`
 Rules, skills, workflows, subagents, plans, and specs each get a first-class home under `.agents/`, routed to the right place per tool. [Topology →](docs/topology.md)
 
 ### 🤖 Subagents, written once — *new in 1.5.0*
-Define a subagent once in `.agents/agents/` and it lands in `.claude/agents/`, `.cursor/agents/`, and `.opencode/agents/` — the three harnesses with a native subagent surface. Already have one? `add agent <name> --from <path>` imports it, or `--link` leaves the original authoritative. [add →](docs/commands/add.md)
+Define a subagent once in `.agents/agents/` and it lands in `.claude/agents/`, `.cursor/agents/`, and `.opencode/agents/` — the three harnesses with a native subagent surface. Devin reads `.agents/agents/` itself, and `global sync` links user-level subagents into `~/.config/devin/agents/`. Already have one? `add agent <name> --from <path>` imports it, or `--link` leaves the original authoritative. [add →](docs/commands/add.md)
 
 ### 🔒 Declarative sources with a lockfile
 `sources.yaml` + `sources.lock`: every upstream artifact resolves to a commit SHA, downloads are content-hashed, and a tampered tarball aborts before anything touches disk. `pull`, `update`, `source list` — reproducible like a real package manager. [Sources →](docs/sources.md)
@@ -89,7 +89,7 @@ Remote installs are treated like a hostile supply chain. Fetched artifacts are s
 Drop rules into `rules/macos/`, `rules/linux/`, or `rules/unix/` and they only sync on matching machines. One committed tree, no brew-rules noise on your Linux box. [OS routing →](docs/os-scoped-routing.md)
 
 ### 📬 Rule content for every tool — *new in 2.0.0*
-Each tool gets your rule bodies at a path its vendor documents. Claude and Windsurf read the linked rules folder. Cursor, Copilot, Codex, and opencode each get one generated file in `.agents/index/`, linked or listed where the tool looks, sized to the tool's limit. `CLAUDE.md -> AGENTS.md` is created only for Claude Code older than 2.1.281. Upgrading from 1.x? Read [the migration guide](docs/migration-v2.md). [Delivery channels →](docs/architecture/delivery-channels.md)
+Each tool gets your rule bodies at a path its vendor documents. Claude and Devin read the linked rules folder. Cursor, Copilot, Codex, and opencode each get one generated file in `.agents/index/`, linked or listed where the tool looks, sized to the tool's limit. `CLAUDE.md -> AGENTS.md` is created only for Claude Code older than 2.1.281. Upgrading from 1.x? Read [the migration guide](docs/migration-v2.md). [Delivery channels →](docs/architecture/delivery-channels.md)
 
 ### ✅ Lint for skill compliance
 `sync-agents lint` validates every `SKILL.md` against Claude's published authoring rules (name format, description quality, reserved words) and `--fix` mechanically repairs what it can. It also flags `import: true` frontmatter, which has no effect since 2.0. CI-friendly exit codes. [Lint →](docs/commands/lint.md)

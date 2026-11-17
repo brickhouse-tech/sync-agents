@@ -41,5 +41,8 @@ treat retired spec content as current intent.
 | SPEC-011 | `add agent` import + selective load + multi-tool subagent routing | 🟡 Parts A–C shipped; **Part D open** | — (active) | [add](../../docs/commands/add.md), [topology](../../docs/topology.md), [scope-and-targets](../../docs/architecture/scope-and-targets.md) |
 | SPEC-012 | `openclaw` global target (passive rules inlined into a workspace `AGENTS.md` region) | ✅ shipped | — (no spec file; designed in the PR) | [global-sync § OpenClaw](../../docs/commands/global-sync.md#openclaw), [scope-and-targets](../../docs/architecture/scope-and-targets.md), [index](../../docs/commands/index.md) |
 | SPEC-013 | AGENTS.md is not an index (per-tool delivery channels, version-gated CLAUDE.md) | ✅ shipped v2.0.0 (per-tool symlink check open; see delivery-channels § Open follow-ups) | #105 | [delivery-channels](../../docs/architecture/delivery-channels.md), [migration-v2](../../docs/migration-v2.md) |
+| SPEC-014 | `devin` target replaces `windsurf`/`codeium` (deprecate 4.x, remove 5.0) | 📝 draft | — (active) | — |
+| SPEC-015 | `antigravity` + `gemini` targets, rule `trigger` lint | 📝 draft | — (active) | — |
+| SPEC-016 | `cline` target | 📝 draft | — (active) | — |
 
-Next spec ID: **SPEC-014**.
+Next spec ID: **SPEC-017**.

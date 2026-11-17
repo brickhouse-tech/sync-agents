@@ -252,16 +252,18 @@ fake_claude() {
 # sync
 # --------------------------------------------------------------------------
 
-@test "sync creates symlinks in .claude/ and .windsurf/" {
+@test "sync creates symlinks in .claude/ and .devin/" {
   "$SCRIPT" -d "$TEST_DIR" init
   run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.claude/rules" ]
   [ -L "$TEST_DIR/.claude/skills" ]
   [ -L "$TEST_DIR/.claude/workflows" ]
-  [ -L "$TEST_DIR/.windsurf/rules" ]
-  [ -L "$TEST_DIR/.windsurf/skills" ]
-  [ -L "$TEST_DIR/.windsurf/workflows" ]
+  # SPEC-014 E2, E4, E6: Devin gets the rules fold only.
+  [ -L "$TEST_DIR/.devin/rules" ]
+  [ ! -e "$TEST_DIR/.devin/skills" ]
+  [ ! -e "$TEST_DIR/.devin/workflows" ]
+  [ ! -e "$TEST_DIR/.windsurf" ]
 }
 
 @test "sync links CLAUDE.md to AGENTS.md for Claude Code < 2.1.281" {
@@ -376,7 +378,7 @@ fake_claude() {
 @test "sync does not handle CLAUDE.md when claude is not a target" {
   fake_claude 2.1.276
   "$SCRIPT" -d "$TEST_DIR" init
-  run "$SCRIPT" -d "$TEST_DIR" sync --targets windsurf
+  run "$SCRIPT" -d "$TEST_DIR" sync --targets devin
   [ "$status" -eq 0 ]
   [ ! -e "$TEST_DIR/CLAUDE.md" ] && [ ! -L "$TEST_DIR/CLAUDE.md" ]
 }
@@ -391,7 +393,7 @@ fake_claude() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"would link"* ]]
   [ ! -L "$TEST_DIR/.claude/rules" ]
-  [ ! -L "$TEST_DIR/.windsurf/rules" ]
+  [ ! -L "$TEST_DIR/.devin/rules" ]
   [ ! -L "$TEST_DIR/CLAUDE.md" ]
 }
 
@@ -436,11 +438,11 @@ fake_claude() {
   run "$SCRIPT" -d "$TEST_DIR" clean
   [ "$status" -eq 0 ]
   [ ! -L "$TEST_DIR/.claude/rules" ]
-  [ ! -L "$TEST_DIR/.windsurf/rules" ]
+  [ ! -L "$TEST_DIR/.devin/rules" ]
   [ ! -L "$TEST_DIR/CLAUDE.md" ]
   # Empty directories should be removed
   [ ! -d "$TEST_DIR/.claude" ]
-  [ ! -d "$TEST_DIR/.windsurf" ]
+  [ ! -d "$TEST_DIR/.devin" ]
 }
 
 @test "clean preserves .agents/ directory" {
@@ -460,15 +462,37 @@ fake_claude() {
   run "$SCRIPT" -d "$TEST_DIR" --targets claude sync
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.claude/rules" ]
-  [ ! -d "$TEST_DIR/.windsurf" ]
+  [ ! -d "$TEST_DIR/.devin" ]
 }
 
-@test "sync --targets windsurf only syncs to .windsurf/" {
+@test "sync --targets devin only syncs to .devin/" {
   "$SCRIPT" -d "$TEST_DIR" init
-  run "$SCRIPT" -d "$TEST_DIR" --targets windsurf sync
+  run "$SCRIPT" -d "$TEST_DIR" --targets devin sync
   [ "$status" -eq 0 ]
-  [ -L "$TEST_DIR/.windsurf/rules" ]
+  [ -L "$TEST_DIR/.devin/rules" ]
   [ ! -d "$TEST_DIR/.claude" ]
+}
+
+@test "sync --targets windsurf,devin syncs devin once and warns once (SPEC-014 E8, E9)" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  run bash -c '"$0" -d "$1" --targets windsurf,devin sync 2>&1 >/dev/null' "$SCRIPT" "$TEST_DIR"
+  [ "$status" -eq 0 ]
+  [ "$output" = 'warning: target "windsurf" is deprecated; Windsurf is now Devin. Use "devin". Removed in 5.0.0.' ]
+  [ -L "$TEST_DIR/.devin/rules" ]
+  [ ! -e "$TEST_DIR/.windsurf" ]
+}
+
+@test "sync skips the .devin/rules fold while a legacy .windsurf/rules link serves Devin (SPEC-014 E2a, E11)" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.windsurf"
+  ln -s ../.agents/rules "$TEST_DIR/.windsurf/rules"
+  run "$SCRIPT" -d "$TEST_DIR" --targets devin sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"devin rules served by legacy .windsurf/rules link"* ]]
+  [ ! -e "$TEST_DIR/.devin/rules" ]
+  [ -L "$TEST_DIR/.windsurf/rules" ]
+  run "$SCRIPT" -d "$TEST_DIR" --targets devin status
+  [[ "$output" == *"[deprecated] .windsurf/rules -> ../.agents/rules (removed in 5.0.0)"* ]]
 }
 
 # --------------------------------------------------------------------------
@@ -586,13 +610,13 @@ fake_claude() {
 # New targets: cursor, codex, copilot
 # --------------------------------------------------------------------------
 
-@test "sync folds rules for claude/windsurf and delivers cursor/copilot through .agents/index" {
+@test "sync folds rules for claude/devin and delivers cursor/copilot through .agents/index" {
   "$SCRIPT" -d "$TEST_DIR" init
   "$SCRIPT" -d "$TEST_DIR" add rule test-rule
   run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.claude/rules" ]
-  [ -L "$TEST_DIR/.windsurf/rules" ]
+  [ -L "$TEST_DIR/.devin/rules" ]
   # SPEC-013: no rules fold for channel tools; a link to the index instead.
   [ ! -e "$TEST_DIR/.cursor/rules/test-rule.md" ]
   [ ! -e "$TEST_DIR/.github/copilot/rules" ]
@@ -610,7 +634,7 @@ fake_claude() {
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.cursor/rules/sync-agents.mdc" ]
   [ ! -d "$TEST_DIR/.claude" ]
-  [ ! -d "$TEST_DIR/.windsurf" ]
+  [ ! -d "$TEST_DIR/.devin" ]
   [ ! -e "$TEST_DIR/.github/instructions" ]
 }
 
@@ -893,7 +917,7 @@ fake_claude() {
   run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.claude/rules" ]
-  [ ! -d "$TEST_DIR/.windsurf" ]
+  [ ! -d "$TEST_DIR/.devin" ]
   [ ! -d "$TEST_DIR/.cursor" ]
 }
 
@@ -902,10 +926,10 @@ fake_claude() {
   "$SCRIPT" -d "$TEST_DIR" add rule test-rule
   # Config says claude only
   echo "targets = claude" > "$TEST_DIR/.agents/config"
-  # But --targets says windsurf
-  run "$SCRIPT" -d "$TEST_DIR" sync --targets windsurf
+  # But --targets says devin
+  run "$SCRIPT" -d "$TEST_DIR" sync --targets devin
   [ "$status" -eq 0 ]
-  [ -L "$TEST_DIR/.windsurf/rules" ]
+  [ -L "$TEST_DIR/.devin/rules" ]
   [ ! -d "$TEST_DIR/.claude" ]
 }
 
@@ -917,7 +941,7 @@ fake_claude() {
   [ "$status" -eq 0 ]
   [ -L "$TEST_DIR/.claude/rules" ]
   [ -L "$TEST_DIR/.cursor/rules/sync-agents.mdc" ]
-  [ ! -d "$TEST_DIR/.windsurf" ]
+  [ ! -d "$TEST_DIR/.devin" ]
 }
 
 # --------------------------------------------------------------------------
@@ -930,7 +954,7 @@ fake_claude() {
   "$SCRIPT" -d "$TEST_DIR" sync
   [ -f "$TEST_DIR/.gitignore" ]
   grep -qxF ".claude/" "$TEST_DIR/.gitignore"
-  grep -qxF ".windsurf/" "$TEST_DIR/.gitignore"
+  grep -qxF ".devin/" "$TEST_DIR/.gitignore"
   grep -qxF ".cursor/" "$TEST_DIR/.gitignore"
   grep -qxF ".github/copilot/" "$TEST_DIR/.gitignore"
   grep -qxF "CLAUDE.md" "$TEST_DIR/.gitignore"
@@ -970,7 +994,7 @@ fake_claude() {
   "$SCRIPT" -d "$TEST_DIR" sync --targets claude
   grep -qxF ".claude/" "$TEST_DIR/.gitignore"
   grep -qxF "CLAUDE.md" "$TEST_DIR/.gitignore"
-  ! grep -qxF ".windsurf/" "$TEST_DIR/.gitignore"
+  ! grep -qxF ".devin/" "$TEST_DIR/.gitignore"
 }
 
 @test "sync --dry-run does not modify .gitignore" {
@@ -1549,11 +1573,11 @@ CONF
   run "$SCRIPT" -d "$TEST_DIR" sync
   [ "$status" -eq 0 ]
   # SPEC-011 Part A: the agents bucket routes to every tool with a
-  # native subagent surface — claude + cursor. Tools without one
-  # (windsurf, copilot) never receive it.
+  # native subagent surface — claude + cursor. Copilot has none, and
+  # Devin reads .agents/agents itself (SPEC-014 E5).
   [ -L "$TEST_DIR/.claude/agents" ]
   [ -L "$TEST_DIR/.cursor/agents" ]
-  [ ! -e "$TEST_DIR/.windsurf/agents" ]
+  [ ! -e "$TEST_DIR/.devin/agents" ]
   [ ! -e "$TEST_DIR/.github/copilot/agents" ]
   # opencode also has a subagent surface but is opt-in — absent from
   # the default target set, so a plain sync never touches it.
@@ -1599,7 +1623,7 @@ CONF
   [ -L "$TEST_DIR/.claude/plans" ]
   [ -L "$TEST_DIR/.claude/specs" ]
   [ ! -e "$TEST_DIR/.cursor/plans" ]
-  [ ! -e "$TEST_DIR/.windsurf/specs" ]
+  [ ! -e "$TEST_DIR/.devin/specs" ]
 }
 
 # --------------------------------------------------------------------------

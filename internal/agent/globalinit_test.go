@@ -58,7 +58,7 @@ func TestCmdGlobalInit_CreatesSkeleton(t *testing.T) {
 		t.Fatalf("expected config file to be written: %v", err)
 	}
 	content := string(configBytes)
-	if !strings.Contains(content, "targets = claude,codeium,cursor,copilot,codex") {
+	if !strings.Contains(content, "targets = claude,devin,cursor,copilot,codex") {
 		t.Errorf("config does not contain the canonical target line; got:\n%s", content)
 	}
 }

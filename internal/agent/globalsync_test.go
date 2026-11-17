@@ -82,14 +82,14 @@ func TestCmdGlobalSync_EmptyTreeNoop(t *testing.T) {
 // routing across every installed tool. A single rule with no
 // frontmatter should:
 //   - symlink at ~/.claude/rules/security.md
-//   - land in the codeium-rules region of global_rules.md
+//   - land in the devin-rules region of ~/.config/devin/AGENTS.md
 //   - land in the codex-rules region of ~/.codex/AGENTS.md
 //   - reach Copilot through ~/.copilot/instructions/
 //   - never reach ~/.cursor/rules (Cursor has no user-rules file)
 func TestCmdGlobalSync_PassiveRuleFanout(t *testing.T) {
 	a, root, _ := newGlobalSyncTestApp(t)
 	seedRule(t, a.ResolveGlobalRoot(), "security", "be careful\n")
-	mkdirs(t, filepath.Join(root, ".codeium"), filepath.Join(root, ".codex"), filepath.Join(root, ".copilot"))
+	mkdirs(t, filepath.Join(root, ".config", "devin"), filepath.Join(root, ".codex"), filepath.Join(root, ".copilot"))
 
 	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
 		t.Fatalf("CmdGlobalSync: %v", err)
@@ -111,7 +111,7 @@ func TestCmdGlobalSync_PassiveRuleFanout(t *testing.T) {
 	}
 
 	wantContent := []string{
-		filepath.Join(root, ".codeium", "windsurf", "memories", "global_rules.md"),
+		filepath.Join(root, ".config", "devin", "AGENTS.md"),
 		filepath.Join(root, ".codex", "AGENTS.md"),
 		filepath.Join(root, ".copilot", "instructions", "sync-agents.instructions.md"),
 	}
@@ -135,31 +135,26 @@ func TestCmdGlobalSync_PassiveRuleFanout(t *testing.T) {
 // the right per-tool destination for each installed tool:
 //
 //   - claude:   ~/.claude/skills/cool/SKILL.md (symlink)
-//   - codeium:  ~/.codeium/windsurf/global_workflows/cool.md (symlink)
 //   - codex:    skipped (Codex loads ~/.agents/skills natively)
+//   - devin:    skipped (Devin loads ~/.agents/skills natively)
 //   - copilot:  skipped (no user-scope skill surface)
 //
 // and never inside a channel, which carries passive content only.
 func TestCmdGlobalSync_InvocableSkillRoutesPerTool(t *testing.T) {
 	a, root, stdout := newGlobalSyncTestApp(t)
 	seedSkill(t, a.ResolveGlobalRoot(), "cool", "# cool skill\nbody\n", nil)
-	mkdirs(t, filepath.Join(root, ".codeium"), filepath.Join(root, ".codex"), filepath.Join(root, ".copilot"))
+	mkdirs(t, filepath.Join(root, ".config", "devin"), filepath.Join(root, ".codex"), filepath.Join(root, ".copilot"))
 
 	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
 		t.Fatalf("CmdGlobalSync: %v", err)
 	}
 
-	for _, p := range []string{
-		filepath.Join(root, ".claude", "skills", "cool", "SKILL.md"),
-		filepath.Join(root, ".codeium", "windsurf", "global_workflows", "cool.md"),
-	} {
-		info, err := os.Lstat(p)
-		if err != nil || info.Mode()&os.ModeSymlink == 0 {
-			t.Errorf("expected symlink at %s (err=%v)", p, err)
-		}
+	if info, err := os.Lstat(filepath.Join(root, ".claude", "skills", "cool", "SKILL.md")); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("expected the Claude skill symlink (err=%v)", err)
 	}
 	for _, want := range []string{
 		`[codex] skip skill "cool": Codex loads ~/.agents/skills natively`,
+		`[devin] skip skill "cool": Devin loads ~/.agents/skills natively`,
 		`[copilot] skip skill "cool": copilot has no user-scope skill surface`,
 	} {
 		if !strings.Contains(stdout.String(), want) {
@@ -167,46 +162,12 @@ func TestCmdGlobalSync_InvocableSkillRoutesPerTool(t *testing.T) {
 		}
 	}
 	for _, p := range []string{
-		filepath.Join(root, ".codeium", "windsurf", "memories", "global_rules.md"),
+		filepath.Join(root, ".config", "devin", "AGENTS.md"),
 		filepath.Join(root, ".codex", "AGENTS.md"),
 	} {
 		if data, err := os.ReadFile(p); err == nil && bytes.Contains(data, []byte("## cool")) {
 			t.Errorf("invocable skill leaked into %s:\n%s", p, data)
 		}
-	}
-}
-
-// TestCmdGlobalSync_MultiFileSkillSkipsCodeium covers the SPEC-002
-// scenario "Multi-file invocable skill cannot land in Windsurf
-// workflow". The skill should be present in other tools' dirs but
-// SKIPPED for codeium with a warning.
-func TestCmdGlobalSync_MultiFileSkillSkipsCodeium(t *testing.T) {
-	a, root, stdout := newGlobalSyncTestApp(t)
-	mkdirs(t, filepath.Join(root, ".codeium"))
-	seedSkill(t, a.ResolveGlobalRoot(), "big", "# big skill\n", map[string]string{
-		"helper.txt": "support",
-	})
-
-	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
-		t.Fatalf("CmdGlobalSync: %v", err)
-	}
-
-	// Codeium destination should NOT exist.
-	codeiumDest := filepath.Join(root, ".codeium", "windsurf", "global_workflows", "big.md")
-	if _, err := os.Stat(codeiumDest); err == nil {
-		t.Errorf("codeium destination unexpectedly exists: %s", codeiumDest)
-	}
-
-	// Warning should mention the skill name.
-	out := stdout.String()
-	if !strings.Contains(out, "big") || !strings.Contains(out, "skip") {
-		t.Errorf("expected skip warning naming 'big' in stdout:\n%s", out)
-	}
-
-	// Claude destination should still exist.
-	claudeDest := filepath.Join(root, ".claude", "skills", "big", "SKILL.md")
-	if _, err := os.Lstat(claudeDest); err != nil {
-		t.Errorf("Claude destination missing despite multi-file skip being codeium-only: %v", err)
 	}
 }
 
@@ -232,11 +193,11 @@ func TestCmdGlobalSync_FrontmatterFlipsRoute(t *testing.T) {
 		t.Errorf("rules link should not exist for invocable rule: %s", rulesLink)
 	}
 
-	// Windsurf: must NOT be in memories concat (passive only).
-	mem := filepath.Join(root, ".codeium", "windsurf", "memories", "global_rules.md")
+	// Devin: must NOT be in the rules region (passive only).
+	mem := filepath.Join(root, ".config", "devin", "AGENTS.md")
 	if data, err := os.ReadFile(mem); err == nil {
 		if bytes.Contains(data, []byte("onboarding")) {
-			t.Errorf("invocable rule leaked into memories concat:\n%s", data)
+			t.Errorf("invocable rule leaked into the devin-rules region:\n%s", data)
 		}
 	}
 }
@@ -248,15 +209,15 @@ func TestCmdGlobalSync_FrontmatterFlipsRoute(t *testing.T) {
 func TestCmdGlobalSync_Idempotent(t *testing.T) {
 	a, root, _ := newGlobalSyncTestApp(t)
 	seedRule(t, a.ResolveGlobalRoot(), "x", "body\n")
-	mkdirs(t, filepath.Join(root, ".codeium"))
+	mkdirs(t, filepath.Join(root, ".config", "devin"))
 
 	if err := a.CmdGlobalSync(GlobalSyncOpts{}); err != nil {
 		t.Fatalf("first sync: %v", err)
 	}
 
-	// Grab mtime of the codeium region host (the most interesting
+	// Grab mtime of the devin region host (the most interesting
 	// idempotency case — it's content-compared).
-	concatPath := filepath.Join(root, ".codeium", "windsurf", "memories", "global_rules.md")
+	concatPath := filepath.Join(root, ".config", "devin", "AGENTS.md")
 	firstInfo, err := os.Stat(concatPath)
 	if err != nil {
 		t.Fatalf("region host missing after first sync: %v", err)

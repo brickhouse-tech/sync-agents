@@ -35,17 +35,22 @@ errs on the side of preservation, sync errs on the side of detection.
 ## What gets removed
 
 - **Per-artifact symlinks** under each tool's per-scope dir
-  (`~/.claude/`, `~/.codeium/`, `~/.cursor/`, `~/.github/copilot/`,
-  `~/.codex/`) — whether or not the underlying canonical artifact
+  (`~/.claude/`, `~/.config/devin/`, `~/.cursor/`, `~/.codex/`) — whether or not the underlying canonical artifact
   still exists.
 - **Delivery channels**: the
   `~/.copilot/instructions/sync-agents.instructions.md` link, the
-  `codex-rules` region in `$CODEX_HOME/AGENTS.md`, the `codeium-rules`
-  region in Windsurf's `global_rules.md`, our entry in
+  `codex-rules` region in `$CODEX_HOME/AGENTS.md`, the `devin-rules`
+  region in `~/.config/devin/AGENTS.md`, our entry in
   `~/.config/opencode/opencode.json`, the `openclaw-rules` region, and
-  the files in `~/.agents/index/`. A Codex or Windsurf host that holds
+  the files in `~/.agents/index/`. A Codex or Devin host that holds
   nothing but our region is removed, because sync created it. The
   OpenClaw host is always kept.
+- Nothing an earlier version wrote for the retired `codeium` target
+  (Windsurf). `--targets windsurf` or `--targets codeium` cleans `devin`.
+  The `codeium-rules` region and the `~/.codeium/windsurf/global_workflows/`
+  links stay in place during 4.x (SPEC-014). Given one of those names,
+  global clean lists each such placement it found and left, under a
+  `Left in place:` warning.
 - **The `claude-imports` block** in `~/.claude/CLAUDE.md`. The file is
   removed only when nothing else is left in it.
 - **1.x concat files** that start with the old banner.

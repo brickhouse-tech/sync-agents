@@ -8,8 +8,8 @@ scope and at user scope, as implemented since SPEC-013.
 - `.agents/` is the source. Rules, workflows, and skills whose
   [semantic](semantic-routing.md) is passive are the content every tool
   should load.
-- Claude and Windsurf read a rules directory natively. They get the
-  folded `.claude/rules` and `.windsurf/rules` links, as before.
+- Claude and Devin read a rules directory natively. They get the
+  folded `.claude/rules` and `.devin/rules` links.
 - Every other tool gets one generated file per tool, rendered into
   `.agents/index/` (project) or `~/.agents/index/` (user), and one
   mount at a path the vendor documents.
@@ -28,8 +28,8 @@ size limit).
 |---|---|---|---|---|---|
 | Claude | project | `.claude/rules/*.md`; `CLAUDE.md`, else `AGENTS.md` | `.claude/rules -> ../.agents/rules`; `CLAUDE.md -> AGENTS.md` per the [CLAUDE.md policy](#claudemd-policy) | fold | none |
 | Claude | user | `~/.claude/rules/*.md` | one link per rule into `~/.agents/rules/` | per artifact | none |
-| Windsurf | project | `.windsurf/rules/*.md`, root `AGENTS.md` | `.windsurf/rules -> ../.agents/rules` | fold | 12,000 chars per file (vendor; not checked) |
-| Windsurf | user | `~/.codeium/windsurf/memories/global_rules.md` | `~/.agents/index/codeium.md`; region `codeium-rules` | region | 6,000 UTF-16 units, whole file |
+| Devin | project | `.devin/rules/*.md`, `.windsurf/rules/*.md`, root `AGENTS.md` | `.devin/rules -> ../.agents/rules`, skipped while legacy `.windsurf/rules` links into `.agents/rules` exist, and in `$HOME` (global sync delivers there) | fold | none |
+| Devin | user | `~/.config/devin/AGENTS.md` | `~/.agents/index/devin.md`; region `devin-rules` | region | none |
 | Cursor | project | `.cursor/rules/*.mdc`, `AGENTS.md` | `.agents/index/cursor.mdc`; link `.cursor/rules/sync-agents.mdc` | link | none |
 | Cursor | user | app settings only, no file | nothing (status shows a `gap` row) | none | n/a |
 | Copilot | project | `.github/instructions/**/*.instructions.md`, `.github/copilot-instructions.md`, `AGENTS.md` | `.agents/index/copilot.md`; link `.github/instructions/sync-agents.instructions.md` | link | none |
@@ -44,6 +44,16 @@ size limit).
 `$CODEX_HOME` defaults to `~/.codex`. The OpenClaw workspace comes from
 `openclaw.json`, as in [global-sync.md](../commands/global-sync.md).
 
+Windsurf is now Devin (SPEC-014), so the table has no Windsurf rows.
+What earlier versions wrote for Windsurf stays in place during 4.x: the
+`.windsurf/rules` fold and the `codeium-rules` region in
+`~/.codeium/windsurf/memories/global_rules.md`. `status` and `global
+status` list each one as deprecated. Devin imports `.windsurf/rules` by
+default, so sync skips the `.devin/rules` fold while the legacy fold,
+or any per-rule link an earlier sync drilled into a real
+`.windsurf/rules/`, still points into `.agents/rules`. Each rule then
+loads once.
+
 The generated files:
 
 | File | Content |
@@ -51,7 +61,7 @@ The generated files:
 | `cursor.mdc` | MDC frontmatter (`description`, `alwaysApply: true`), the banner, then one `## <name>` section per rule. Under `index = local` it also carries your user-level rules (Cursor has no user-rules file). A project rule wins over a user rule of the same name. |
 | `copilot.md` | `applyTo: "**"` frontmatter, the banner, then the rules. |
 | `codex.md` | The project's `AGENTS.md` with every `sync-agents:*` region removed, a note, the banner, then the rules. Codex reads the override instead of `AGENTS.md`, so the override has to carry `AGENTS.md`'s text. |
-| `opencode.md`, `codeium.md`, `openclaw.md` | The banner, then the rules. Region bodies use the same bytes. |
+| `opencode.md`, `devin.md`, `openclaw.md` | The banner, then the rules. Region bodies use the same bytes. |
 
 Each rule section starts with `<!-- OS: <scope> -->` when the rule
 lives in an OS-scoped subdirectory. Rules that do not fit the budget are
@@ -105,10 +115,9 @@ names the tool. `global status` shows it as `unmounted` with the reason.
 | Codex, user | 32,768 | bytes | the whole `AGENTS.md`, including your text outside the region | `project_doc_max_bytes` in `$CODEX_HOME/config.toml` |
 | Codex, project | 32,768 | bytes | the user-level `AGENTS.md` plus the override | same |
 | OpenClaw | 20,000 | UTF-16 units | the whole workspace `AGENTS.md` | `agents.defaults.bootstrapMaxChars` in `openclaw.json` |
-| Windsurf, user | 6,000 | UTF-16 units | the whole `global_rules.md` | none (fixed by the vendor) |
 
-Cursor, Copilot, and opencode document no limit, so their files inline
-every rule.
+Cursor, Copilot, Devin, and opencode document no limit, so their files
+inline every rule.
 
 Fitting is first fit in name order. A rule is inlined when the fixed
 part, the rules already inlined, this rule, and the pointers still owed
@@ -117,7 +126,7 @@ on, so a later, smaller rule can still fit. No tool ever cuts a rule in
 the middle, because the file stays under the limit.
 
 - `trigger: model_decision` in a rule's frontmatter makes it a pointer in
-  every capped file. Uncapped files inline it. Claude and Windsurf still
+  every capped file. Uncapped files inline it. Claude and Devin still
   read the source file natively.
 - When the limit forces a rule out, sync warns with the rule names and
   the knob.
@@ -155,7 +164,7 @@ are the same on every contributor's machine.
 `!.cursor/rules` keeps your own committed `.mdc` rules visible to git.
 `sync` then appends exact lines when they are missing:
 
-- one `<tool dir>/` line per active target (`.claude/`, `.windsurf/`,
+- one `<tool dir>/` line per active target (`.claude/`, `.devin/`,
   `.cursor/`, `.github/copilot/`, `.codex/`, `.opencode/`);
 - under `index = local`: `.agents/index/` and each link path it placed
   (`.cursor/rules/sync-agents.mdc`,
@@ -299,7 +308,9 @@ nothing.
 | Copilot (VS Code and CLI) follows a symlinked `.instructions.md` | **unverified** |
 | Codex follows a symlinked `AGENTS.override.md` | **unverified** |
 | opencode loads an `instructions` entry that is a symlink, and ignores a missing one | **unverified** |
-| OpenClaw and Windsurf count UTF-16 units | inferred: OpenClaw is TypeScript; Windsurf does not state its unit |
+| OpenClaw counts UTF-16 units | inferred: OpenClaw is TypeScript |
+| Devin reads `~/.config/devin/AGENTS.md` in Devin Local, not only Devin CLI | **unverified**. Devin Local docs name `~/.devin/global_rules.md` (SPEC-014 open question 1) |
+| Devin treats a rule with no `trigger:` frontmatter as always on | **unverified** (SPEC-014 open question 2) |
 
 None of the Cursor, Copilot, Codex, or opencode CLIs was installed where
 this was built, so the four rows above stay unverified until someone
@@ -311,7 +322,8 @@ path instead of a symlink.
 
 Carried over from SPEC-013 when it shipped in 2.0.0:
 
-- **Per-tool symlink check.** Confirm the four unverified rows above,
+- **Per-tool symlink check.** Confirm the unverified Cursor, Copilot,
+  Codex, and opencode rows above,
   and that opencode treats a missing `instructions` file (a fresh clone
   with a committed `opencode.json`) as a no-op.
 - **Simplify pass.** Production Go grew by about 2.3k lines net in
@@ -325,8 +337,6 @@ Carried over from SPEC-013 when it shipped in 2.0.0:
 - **Skills double-registration.** `.agents/skills` is native to Codex,
   Cursor, and opencode, so the `.cursor/skills` and `.codex/skills`
   links may register skills twice.
-- **Windsurf path.** Should the local fold move to `.devin/rules`, the
-  vendor's preferred path?
 - **Global `targets=`.** Global sync ignores `~/.agents/config`
   `targets=`; the home gate covers most of the risk.
 

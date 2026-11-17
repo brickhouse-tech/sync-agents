@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -131,20 +132,102 @@ type ChannelResult struct {
 // the passive bucket (rules) is not folded into the tool's directory.
 // That frees .cursor/rules for the .mdc link and retires the
 // .github/copilot/rules, .codex/rules, and .opencode/rules links,
-// which no tool read. Claude and Windsurf have no local channel (they
-// read the folded .agents/rules natively) and keep every bucket, as do
-// unregistered targets (wave). Every other bucket follows
-// Bucket.SyncsToTool as before.
+// which no tool read. Claude and Devin have no local channel (they read
+// the folded .agents/rules natively) and keep the rules fold, as do
+// unregistered targets (wave). projectBuckets narrows a tool to the
+// buckets it cannot read from .agents/ itself. Every other bucket
+// follows Bucket.SyncsToTool as before.
 func linksBucket(target string, b Bucket) bool {
-	if !b.SyncsToTool(target) {
+	if !b.SyncsToTool(target) || channelWithholds(target, b) {
 		return false
 	}
+	only, limited := projectBuckets[target]
+	return !limited || slices.Contains(only, b.Dir)
+}
+
+// projectBuckets lists the only buckets local sync links into a tool's
+// project directory. A tool absent here gets every bucket linksBucket
+// otherwise allows.
+var projectBuckets = map[string][]string{
+	// Devin reads .agents/skills and .agents/agents itself and has no
+	// workflow surface (SPEC-014 E4-E6).
+	"devin": {"rules"},
+}
+
+// channelWithholds reports whether target's local channel delivers
+// bucket b's passive content, so the bucket is not folded into the
+// tool's directory. legacyFoldPaths removes the folds earlier versions
+// made in that case.
+func channelWithholds(target string, b Bucket) bool {
 	tool, ok := ResolveTool(target)
 	if !ok {
-		return true
+		return false
 	}
 	_, hasChannel := channelSpecs[tool.ID][ScopeLocal]
-	return !(hasChannel && BucketDefaultSemantic(b.Artifact) == Passive)
+	return hasChannel && BucketDefaultSemantic(b.Artifact) == Passive
+}
+
+// withheldFold returns why local sync does not fold bucket b into
+// target's directory although linksBucket allows it, or "". Both
+// reasons keep a tool from loading the same rules twice:
+//
+//   - In $HOME the project's .agents/ is the global root (sameTree). A
+//     tool with a global channel gets the passive bucket from global
+//     sync, as bindChannels defers its local channel. Devin also reads
+//     ~/.devin/rules as user rules (SPEC-014 E2b).
+//   - A tool that replaced a retired one may still read the retired
+//     tool's folds: Devin imports .windsurf/rules by default (E2a).
+func (a *App) withheldFold(target string, b Bucket) string {
+	if tool, ok := ResolveTool(target); ok && BucketDefaultSemantic(b.Artifact) == Passive {
+		if _, global := channelSpecs[tool.ID][ScopeGlobal]; global && a.sameTree() {
+			return deferredToGlobal(target + " " + b.Dir)
+		}
+	}
+	for _, retired := range retiredFor([]string{target}) {
+		dest := filepath.Join(retired.DirForScope(ScopeLocal, a.ProjectRoot), b.Dir)
+		switch links := a.agentsLinks(dest, b); {
+		case len(links) == 0:
+		case links[0] == dest:
+			return fmt.Sprintf("%s %s served by legacy %s link", target, b.Dir, a.display(dest))
+		default:
+			return fmt.Sprintf("%s %s served by legacy links in %s", target, b.Dir, a.display(dest))
+		}
+	}
+	return ""
+}
+
+// deferredToGlobal is the report for what local sync leaves to global
+// sync because the project's .agents/ is the global root.
+func deferredToGlobal(what string) string {
+	return what + ": skipped at project scope: this project's .agents/ is the global root, so `sync-agents global sync` delivers it"
+}
+
+// agentsLinks returns what linkBucket placed at dest for bucket b: dest
+// itself when it is a symlink into .agents/<b.Dir> (the fold), else each
+// symlink into .agents/<b.Dir> directly inside a real dest directory
+// (the drill). Everything else at dest is the user's.
+func (a *App) agentsLinks(dest string, b Bucket) []string {
+	src := filepath.Join(a.ProjectRoot, ".agents", b.Dir)
+	fi, err := os.Lstat(dest)
+	switch {
+	case err != nil:
+		return nil
+	case fi.Mode()&os.ModeSymlink != 0:
+		if pointsInto(dest, src) {
+			return []string{dest}
+		}
+		return nil
+	case !fi.IsDir():
+		return nil
+	}
+	entries, _ := os.ReadDir(dest)
+	var links []string
+	for _, e := range entries {
+		if p := filepath.Join(dest, e.Name()); e.Type()&os.ModeSymlink != 0 && pointsInto(p, src) {
+			links = append(links, p)
+		}
+	}
+	return links
 }
 
 // sameTree reports whether the project's .agents/ is the global root:
@@ -249,7 +332,7 @@ func (a *App) bindChannel(tool Tool, scope Scope, spec ChannelSpec, tree, base, 
 		Home:   home,
 	}
 	for _, name := range explicit {
-		if tool.Matches(strings.ToLower(strings.TrimSpace(name))) {
+		if tool.ID == canonicalName(strings.ToLower(strings.TrimSpace(name))) {
 			ch.Explicit = true
 		}
 	}
@@ -460,7 +543,7 @@ func (a *App) deliverChannels(run ChannelRun) ([]ChannelResult, error) {
 	}
 	if run.Mode == ChannelMount {
 		for _, id := range deferred {
-			a.Info(fmt.Sprintf("%s: skipped at project scope: this project's .agents/ is the global root, so `sync-agents global sync` delivers it", id))
+			a.Info(deferredToGlobal(id))
 		}
 	}
 	if len(chans) == 0 {

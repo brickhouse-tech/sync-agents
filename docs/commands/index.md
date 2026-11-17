@@ -25,8 +25,8 @@ re-splices regions and config entries that already exist. It does not
 create a link, a region, or a config entry in a tool directory, and it
 does not remove legacy placements. `sync` does that.
 
-Claude and Windsurf have no file here: they read `.agents/rules`
-through the `.claude/rules` and `.windsurf/rules` links.
+Claude and Devin have no file here: they read `.agents/rules`
+through the `.claude/rules` and `.devin/rules` links.
 
 ## AGENTS.md
 

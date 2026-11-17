@@ -56,7 +56,7 @@ func TestGlobalChannel_UninstalledToolsGetNothing(t *testing.T) {
 			t.Errorf("global sync created %s for a tool that is not installed", p)
 		}
 	}
-	for _, tool := range []string{"[codex]", "[copilot]", "[codeium]", "[opencode]", "[openclaw]"} {
+	for _, tool := range []string{"[codex]", "[copilot]", "[codeium]", "[devin]", "[opencode]", "[openclaw]"} {
 		if strings.Contains(stdout.String(), tool) {
 			t.Errorf("output talks about an uninstalled tool %s:\n%s", tool, stdout)
 		}
@@ -187,34 +187,6 @@ func TestGlobalChannel_CodexOverCapDemotesWithReserved(t *testing.T) {
 	}
 }
 
-func TestGlobalChannel_WindsurfLegacyConcatBecomesRegion(t *testing.T) {
-	a, root, stdout := newGlobalSyncTestApp(t)
-	seedRule(t, a.GlobalRoot, "security", "Never commit secrets.\n")
-	host := filepath.Join(root, ".codeium", "windsurf", "memories", "global_rules.md")
-	writeArtifact(t, root, filepath.Join(".codeium", "windsurf", "memories", "global_rules.md"),
-		legacyConcatBanner+" — do not edit by hand.\nSource: ~/.agents/\n-->\n\n## security\n\nold text\n\n")
-
-	globalSync(t, a)
-	want := CodeiumRulesRegion.Start() + "\n" + globalBanner + "\n\n## security\n\nNever commit secrets.\n\n" + CodeiumRulesRegion.End() + "\n"
-	if got := readFile(t, host); got != want {
-		t.Fatalf("legacy concat not rewritten as the region:\n%s", got)
-	}
-	if !strings.Contains(stdout.String(), "Rewrote the old generated file as region codeium-rules") {
-		t.Errorf("rewrite not reported:\n%s", stdout)
-	}
-
-	// A memory the Windsurf UI adds outside the markers survives.
-	if err := os.WriteFile(host, []byte("Remember: tabs.\n\n"+want), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	seedRule(t, a.GlobalRoot, "testing", "Run the tests.\n")
-	globalSync(t, a)
-	got := readFile(t, host)
-	if !strings.HasPrefix(got, "Remember: tabs.\n\n"+CodeiumRulesRegion.Start()) || !strings.Contains(got, "## testing") {
-		t.Errorf("UI edit lost or region not refreshed:\n%s", got)
-	}
-}
-
 func TestGlobalChannel_CopilotLinkNeedsHome(t *testing.T) {
 	a, root, _ := newGlobalSyncTestApp(t)
 	seedRule(t, a.GlobalRoot, "security", "Never commit secrets.\n")
@@ -327,9 +299,9 @@ func TestGlobalChannel_CleanUndoesEveryChannel(t *testing.T) {
 	for _, home := range []string{".codex", ".copilot", filepath.Join(".config", "opencode")} {
 		writeArtifact(t, root, filepath.Join(home, "state.json"), "{}\n")
 	}
-	windsurf := "Remember: tabs.\n"
-	writeArtifact(t, root, filepath.Join(".codeium", "windsurf", "memories", "global_rules.md"), windsurf)
-	globalSync(t, a, "claude", "codex", "copilot", "opencode", "windsurf")
+	devin := "Prefer tabs.\n"
+	writeArtifact(t, root, filepath.Join(".config", "devin", "AGENTS.md"), devin)
+	globalSync(t, a, "claude", "codex", "copilot", "opencode", "devin")
 
 	if err := a.CmdGlobalClean(GlobalCleanOpts{}); err != nil {
 		t.Fatalf("clean: %v", err)
@@ -349,8 +321,8 @@ func TestGlobalChannel_CleanUndoesEveryChannel(t *testing.T) {
 			t.Errorf("clean removed the tool home %s", home)
 		}
 	}
-	if got := readFile(t, filepath.Join(root, ".codeium", "windsurf", "memories", "global_rules.md")); got != windsurf {
-		t.Errorf("clean did not restore global_rules.md: %q", got)
+	if got := readFile(t, filepath.Join(root, ".config", "devin", "AGENTS.md")); got != devin {
+		t.Errorf("clean did not restore ~/.config/devin/AGENTS.md: %q", got)
 	}
 }
 

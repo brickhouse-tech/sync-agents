@@ -11,8 +11,25 @@ sync-agents sync [--targets t1,t2] [--dry-run] [--overwrite] [--dir PATH]
 ## What it does
 
 For every active target (from `--targets`, else `.agents/config`, else
-`claude,windsurf,cursor,copilot`) and every bucket that exists under
+`claude,devin,cursor,copilot`) and every bucket that exists under
 `.agents/`, sync makes `<tool>/<bucket>` resolve to `.agents/<bucket>`.
+Devin receives only `rules`: it reads `.agents/skills` and
+`.agents/agents` itself and has no workflow surface. While an earlier
+version's links in `.windsurf/rules` point into `.agents/rules` (the
+`.windsurf/rules` link itself, or per-rule links inside a real
+`.windsurf/rules/`), sync skips the `.devin/rules` fold and prints
+`devin rules served by legacy .windsurf/rules link` (or `legacy links
+in .windsurf/rules`), because Devin imports `.windsurf/rules` too. Run in `$HOME`, where `.agents/` is the global root, sync skips
+the fold as well: `~/.devin/rules` is Devin's user rules directory, and
+`sync-agents global sync` already delivers those rules through
+`~/.config/devin/AGENTS.md`. Sync also removes a `.windsurf/skills`
+link into `.agents/skills` left by 4.0.x: Devin imports it and reads
+`.agents/skills` too, so every skill loaded twice. A real
+`.windsurf/skills/` directory, or a link elsewhere, stays.
+
+The target names `windsurf` and `codeium` are deprecated. Sync treats
+each as `devin` and prints one warning to stderr per run. See
+[Scope and targets](../architecture/scope-and-targets.md#retired-tools-and-deprecated-names).
 A target name maps to `.<name>/` at the project root (`copilot` maps to
 `.github/copilot/`), so a custom target such as `wave` syncs into
 `.wave/`.
@@ -93,7 +110,7 @@ To recover a backup, see [Recovering a backup](#recovering-a-backup).
 
 | Flag | Default | Effect |
 |---|---|---|
-| `--targets <list>` | `.agents/config`, else `claude,windsurf,cursor,copilot` | Comma-separated targets to sync. Naming a tool also consents to editing a file of yours it reads (an existing `opencode.json`). |
+| `--targets <list>` | `.agents/config`, else `claude,devin,cursor,copilot` | Comma-separated targets to sync. Naming a tool also consents to editing a file of yours it reads (an existing `opencode.json`). |
 | `--dry-run` | false | Print each planned link without writing. |
 | `--overwrite` | false | Rename each conflicting entry to `<path>.replaced-by-sync-agents` and link in its place. Never deletes. |
 | `--force` | false | **Deprecated on `sync`.** Prints a deprecation warning and behaves as `--overwrite`. Nothing is deleted. Will be removed from `sync` in a later release. |

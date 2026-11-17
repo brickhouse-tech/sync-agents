@@ -12,7 +12,7 @@ The `fix` command handles three scenarios:
 2. **Flat skill conversion** — Converts `.agents/skills/name.md` flat
    files to the directory layout `.agents/skills/name/SKILL.md`.
 3. **Symlink repair** — Recreates missing or broken symlinks in target
-   directories (`.claude/`, `.windsurf/`, etc.) and the delivery-channel
+   directories (`.claude/`, `.devin/`, etc.) and the delivery-channel
    links, and applies the
    [`CLAUDE.md` policy](../architecture/delivery-channels.md#claudemd-policy).
    `fix` no longer relinks a `CLAUDE.md` symlink that points elsewhere.

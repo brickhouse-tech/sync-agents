@@ -17,7 +17,7 @@ delivery channel:
 ```text
 [info] global status (1 artifacts, 7 tool(s)):
 [synced] claude/rule/security -> /home/u/.claude/rules/security.md
-[unmounted] codeium -> /home/u/.codeium/windsurf/memories/global_rules.md  (tool not installed (its home directory is missing); run with --targets codeium to create it)
+[unmounted] devin -> /home/u/.config/devin/AGENTS.md  (tool not installed (its home directory is missing); run with --targets devin to create it)
 [synced] copilot -> /home/u/.copilot/instructions/sync-agents.instructions.md  (.copilot/instructions/sync-agents.instructions.md -> .agents/index/copilot.md)
 [unmounted] codex -> /home/u/.codex/AGENTS.md  (the file exists and is yours; run once with --targets codex to let sync-agents edit it)
 [gap] cursor  (Cursor keeps user rules in app settings, not in files; global rules reach Cursor through each project's .cursor/rules/sync-agents.mdc when index = local)
@@ -37,13 +37,13 @@ for shell pipelines that want to grep for `[drifted]` or `[stale]`.
 | `[drifted]` | A symlink exists but its target is wrong (the canonical artifact moved, or a previous sync used a different path). Re-run `global sync` to repair. |
 | `[not-a-symlink]` | A regular file or directory occupies the destination — a conflict: the canonical tree claims this artifact but something real shadows it. `global sync` will skip it unless `--force` is set. |
 | `[missing]` | Nothing at the destination. `global sync` will create the symlink. |
-| `[skipped]` | The (artifact, tool) pair is intentionally not routable — e.g. a multi-file invocable skill targeting Windsurf workflows. The Detail field explains. |
+| `[skipped]` | The (artifact, tool) pair is intentionally not routable, for example an invocable workflow sent to Devin, which has no workflow surface. The Detail field explains. |
 | `[folded]` | The exact per-artifact link is absent, but the path *resolves* to the canonical artifact through an ancestor symlink (e.g. a dir-level `.claude/skills/<name>` link). Conformant at a coarser granularity — no action needed. (SPEC-010) |
 
 ### Channel rows
 
-Each tool with a user-level delivery channel gets one row: Windsurf
-(`codeium`), Copilot, Codex, opencode, and OpenClaw. Cursor gets one
+Each tool with a user-level delivery channel gets one row: Devin,
+Copilot, Codex, opencode, and OpenClaw. Cursor gets one
 `[gap]` row, because it has no user-rules file. The row compares the
 rendered bytes with what is on disk, so `[synced]` means `global sync`
 would write nothing.
@@ -61,13 +61,29 @@ would write nothing.
 
 See [Delivery channels](../architecture/delivery-channels.md).
 
+### Deprecated rows
+
+When `devin` is a target, status also lists what an earlier version
+wrote for the retired `codeium` target (Windsurf) and sync now leaves in
+place (SPEC-014). There is one row per placement still on disk: the
+`codeium-rules` host and each link in
+`~/.codeium/windsurf/global_workflows/` that resolves into the global
+root.
+
+```text
+[deprecated] codeium -> /home/u/.codeium/windsurf/memories/global_rules.md  (removed in 5.0.0)
+[deprecated] codeium -> /home/u/.codeium/windsurf/global_workflows/deploy.md  (removed in 5.0.0)
+```
+
+Project `status` lists each `.windsurf/<bucket>` link into `.agents/`
+the same way.
+
 ### Audit sweep (SPEC-010)
 
 After the per-destination rows, `global status` enumerates the managed
 artifact subdirs of each tool (for Claude: `skills/`, `commands/`,
 `rules/`, `agents/`, `plans/`, `specs/`, and `adrs/`, which v3 used for
-ADRs; Windsurf:
-`global_workflows/`; Cursor: `rules/`) and reports entries the
+ADRs; Cursor: `rules/`) and reports entries the
 canonical tree does *not* claim. The tool root itself is application
 state (credentials, sessions, caches) and is never enumerated.
 
