@@ -36,7 +36,7 @@ workflows, and state for your agents:
 ```
 
 Running `sync-agents sync` creates symlinks from `.agents/`
-subdirectories into `.claude/`, `.windsurf/`, `.cursor/`,
+subdirectories into `.claude/`, `.devin/` (rules only), `.cursor/`,
 `.github/copilot/`, and, when enabled, `.codex/` and `.opencode/`.
 Changes to `.agents/` show up in those directories at once, because they
 are symlinks, not copies.
@@ -70,10 +70,11 @@ their directory exists — `init` does not create them,
 
 `agents/` reaches every tool that has a **native subagent surface**
 reading markdown with YAML frontmatter — Claude (`.claude/agents/`),
-Cursor (`.cursor/agents/`), and opencode (`.opencode/agents/`,
-`~/.config/opencode/agents/` at user scope). Windsurf, Copilot, and
-Codex have no subagent concept, so they are skipped rather than sent a
-mislabeled artifact.
+Cursor (`.cursor/agents/`), Devin (`~/.config/devin/agents/` at user
+scope; it reads `.agents/agents/` in a project itself), and opencode
+(`.opencode/agents/`, `~/.config/opencode/agents/` at user scope).
+Copilot and Codex have no subagent concept, so they are skipped rather
+than sent a mislabeled artifact.
 
 Frontmatter is **not translated** between harnesses. Claude's `tools:`
 and `model:` sit alongside Cursor's `readonly:` and `is_background:` in
@@ -103,9 +104,9 @@ sync with progress.
 
 ```
 # sync-agents configuration
-# Comma-separated list of sync targets (available: claude, windsurf, cursor, copilot, codex, opencode)
+# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode)
 # Override per-command with: sync-agents sync --targets claude,cursor
-targets = claude,windsurf,cursor,copilot
+targets = claude,devin,cursor,copilot
 # index = local      # local (default: .agents/index/ and its links are gitignored) | commit
 # claude-md = auto   # auto (default: link CLAUDE.md -> AGENTS.md only for Claude Code < 2.1.281) | link | off
 ```

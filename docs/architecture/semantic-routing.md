@@ -31,6 +31,10 @@ semantic:
 | `plans/` | reference (`plans/<name>.md`) | — (skip: opened from `.agents/plans/` when asked) | — (skip) | — (skip) |
 | `specs/` | reference (`specs/<name>.md`) | — (skip: opened from `.agents/specs/` when asked) | — (skip) | — (skip) |
 
+Windsurf is now Devin (SPEC-014), and sync no longer writes for
+Windsurf. The column stays because it shows why routing follows
+semantic. Devin is covered in the next section.
+
 Agents, plans, and specs route **independently of semantic** — the
 per-tool destination is a property of the bucket (Claude-only), so a
 frontmatter `invocable:` override never reroutes them into commands/
@@ -102,28 +106,28 @@ one when:
   routes it to passive destinations so it stays as reference text
   rather than a slash command.
 
-## What about Cursor, Copilot, Codex, and opencode?
+## What about Cursor, Copilot, Codex, Devin, and opencode?
 
-These tools read aggregated rule text, not a rules directory of
-per-artifact files that sync-agents can link. Passive content reaches
-them through one generated file per tool: the delivery channel (see
-[Delivery channels](./delivery-channels.md)). At user scope they have
-no command surface that sync-agents writes, so invocable rules and
-workflows are skipped. Codex, Cursor, opencode, and OpenClaw load
-`~/.agents/skills` natively, so skills are not linked into their trees.
+These tools read aggregated rule text at user scope, not a rules
+directory of per-artifact files that sync-agents can link. Passive
+content reaches them through one generated file per tool: the delivery
+channel (see [Delivery channels](./delivery-channels.md)). At user scope
+they have no command surface that sync-agents writes, so invocable rules
+and workflows are skipped. Devin's skip reason says to make the
+workflow a skill, because Devin has no workflow surface. Codex, Cursor,
+Devin, opencode, and OpenClaw load `~/.agents/skills` natively, so
+skills are not linked into their trees.
 
 ## Multi-file invocable skills
 
-Windsurf workflows are single `.md` files. A Claude skill that's a
-*directory* with supporting files cannot cleanly become a Windsurf
-workflow. When `global sync` encounters one targeting codeium, it
-prints a warning naming the skill and the reason, then skips that
-target only. Claude still receives the skill, and the overall exit code
-stays 0.
+Windsurf workflows were single `.md` files, so the `codeium` target
+skipped a skill directory with supporting files. Since SPEC-014 no
+target routes skills to a workflow surface, and this case no longer
+comes up.
 
 ## Delivery channels
 
-Passive content for Windsurf (user scope), Cursor, Copilot, Codex,
+Passive content for Devin (user scope), Cursor, Copilot, Codex,
 opencode, and OpenClaw is not linked per artifact. Each tool gets one
 generated file in `.agents/index/` or `~/.agents/index/`, mounted as a
 link, a marked region, or a config entry at the path the tool reads,
