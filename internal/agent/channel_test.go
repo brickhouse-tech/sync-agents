@@ -237,19 +237,20 @@ func TestChannelSpecs_Invariants(t *testing.T) {
 		}
 	})
 
-	t.Run("one writer per region", func(t *testing.T) {
+	// A host file belongs to one scope, so one tool may write the same
+	// region at both (gemini-rules in GEMINI.md and ~/.gemini/GEMINI.md).
+	t.Run("one tool per region", func(t *testing.T) {
 		seen := map[string]string{}
 		for id, rows := range channelSpecs {
-			for scope, spec := range rows {
+			for _, spec := range rows {
 				rm, ok := spec.Mount.(RegionMount)
 				if !ok {
 					continue
 				}
-				owner := id + "/" + scope.String()
-				if other, dup := seen[rm.Region.Name]; dup {
-					t.Errorf("region %s has two writers: %s and %s", rm.Region.Name, owner, other)
+				if other, dup := seen[rm.Region.Name]; dup && other != id {
+					t.Errorf("region %s has two writers: %s and %s", rm.Region.Name, id, other)
 				}
-				seen[rm.Region.Name] = owner
+				seen[rm.Region.Name] = id
 			}
 		}
 	})

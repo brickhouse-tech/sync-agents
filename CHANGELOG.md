@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## Unreleased
+
+### Features
+
+* **targets:** add the `antigravity` target for Antigravity App and CLI (SPEC-015). Antigravity reads a project's `.agents/` natively, so local sync places nothing for it. At user scope, global sync links each passive rule into `~/.gemini/config/rules/` (OS-scoped rules flattened, as `macos-brew.md`), each skill into `~/.gemini/config/skills/<name>/`, and each subagent into `~/.gemini/config/agents/`. Invocable rules and workflows are skipped, because Antigravity workflows are deprecated.
+* **targets:** `init` and `global init` write `antigravity` in the default `targets =` line.
+* **targets:** add the opt-in `gemini` target for Gemini CLI (SPEC-015). No default list names it. User rules go to the `gemini-rules` region of `~/.gemini/GEMINI.md`. In a project the region goes into `GEMINI.md` only when the file exists. Subagents link into `.gemini/agents/` and `~/.gemini/agents/`. Skills and workflows are skipped. `global sync` warns when `antigravity` and `gemini` are both targeted, because Antigravity CLI also reads `~/.gemini/GEMINI.md`.
+* **lint:** E010 flags a rule whose `trigger:` is missing or not one of `always_on`, `model_decision`, `glob`, `manual`; `--fix` adds `trigger: always_on` where the key is missing. W104 flags `model_decision` without `description` and `glob` without `globs`. `lint rules` runs only the rule checks.
+* **sync:** `sync` and `global sync` print one warning listing the rules Antigravity or Devin would drop for lack of a valid `trigger:`.
+
+### Bug Fixes
+
+* **global clean:** cleaning one tool skips another tool's home inside it, so `global clean --targets gemini` leaves Antigravity's `~/.gemini/config/` links.
+
 ## [4.2.0](https://github.com/brickhouse-tech/sync-agents/compare/v4.1.0...v4.2.0) (2026-11-17)
 
 ### Features

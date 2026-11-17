@@ -40,6 +40,8 @@ setup() {
   COPILOT_DIR="$TEST_DIR/.copilot"
   CODEX_DIR="$TEST_DIR/.codex"
   OPENCODE_DIR="$TEST_DIR/.config/opencode"
+  ANTIGRAVITY_DIR="$TEST_DIR/.gemini/config"
+  GEMINI_DIR="$TEST_DIR/.gemini"
   CLINE_DIR_PATH="$TEST_DIR/.cline"
   LEGACY_COPILOT="$TEST_DIR/.github/copilot/instructions.md"
 }
@@ -999,4 +1001,60 @@ AGENTEOF
   run "$SCRIPT" promote spec my-spec -d "$PROJECT_DIR" --global-root "$GLOBAL_ROOT"
   [ "$status" -eq 0 ]
   [ -f "$GLOBAL_ROOT/specs/my-spec.md" ]
+}
+
+# ---------------------------------------------------------------------------
+# antigravity and gemini (SPEC-015)
+# ---------------------------------------------------------------------------
+
+@test "global sync: antigravity links rules flat, skills, and agents under ~/.gemini/config" {
+  "$SCRIPT" global init --global-root "$GLOBAL_ROOT"
+  printf 'os = linux\n' >> "$GLOBAL_ROOT/config"
+  make_global_passive_rule "no-secrets"
+  mkdir -p "$GLOBAL_ROOT/rules/linux"
+  printf -- '---\ntrigger: always_on\n---\nUse apt.\n' > "$GLOBAL_ROOT/rules/linux/apt.md"
+  make_global_single_skill "cool"
+  make_global_invocable_workflow "deploy-flow"
+  mkdir -p "$GLOBAL_ROOT/agents"
+  printf -- '---\nname: reviewer\n---\nReview.\n' > "$GLOBAL_ROOT/agents/reviewer.md"
+
+  run "$SCRIPT" global sync --global-root "$GLOBAL_ROOT" --targets antigravity
+  [ "$status" -eq 0 ]
+  [ -L "$ANTIGRAVITY_DIR/rules/no-secrets.md" ]
+  [ -L "$ANTIGRAVITY_DIR/rules/linux-apt.md" ]
+  [ -L "$ANTIGRAVITY_DIR/skills/cool/SKILL.md" ]
+  [ -L "$ANTIGRAVITY_DIR/agents/reviewer.md" ]
+  [ ! -e "$ANTIGRAVITY_DIR/workflows" ]
+  [[ "$output" == *'[antigravity] skip workflow "deploy-flow": Antigravity workflows are deprecated; make it a skill'* ]]
+  # SPEC-015 C4: no-secrets has no trigger, so Antigravity would drop it.
+  [[ "$output" == *'are dropped by antigravity: no-secrets.'* ]]
+}
+
+@test "global sync: gemini is opt-in and writes the gemini-rules region of ~/.gemini/GEMINI.md" {
+  "$SCRIPT" global init --global-root "$GLOBAL_ROOT"
+  make_global_passive_rule "no-secrets"
+  mkdir -p "$GEMINI_DIR"
+
+  run "$SCRIPT" global sync --global-root "$GLOBAL_ROOT"
+  [ "$status" -eq 0 ]
+  [ ! -e "$GEMINI_DIR/GEMINI.md" ]
+
+  run "$SCRIPT" global sync --global-root "$GLOBAL_ROOT" --targets gemini
+  [ "$status" -eq 0 ]
+  [ "$(head -1 "$GEMINI_DIR/GEMINI.md")" = "<!-- sync-agents:gemini-rules:start -->" ]
+  grep -q "## no-secrets" "$GEMINI_DIR/GEMINI.md"
+}
+
+@test "global sync: targeting antigravity and gemini warns about the double load; clean gemini keeps antigravity" {
+  "$SCRIPT" global init --global-root "$GLOBAL_ROOT"
+  make_global_passive_rule "no-secrets"
+
+  run "$SCRIPT" global sync --global-root "$GLOBAL_ROOT" --targets antigravity,gemini
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"antigravity and gemini are both targeted"* ]]
+
+  run "$SCRIPT" global clean --global-root "$GLOBAL_ROOT" --targets gemini
+  [ "$status" -eq 0 ]
+  [ ! -e "$GEMINI_DIR/GEMINI.md" ]
+  [ -L "$ANTIGRAVITY_DIR/rules/no-secrets.md" ]
 }

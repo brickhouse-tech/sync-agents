@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 )
 
 // DestinationStrategy is the kind of filesystem operation `global
@@ -174,6 +175,8 @@ func TargetDestination(
 		return claudeDestination(typ, name, sem, globalRootParent)
 	case "codeium":
 		return codeiumDestination(typ, name, sem, artifactSourcePath, globalRootParent)
+	case "antigravity":
+		return antigravityDestination(typ, name, sem, tool.DirForScope(ScopeGlobal, globalRootParent))
 	}
 	if _, known := ResolveTool(tool.ID); !known {
 		return Destination{
@@ -203,6 +206,7 @@ var skillsNative = map[string]string{
 	"codex":    "Codex",
 	"cursor":   "Cursor",
 	"devin":    "Devin",
+	"gemini":   "Gemini CLI",
 	"opencode": "opencode",
 	"openclaw": "OpenClaw",
 }
@@ -218,7 +222,9 @@ var agentSkips = map[string]string{
 // sent to a tool that has a better place for it than the generic
 // "no command surface".
 var commandSkips = map[string]string{
-	"devin": "Devin has no workflow surface; make it a skill",
+	"devin":       "Devin has no workflow surface; make it a skill",
+	"antigravity": "Antigravity workflows are deprecated; make it a skill",
+	"gemini":      "TOML commands are not generated",
 }
 
 // invocableSkip is the Skip for an invocable artifact sent to a tool
@@ -286,6 +292,26 @@ func claudeDestination(typ ArtifactType, name string, sem Semantic, parent strin
 		}
 	}
 	return Destination{Strategy: StrategySkip, SkipReason: "unknown semantic"}
+}
+
+// antigravityDestination implements the Antigravity row (SPEC-015
+// A2-A5) under home, ~/.gemini/config:
+//
+//   - Skill: skills/<name>/SKILL.md (the App does not read
+//     ~/.agents/skills)
+//   - Passive rule or workflow: rules/<flat name>.md
+//   - Invocable single-file: skipped (commandSkips)
+//
+// Antigravity scans only the top level of rules/, so an OS-scoped rule
+// ("macos/brew") is linked as "macos-brew.md".
+func antigravityDestination(typ ArtifactType, name string, sem Semantic, home string) Destination {
+	switch {
+	case typ == ArtifactSkill:
+		return Destination{Strategy: StrategySymlink, Path: filepath.Join(home, "skills", name, "SKILL.md")}
+	case sem == Passive:
+		return Destination{Strategy: StrategySymlink, Path: filepath.Join(home, "rules", strings.ReplaceAll(name, "/", "-")+".md")}
+	}
+	return invocableSkip("antigravity", typ, name)
 }
 
 // codeiumDestination implements the Codeium/Windsurf row:

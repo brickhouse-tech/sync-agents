@@ -77,6 +77,10 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 	if err != nil {
 		return err
 	}
+	if a.isToolActive("antigravity", tools) && a.isToolActive("gemini", tools) {
+		a.Warn("antigravity and gemini are both targeted: Antigravity CLI also reads ~/.gemini/GEMINI.md, so it loads the global rules twice (~/.gemini/config/rules and the gemini-rules region). Target one of them.")
+	}
+	a.warnUntriggeredRules(ScopeGlobal, root, toolIDs(tools))
 
 	// Discover every artifact under ~/.agents/. We do this once and
 	// reuse the slice across tools.

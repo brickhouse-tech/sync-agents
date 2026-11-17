@@ -39,14 +39,19 @@ you create them, the same opt-in model as the optional buckets.
 Destination paths mirror the source tree
 (`.agents/rules/macos/brew.md` → `.claude/rules/macos/brew.md`), so
 multiple platforms' artifacts never collide in a flat target dir.
+Antigravity is the exception: it scans only the top level of
+`~/.gemini/config/rules/`, so an OS-scoped rule is linked flat with the
+scope as a prefix (`macos/brew` → `macos-brew.md`). In a project,
+Antigravity reads `.agents/rules/` itself and does not see the OS
+subdirectories at all.
 `.agents/config` accepts an `os = <goos>` override for testing
 and cross-compile CI.
 
 ### How scoped artifacts are shown
 
 - **Delivery channel files** (`.agents/index/*`, and the regions in
-  `~/.config/devin/AGENTS.md`, `~/.codex/AGENTS.md`, and the OpenClaw
-  workspace) put an `<!-- OS: macos -->` comment before each OS-scoped
+  `~/.config/devin/AGENTS.md`, `~/.codex/AGENTS.md`, `GEMINI.md`, and
+  the OpenClaw workspace) put an `<!-- OS: macos -->` comment before each OS-scoped
   section. It is invisible when the tool renders Markdown.
 - Under `index = local` (the default) those files hold only the rules
   for this machine's OS. Under `index = commit` they hold **every**

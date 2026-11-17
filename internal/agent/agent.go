@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,7 +20,7 @@ import (
 	"github.com/brickhouse-tech/sync-agents/v4/internal/version"
 )
 
-var AllTargets = []string{"claude", "devin", "cursor", "copilot"}
+var AllTargets = []string{"claude", "devin", "cursor", "copilot", "antigravity"}
 
 // App is the per-invocation state container for sync-agents commands.
 // One App is constructed by main(), populated from CLI flags in
@@ -147,21 +148,30 @@ func ResolveTargetDir(target, root string) string {
 
 // resolveProjectTargets is the target boundary of the project commands.
 // It rewrites deprecated names in ActiveTargets (resolveTargetNames),
-// then removes every registered tool with no project scope (openclaw),
-// warning once per tool. Local commands build the target dir as
-// <project>/.<target>, so without this a `--targets openclaw` would
-// create .openclaw/ inside the repo. Unregistered names (wave, ...)
-// pass through untouched.
-func (a *App) resolveProjectTargets() {
+// then removes every registered tool with no project scope (openclaw,
+// antigravity), reporting once per tool. Local commands build the
+// target dir as <project>/.<target>, so without this a `--targets
+// openclaw` would create .openclaw/ inside the repo. Unregistered names
+// (wave, ...) pass through untouched.
+//
+// It returns the resolved names before that removal: every tool the
+// run was asked about, including the ones with nothing to place.
+func (a *App) resolveProjectTargets() []string {
+	requested := a.resolveTargetNames(a.ActiveTargets)
 	var kept []string
-	for _, t := range a.resolveTargetNames(a.ActiveTargets) {
-		if tool, ok := ResolveTool(t); ok && !tool.HasScope(ScopeLocal) {
+	for _, t := range requested {
+		tool, ok := ResolveTool(t)
+		switch {
+		case !ok || tool.HasScope(ScopeLocal):
+			kept = append(kept, t)
+		case tool.ReadsProjectAgents:
+			a.Info(fmt.Sprintf("%s reads .agents/ natively; nothing to place at project scope", tool.ID))
+		default:
 			a.Warn(fmt.Sprintf("target %q is global-only; skipping for project scope (use `sync-agents global sync --targets %s`)", t, tool.ID))
-			continue
 		}
-		kept = append(kept, t)
 	}
 	a.ActiveTargets = kept
+	return requested
 }
 
 // resolveTargetNames rewrites deprecated target names to the tool that
@@ -302,7 +312,7 @@ func (a *App) CmdInit() error {
 	// Config
 	configFile := filepath.Join(agentsDir, "config")
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
-		content := "# sync-agents configuration\n# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode, cline)\n# Override per-command with: sync-agents sync --targets claude,cursor\ntargets = claude,devin,cursor,copilot\n" +
+		content := "# sync-agents configuration\n# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode, cline, antigravity, gemini)\n# Override per-command with: sync-agents sync --targets claude,cursor\ntargets = claude,devin,cursor,copilot,antigravity\n" +
 			"# index = local      # local (default: .agents/index/ and its links are gitignored) | commit\n" +
 			"# claude-md = auto   # auto (default: link CLAUDE.md -> AGENTS.md only for Claude Code < 2.1.281) | link | off\n"
 		os.WriteFile(configFile, []byte(content), 0644)
@@ -416,7 +426,8 @@ func (a *App) CmdSync() error {
 	if err := a.EnsureAgentsDir(); err != nil {
 		return err
 	}
-	a.resolveProjectTargets()
+	requested := a.resolveProjectTargets()
+	a.warnUntriggeredRules(ScopeLocal, filepath.Join(a.ProjectRoot, ".agents"), requested)
 
 	a.deprecateForce()
 
@@ -615,20 +626,14 @@ func (a *App) CmdStatus() error {
 
 // statusTargets is AllTargets plus any configured extra target (such
 // as wave), so a directory sync merges into is never missing from
-// status.
+// status. A tool with no project directory (antigravity) is left out.
 func (a *App) statusTargets() []string {
-	targets := copyTargets(AllTargets)
-	for _, t := range a.ActiveTargets {
-		known := false
-		for _, k := range targets {
-			if k == t {
-				known = true
-				break
-			}
+	var targets []string
+	for _, t := range append(copyTargets(AllTargets), a.ActiveTargets...) {
+		if tool, ok := ResolveTool(t); (ok && !tool.HasScope(ScopeLocal)) || slices.Contains(targets, t) {
+			continue
 		}
-		if !known {
-			targets = append(targets, t)
-		}
+		targets = append(targets, t)
 	}
 	return targets
 }

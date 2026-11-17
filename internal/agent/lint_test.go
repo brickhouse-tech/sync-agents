@@ -277,7 +277,7 @@ func TestCmdLint_ExitBehavior(t *testing.T) {
 	}
 
 	// Unsupported type → error.
-	if err := a2.CmdLint("rules", false); err == nil {
+	if err := a2.CmdLint("workflows", false); err == nil {
 		t.Fatal("expected error for unsupported lint type")
 	}
 }
@@ -392,7 +392,7 @@ func TestCmdLint_ImportFlagWarns(t *testing.T) {
 		"plans/macos/brew.md":      "---\nimport: true\n---\n# Brew\n",
 		"plans/off.md":             "---\nimport: false\n---\n# Off\n",
 		"specs/plain.md":           "# No frontmatter\n",
-		"rules/security.md":        "---\nimport: true\n---\n# Security\n",
+		"rules/security.md":        "---\nimport: true\ntrigger: always_on\n---\n# Security\n",
 		"plans/.hidden/ignored.md": "---\nimport: true\n---\n# Hidden\n",
 	}
 	for rel, content := range files {
@@ -458,5 +458,120 @@ func TestCmdLint_ImportFlagWithoutSkillsDir(t *testing.T) {
 	}
 	if out := a.Stderr.(*bytes.Buffer).String() + a.Stdout.(*bytes.Buffer).String(); !strings.Contains(out, "specs/api.md: W201") {
 		t.Fatalf("expected W201 for specs/api.md; output:\n%s", out)
+	}
+}
+
+// SPEC-015 Part C: rule `trigger:` lint.
+
+// lintRulesApp writes rules (relative path -> content) under
+// .agents/rules and returns the app plus its combined output buffer.
+func lintRulesApp(t *testing.T, rules map[string]string) (*App, string, *bytes.Buffer) {
+	t.Helper()
+	root := t.TempDir()
+	var out bytes.Buffer
+	for rel, content := range rules {
+		writeFile(t, filepath.Join(root, ".agents", "rules", rel), content)
+	}
+	return &App{ProjectRoot: root, Stdout: &out, Stderr: &out}, filepath.Join(root, ".agents", "rules"), &out
+}
+
+// SPEC-015 C1
+func TestCmdLint_RuleTriggerE010(t *testing.T) {
+	a, _, out := lintRulesApp(t, map[string]string{
+		"missing.md":      "---\ndescription: no trigger\n---\nBody.\n",
+		"bare.md":         "No frontmatter.\n",
+		"invalid.md":      "---\ntrigger: sometimes\n---\nBody.\n",
+		"macos/brew.md":   "Use brew.\n",
+		"always.md":       "---\ntrigger: always_on\n---\nBody.\n",
+		"manual.md":       "---\ntrigger: manual\n---\nBody.\n",
+		"decision.md":     "---\ntrigger: model_decision\ndescription: when asked\n---\nBody.\n",
+		"glob.md":         "---\ntrigger: glob\nglobs: \"*.go\"\n---\nBody.\n",
+		".hidden/skip.md": "No frontmatter.\n",
+	})
+	err := a.CmdLint("", false)
+	if err == nil {
+		t.Fatal("lint passed with E010 findings")
+	}
+	got := out.String()
+	for _, p := range []string{"rules/missing.md", "rules/bare.md", "rules/invalid.md", "rules/macos/brew.md"} {
+		if !strings.Contains(got, "[error] "+p+": E010 ") {
+			t.Errorf("missing E010 for %s:\n%s", p, got)
+		}
+	}
+	if !strings.Contains(got, `"sometimes"`) {
+		t.Errorf("E010 for an invalid value does not quote it:\n%s", got)
+	}
+	for _, p := range []string{"always", "manual", "decision", "glob", "skip"} {
+		if strings.Contains(got, p+".md: E010") {
+			t.Errorf("E010 for valid or hidden rule %s:\n%s", p, got)
+		}
+	}
+}
+
+// SPEC-015 C2: --fix sets trigger: always_on when the key is missing,
+// keeps every other key and the body, and leaves an invalid value for
+// the author.
+func TestCmdLint_RuleTriggerFix(t *testing.T) {
+	a, rules, out := lintRulesApp(t, map[string]string{
+		"missing.md": "---\ndescription: keep me\ninvocable: false\n# a comment\n---\nBody.\n",
+		"bare.md":    "No frontmatter.\n",
+		"invalid.md": "---\ntrigger: sometimes\n---\nBody.\n",
+	})
+	if err := a.CmdLint("rules", true); err == nil {
+		t.Fatal("lint --fix passed although an invalid trigger is report only")
+	}
+	if got, want := readFile(t, filepath.Join(rules, "missing.md")), "---\ndescription: keep me\ninvocable: false\n# a comment\ntrigger: always_on\n---\nBody.\n"; got != want {
+		t.Errorf("missing.md =\n%q\nwant\n%q", got, want)
+	}
+	if got, want := readFile(t, filepath.Join(rules, "bare.md")), "---\ntrigger: always_on\n---\nNo frontmatter.\n"; got != want {
+		t.Errorf("bare.md =\n%q\nwant\n%q", got, want)
+	}
+	if got, want := readFile(t, filepath.Join(rules, "invalid.md")), "---\ntrigger: sometimes\n---\nBody.\n"; got != want {
+		t.Errorf("invalid.md changed:\n%q", got)
+	}
+	if !strings.Contains(out.String(), "rules/missing.md: E010 ") || !strings.Contains(out.String(), "(fixed)") {
+		t.Errorf("fix not reported:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := a.CmdLint("rules", true); err == nil {
+		t.Fatal("second lint --fix passed although invalid.md still fails")
+	}
+	if strings.Contains(out.String(), "(fixed)") {
+		t.Errorf("second lint --fix changed something:\n%s", out.String())
+	}
+}
+
+// SPEC-015 C3
+func TestCmdLint_RuleTriggerW104(t *testing.T) {
+	a, _, out := lintRulesApp(t, map[string]string{
+		"decision.md":    "---\ntrigger: model_decision\n---\nBody.\n",
+		"glob.md":        "---\ntrigger: glob\n---\nBody.\n",
+		"decision-ok.md": "---\ntrigger: model_decision\ndescription: Use when deploying.\n---\nBody.\n",
+		"glob-ok.md":     "---\ntrigger: glob\nglobs: \"*.go\"\n---\nBody.\n",
+	})
+	if err := a.CmdLint("", false); err != nil {
+		t.Fatalf("W104 must not fail lint: %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "[warn] rules/decision.md: W104 ") || !strings.Contains(got, "description") {
+		t.Errorf("missing W104 for model_decision without description:\n%s", got)
+	}
+	if !strings.Contains(got, "[warn] rules/glob.md: W104 ") || !strings.Contains(got, "globs") {
+		t.Errorf("missing W104 for glob without globs:\n%s", got)
+	}
+	if strings.Contains(got, "-ok.md: W104") {
+		t.Errorf("W104 for a complete rule:\n%s", got)
+	}
+}
+
+// SPEC-015 C1: `lint skills` stays a skills-only run.
+func TestCmdLint_SkillsSkipsRuleChecks(t *testing.T) {
+	a, _, out := lintRulesApp(t, map[string]string{"bare.md": "No frontmatter.\n"})
+	if err := a.CmdLint("skills", false); err != nil {
+		t.Fatalf("lint skills: %v", err)
+	}
+	if strings.Contains(out.String(), "E010") {
+		t.Errorf("lint skills ran the rule checks:\n%s", out.String())
 	}
 }

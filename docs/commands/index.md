@@ -26,7 +26,8 @@ create a link, a region, or a config entry in a tool directory, and it
 does not remove legacy placements. `sync` does that.
 
 Claude and Devin have no file here: they read `.agents/rules`
-through the `.claude/rules` and `.devin/rules` links.
+through the `.claude/rules` and `.devin/rules` links. Antigravity reads
+`.agents/rules` itself.
 
 ## AGENTS.md
 

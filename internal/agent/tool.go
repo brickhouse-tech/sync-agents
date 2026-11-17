@@ -52,6 +52,24 @@ type Tool struct {
 	// Tool where LocalOnly is true.
 	LocalOnly bool
 
+	// ReadsProjectAgents marks a tool with no project directory because
+	// it reads the project's .agents/ tree itself (Antigravity). Project
+	// commands report that instead of warning that the tool is
+	// global-only.
+	ReadsProjectAgents bool
+
+	// OptIn keeps the tool out of every default target list, init's
+	// lines and global sync's no-`targets =` default: registering a tool
+	// must not make the next sync create its home. It is synced only
+	// when a targets list names it.
+	OptIn bool
+
+	// RequiresRuleTrigger: the tool drops a rule file without a valid
+	// `trigger:` and says nothing. Sync warns about such rules at each
+	// scope where the tool reads rules as files rather than through a
+	// channel (warnUntriggeredRules).
+	RequiresRuleTrigger bool
+
 	// ResolveGlobalDir computes the global directory for a tool whose
 	// root is not <parent>/<segment>: Codex honors $CODEX_HOME, and
 	// OpenClaw's workspace moves with env vars and its own config. Nil
@@ -59,12 +77,6 @@ type Tool struct {
 	// shell calls it (see App.bindTool), which then pins the result into
 	// DirByScope as an absolute path.
 	ResolveGlobalDir func(parent string, env ToolEnv) (string, error)
-
-	// OptIn keeps the tool out of the global default target list (no
-	// `targets =` line), as init keeps it out of the lines it writes:
-	// registering a tool must not make the next sync create its home.
-	// Opting in is a targets line or --targets.
-	OptIn bool
 }
 
 // DirForScope returns the absolute directory path for this tool at the
@@ -160,6 +172,7 @@ var Tools = []Tool{
 			ScopeLocal:  ".devin",
 			ScopeGlobal: filepath.Join(".config", "devin"),
 		},
+		RequiresRuleTrigger: true,
 	},
 	{
 		ID: "cursor",
@@ -244,6 +257,32 @@ var Tools = []Tool{
 			ScopeGlobal: filepath.Join(".openclaw", "workspace"),
 		},
 		ResolveGlobalDir: resolveOpenClawWorkspace,
+	},
+	{
+		// Antigravity App and CLI (SPEC-015 Part A), which replaced
+		// Gemini CLI for consumer users. A project's .agents/ is read
+		// natively, so local sync writes nothing. The user-scope home
+		// is ~/.gemini/config, where rules, skills, and agents are
+		// linked one by one (antigravityDestination).
+		ID: "antigravity",
+		DirByScope: map[Scope]string{
+			ScopeGlobal: filepath.Join(".gemini", "config"),
+		},
+		ReadsProjectAgents:  true,
+		RequiresRuleTrigger: true,
+	},
+	{
+		// Gemini CLI (SPEC-015 Part B), now for enterprise and paid-API
+		// users. Rules go to the gemini-rules region of GEMINI.md
+		// (channelSpecs); agents link into .gemini/agents. It reads
+		// .agents/skills itself. Opt-in, because Antigravity CLI also
+		// reads ~/.gemini/GEMINI.md and would load the rules twice.
+		ID: "gemini",
+		DirByScope: map[Scope]string{
+			ScopeLocal:  ".gemini",
+			ScopeGlobal: ".gemini",
+		},
+		OptIn: true,
 	},
 }
 

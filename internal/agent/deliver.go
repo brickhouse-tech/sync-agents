@@ -115,6 +115,10 @@ type Channel struct {
 	// (mayMount says yes to those).
 	Mountable bool
 	Why       string
+
+	// NoHost: the mount is a region in a host only its owner creates,
+	// and the host is missing, so there is nothing to deliver into.
+	NoHost bool
 }
 
 // ChannelResult is one channel after a run.
@@ -152,6 +156,9 @@ var projectBuckets = map[string][]string{
 	// Devin reads .agents/skills and .agents/agents itself and has no
 	// workflow surface (SPEC-014 E4-E6).
 	"devin": {"rules"},
+	// Gemini CLI gets rules through GEMINI.md, reads .agents/skills
+	// itself, and has TOML commands only (SPEC-015 B3-B5).
+	"gemini": {"agents"},
 	// Cline reads .agents/skills itself, and its agents/ format is
 	// undocumented (SPEC-016 E5, E6).
 	"cline": shallowBuckets["cline"],
@@ -383,6 +390,8 @@ func (a *App) bindChannel(tool Tool, scope Scope, spec ChannelSpec, tree, base, 
 	}
 	ok, why := mayMount(spec.Mount, facts)
 	ch.Mountable, ch.Why = ok, strings.ReplaceAll(why, "<tool>", tool.ID)
+	rm, isRegion := spec.Mount.(RegionMount)
+	ch.NoHost = isRegion && !rm.CreateHost && !facts.NativeExists
 	return ch, nil
 }
 
@@ -565,7 +574,8 @@ func (a *App) render(ch Channel, in channelInputs) (Rendered, error) {
 // keeps a plain `global sync` silent about tools the user does not have
 // or has not consented to (SPEC-012). At project scope the user listed
 // the targets, so the index is written and the mount reported either
-// way.
+// way, except for a channel with no host (Channel.NoHost): it is only
+// reported, since an index nothing can mount would be stray output.
 //
 // A channel whose render fails (a broken budget config) is warned
 // about and skipped; the rest still deliver.
@@ -597,10 +607,10 @@ func (a *App) deliverChannels(run ChannelRun) ([]ChannelResult, error) {
 
 	var results []ChannelResult
 	for _, ch := range chans {
-		if run.Scope == ScopeGlobal && !ch.Mountable {
+		if !ch.Mountable && (run.Scope == ScopeGlobal || ch.NoHost) {
 			res := ChannelResult{Channel: ch, State: ChannelUnmounted, Detail: ch.Why}
 			results = append(results, res)
-			if ch.Explicit {
+			if ch.Explicit || run.Scope == ScopeLocal {
 				a.reportChannel(res, run.Mode)
 			}
 			continue

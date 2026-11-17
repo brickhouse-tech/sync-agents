@@ -1876,3 +1876,59 @@ _make_checkout() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"absolute"* ]]
 }
+
+# --------------------------------------------------------------------------
+# antigravity, gemini, and rule triggers (SPEC-015)
+# --------------------------------------------------------------------------
+
+@test "init names antigravity; sync reports that it reads .agents/ natively and writes nothing for it" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  grep -q "^targets = claude,devin,cursor,copilot,antigravity$" "$TEST_DIR/.agents/config"
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"antigravity reads .agents/ natively"* ]]
+  [ ! -e "$TEST_DIR/.antigravity" ]
+  [ ! -e "$TEST_DIR/.gemini" ]
+}
+
+@test "sync warns once about rules antigravity and devin drop; lint --fix repairs them" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  printf -- '---\ndescription: keep\n---\nNo trigger.\n' > "$TEST_DIR/.agents/rules/bare.md"
+
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"are dropped by devin, antigravity: bare."* ]]
+  [ "$(grep -c 'are dropped by' <<<"$output")" -eq 1 ]
+
+  run "$SCRIPT" -d "$TEST_DIR" lint rules
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"rules/bare.md: E010"* ]]
+
+  run "$SCRIPT" -d "$TEST_DIR" lint --fix
+  [ "$status" -eq 0 ]
+  [ "$(cat "$TEST_DIR/.agents/rules/bare.md")" = "$(printf -- '---\ndescription: keep\ntrigger: always_on\n---\nNo trigger.')" ]
+
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"are dropped by"* ]]
+}
+
+@test "sync --targets gemini: region only in an existing GEMINI.md, agents link into .gemini/" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.agents/agents"
+  printf -- '---\nname: reviewer\n---\nReview.\n' > "$TEST_DIR/.agents/agents/reviewer.md"
+
+  run "$SCRIPT" -d "$TEST_DIR" sync --targets gemini
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Gemini CLI reads AGENTS.md only when context.fileName lists it"* ]]
+  [ ! -e "$TEST_DIR/GEMINI.md" ]
+  [ -L "$TEST_DIR/.gemini/agents" ]
+  [ ! -e "$TEST_DIR/.gemini/skills" ]
+
+  printf 'Team notes.\n' > "$TEST_DIR/GEMINI.md"
+  run "$SCRIPT" -d "$TEST_DIR" sync --targets gemini
+  [ "$status" -eq 0 ]
+  [ "$(head -1 "$TEST_DIR/GEMINI.md")" = "Team notes." ]
+  grep -q "<!-- sync-agents:gemini-rules:start -->" "$TEST_DIR/GEMINI.md"
+  grep -q "## state" "$TEST_DIR/GEMINI.md"
+}
