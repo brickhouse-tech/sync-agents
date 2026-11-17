@@ -454,6 +454,13 @@ func (a *App) CmdSync() error {
 		a.pruneRetiredBucketLinks(targetDir, agentsRel)
 		a.pruneImportedTwice(target)
 	}
+	for _, target := range a.ActiveTargets {
+		if notes, ok := toolNotes[target]; ok {
+			for _, note := range notes(a) {
+				a.Info(target + ": " + note)
+			}
+		}
+	}
 
 	// Per-tool delivery channels (SPEC-013, deliver.go): rule bodies
 	// reach Cursor, Copilot, Codex, and opencode through
@@ -595,6 +602,11 @@ func (a *App) CmdStatus() error {
 			}
 		} else {
 			fmt.Fprintf(a.Stdout, "[not synced] %s/\n", displayDir)
+		}
+		if notes, ok := toolNotes[target]; ok {
+			for _, note := range notes(a) {
+				fmt.Fprintf(a.Stdout, "  [note] %s\n", note)
+			}
 		}
 	}
 	a.printRetiredLinks(a.statusTargets())

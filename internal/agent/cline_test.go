@@ -344,3 +344,70 @@ func TestSync_ClineDefersToGlobalWhenProjectIsGlobalRoot(t *testing.T) {
 		}
 	}
 }
+
+const (
+	clinerulesNote = ".clinerules/ is yours and left alone; Cline reads it as well as .cline/rules"
+	dupSkillsNote  = "Cline reads .claude/skills as well as .agents/skills, so each skill linked for claude loads twice"
+)
+
+// SPEC-016 E8
+func TestSync_ClineLeavesClinerulesAlone(t *testing.T) {
+	app, root, buf := newSyncApp(t, "cline")
+	writeFile(t, filepath.Join(root, ".clinerules", "mine.md"), "hand-written")
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if got := readFile(t, filepath.Join(root, ".clinerules", "mine.md")); got != "hand-written" {
+		t.Errorf(".clinerules/mine.md = %q", got)
+	}
+	if fi, err := os.Lstat(filepath.Join(root, ".clinerules")); err != nil || !fi.IsDir() {
+		t.Errorf(".clinerules is no longer a real directory: %v", err)
+	}
+	if want := "cline: " + clinerulesNote; !strings.Contains(buf.String(), want) {
+		t.Errorf("missing %q in:\n%s", want, buf.String())
+	}
+	buf.Reset()
+	if err := app.CmdStatus(); err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if want := "[note] " + clinerulesNote; !strings.Contains(buf.String(), want) {
+		t.Errorf("missing %q in:\n%s", want, buf.String())
+	}
+}
+
+// SPEC-016 E8: nothing to report without a .clinerules/.
+func TestSync_ClineNoClinerulesNoNote(t *testing.T) {
+	app, _, buf := newSyncApp(t, "cline")
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if strings.Contains(buf.String(), ".clinerules") {
+		t.Errorf("unexpected .clinerules report:\n%s", buf.String())
+	}
+}
+
+// SPEC-016 edge audit: Cline reads .claude/skills and .agents/skills,
+// so a project targeting claude and cline shows each skill twice.
+func TestStatus_ClineDuplicateSkills(t *testing.T) {
+	for _, tc := range []struct {
+		targets []string
+		want    bool
+	}{
+		{[]string{"claude", "cline"}, true},
+		{[]string{"cline", "claude"}, true},
+		{[]string{"cline"}, false},
+		{[]string{"claude"}, false},
+	} {
+		app, _, buf := newSyncApp(t, tc.targets...)
+		if err := app.CmdSync(); err != nil {
+			t.Fatalf("%v sync: %v", tc.targets, err)
+		}
+		buf.Reset()
+		if err := app.CmdStatus(); err != nil {
+			t.Fatalf("%v status: %v", tc.targets, err)
+		}
+		if got := strings.Contains(buf.String(), "[note] "+dupSkillsNote); got != tc.want {
+			t.Errorf("%v: duplicate-skills note = %v, want %v:\n%s", tc.targets, got, tc.want, buf.String())
+		}
+	}
+}
