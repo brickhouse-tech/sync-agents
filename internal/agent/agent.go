@@ -426,9 +426,14 @@ func (a *App) CmdSync() error {
 				continue
 			}
 			subdirPath := filepath.Join(a.ProjectRoot, ".agents", b.Dir)
-			if fi, err := os.Stat(subdirPath); err == nil && fi.IsDir() {
-				conflicts += a.linkBucket(targetDir, agentsRel, b).Conflicts
+			if fi, err := os.Stat(subdirPath); err != nil || !fi.IsDir() {
+				continue
 			}
+			if why := a.withheldByLegacy(target, b); why != "" {
+				a.Info(why)
+				continue
+			}
+			conflicts += a.linkBucket(targetDir, agentsRel, b).Conflicts
 		}
 		a.pruneRetiredBucketLinks(targetDir, agentsRel)
 	}
@@ -536,7 +541,9 @@ func (a *App) CmdStatus() error {
 				}
 				sub := filepath.Join(targetDir, b.Dir)
 				sfi, serr := os.Lstat(sub)
-				if serr == nil && sfi.Mode()&os.ModeSymlink != 0 {
+				if why := a.withheldByLegacy(target, b); why != "" && serr != nil {
+					fmt.Fprintf(a.Stdout, "  [skipped] %s (%s)\n", b.Dir, why)
+				} else if serr == nil && sfi.Mode()&os.ModeSymlink != 0 {
 					lt, _ := os.Readlink(sub)
 					fmt.Fprintf(a.Stdout, "  [synced] %s -> %s\n", b.Dir, lt)
 				} else if serr == nil && sfi.IsDir() {
@@ -1245,6 +1252,10 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 				continue
 			}
 			if fi, err := os.Stat(filepath.Join(agentsAbs, subdir)); err != nil || !fi.IsDir() {
+				continue
+			}
+			if why := a.withheldByLegacy(target, b); why != "" {
+				a.Info(why)
 				continue
 			}
 			res := a.linkBucket(targetDir, agentsRel, b)

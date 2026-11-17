@@ -164,6 +164,19 @@ var Tools = []Tool{
 		},
 	},
 	{
+		// Devin Local and Devin CLI (SPEC-014), which replaced Windsurf.
+		// They share one harness, whose user-scope home is
+		// ~/.config/devin. Project rules arrive through the folded
+		// .devin/rules; global rules through the devin-rules region of
+		// ~/.config/devin/AGENTS.md (channelSpecs). Devin reads
+		// .agents/skills and .agents/agents itself (projectBuckets).
+		ID: "devin",
+		DirByScope: map[Scope]string{
+			ScopeLocal:  ".devin",
+			ScopeGlobal: filepath.Join(".config", "devin"),
+		},
+	},
+	{
 		ID: "cursor",
 		DirByScope: map[Scope]string{
 			ScopeLocal:  ".cursor",

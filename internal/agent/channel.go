@@ -71,6 +71,19 @@ var channelSpecs = map[string]map[Scope]ChannelSpec{
 			Budget: windsurfGlobalBudget,
 		},
 	},
+	"devin": {
+		// Devin reads ~/.config/devin/AGENTS.md always-on and documents
+		// no size limit. The user writes the same file, so this is a
+		// region.
+		ScopeGlobal: {
+			Format: FormatMarkdown,
+			Mount: RegionMount{
+				Host:       NativePath{AnchorHome, "AGENTS.md"}, // home: ~/.config/devin
+				Region:     DevinRulesRegion,
+				CreateHost: true,
+			},
+		},
+	},
 	"cursor": {
 		// Cursor reads .mdc rules only; .md files in .cursor/rules are
 		// ignored. There is no user-scope rules file (channelGaps), so
@@ -156,6 +169,10 @@ var (
 	// CodeiumRulesRegion carries the global rules in Windsurf's
 	// global_rules.md.
 	CodeiumRulesRegion = ManagedRegion{Name: "codeium-rules"}
+
+	// DevinRulesRegion carries the global rules in
+	// ~/.config/devin/AGENTS.md.
+	DevinRulesRegion = ManagedRegion{Name: "devin-rules"}
 )
 
 // Format is the dialect of a channel's index file. Every format carries

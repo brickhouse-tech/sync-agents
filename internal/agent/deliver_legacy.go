@@ -25,13 +25,13 @@ type legacyFold struct {
 // legacyFoldPaths lists the folds linksBucket now withholds: every
 // <tool dir>/<bucket> fold of a passive bucket into a tool that has a
 // local channel (.cursor/rules, .github/copilot/rules, .codex/rules,
-// .opencode/rules). It is derived from the same registry linksBucket
-// reads, so the two cannot disagree.
+// .opencode/rules). It is derived from channelWithholds, which
+// linksBucket also reads, so the two cannot disagree.
 func legacyFoldPaths(root string) []legacyFold {
 	var folds []legacyFold
 	for _, tool := range Tools {
 		for _, b := range Buckets {
-			if b.SyncsToTool(tool.ID) && !linksBucket(tool.ID, b) {
+			if b.SyncsToTool(tool.ID) && channelWithholds(tool.ID, b) {
 				folds = append(folds, legacyFold{
 					Path:   filepath.Join(ResolveTargetDir(tool.ID, root), b.Dir),
 					Source: filepath.Join(root, ".agents", b.Dir),

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -131,20 +132,59 @@ type ChannelResult struct {
 // the passive bucket (rules) is not folded into the tool's directory.
 // That frees .cursor/rules for the .mdc link and retires the
 // .github/copilot/rules, .codex/rules, and .opencode/rules links,
-// which no tool read. Claude and Windsurf have no local channel (they
-// read the folded .agents/rules natively) and keep every bucket, as do
-// unregistered targets (wave). Every other bucket follows
-// Bucket.SyncsToTool as before.
+// which no tool read. Claude and Devin have no local channel (they read
+// the folded .agents/rules natively) and keep the rules fold, as do
+// unregistered targets (wave). projectBuckets narrows a tool to the
+// buckets it cannot read from .agents/ itself. Every other bucket
+// follows Bucket.SyncsToTool as before.
 func linksBucket(target string, b Bucket) bool {
-	if !b.SyncsToTool(target) {
+	if !b.SyncsToTool(target) || channelWithholds(target, b) {
 		return false
 	}
+	only, limited := projectBuckets[target]
+	return !limited || slices.Contains(only, b.Dir)
+}
+
+// projectBuckets lists the only buckets local sync links into a tool's
+// project directory. A tool absent here gets every bucket linksBucket
+// otherwise allows.
+var projectBuckets = map[string][]string{
+	// Devin reads .agents/skills and .agents/agents itself and has no
+	// workflow surface (SPEC-014 E4-E6).
+	"devin": {"rules"},
+}
+
+// channelWithholds reports whether target's local channel delivers
+// bucket b's passive content, so the bucket is not folded into the
+// tool's directory. legacyFoldPaths removes the folds earlier versions
+// made in that case.
+func channelWithholds(target string, b Bucket) bool {
 	tool, ok := ResolveTool(target)
 	if !ok {
-		return true
+		return false
 	}
 	_, hasChannel := channelSpecs[tool.ID][ScopeLocal]
-	return !(hasChannel && BucketDefaultSemantic(b.Artifact) == Passive)
+	return hasChannel && BucketDefaultSemantic(b.Artifact) == Passive
+}
+
+// withheldByLegacy returns why local sync does not fold bucket b into
+// target's directory although linksBucket allows it, or "". Devin
+// imports .windsurf/rules by default, so while the fold an earlier
+// version made for Windsurf is in place, a .devin/rules fold would load
+// every rule twice (SPEC-014 E2a).
+func (a *App) withheldByLegacy(target string, b Bucket) string {
+	if target == "devin" && b.Dir == "rules" && a.windsurfRulesFold() {
+		return "devin rules served by legacy .windsurf/rules link"
+	}
+	return ""
+}
+
+// windsurfRulesFold reports whether .windsurf/rules is the symlink into
+// .agents/ that sync made for the windsurf target before SPEC-014.
+func (a *App) windsurfRulesFold() bool {
+	link := filepath.Join(a.ProjectRoot, ".windsurf", "rules")
+	fi, err := os.Lstat(link)
+	return err == nil && fi.Mode()&os.ModeSymlink != 0 && pointsInto(link, filepath.Join(a.ProjectRoot, ".agents"))
 }
 
 // sameTree reports whether the project's .agents/ is the global root:
