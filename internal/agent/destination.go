@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 )
 
 // DestinationStrategy is the kind of filesystem operation `global
@@ -114,6 +115,9 @@ func TargetDestination(
 				Path:     filepath.Join(toolDir, bucket.Dir, name+".md"),
 			}
 		}
+		if why, ok := agentSkips[tool.ID]; ok {
+			return Destination{Strategy: StrategySkip, SkipReason: why}
+		}
 		return Destination{
 			Strategy:   StrategySkip,
 			SkipReason: fmt.Sprintf("%s has no subagent surface", tool.ID),
@@ -158,6 +162,13 @@ func TargetDestination(
 		return Destination{Strategy: StrategyChannel}
 	}
 
+	if b, ok := BucketForArtifact(typ); ok && slices.Contains(shallowBuckets[tool.ID], b.Dir) {
+		return Destination{
+			Strategy: StrategySymlink,
+			Path:     filepath.Join(tool.DirForScope(ScopeGlobal, globalRootParent), b.Dir, flatName(name)+".md"),
+		}
+	}
+
 	switch tool.ID {
 	case "claude":
 		return claudeDestination(typ, name, sem, globalRootParent)
@@ -188,11 +199,19 @@ func hasGlobalChannel(toolID string) bool {
 // (SPEC-013 §Per-tool delivery), so a link into their own tree would
 // register each skill twice.
 var skillsNative = map[string]string{
+	"cline":    "Cline",
 	"codex":    "Codex",
 	"cursor":   "Cursor",
 	"devin":    "Devin",
 	"opencode": "opencode",
 	"openclaw": "OpenClaw",
+}
+
+// agentSkips gives the skip reason for an agent sent to a tool whose
+// subagent surface sync-agents does not write, where the generic "no
+// subagent surface" would be wrong.
+var agentSkips = map[string]string{
+	"cline": "Cline's agents/ format is undocumented",
 }
 
 // commandSkips gives the skip reason for an invocable rule or workflow

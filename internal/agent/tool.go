@@ -59,6 +59,12 @@ type Tool struct {
 	// shell calls it (see App.bindTool), which then pins the result into
 	// DirByScope as an absolute path.
 	ResolveGlobalDir func(parent string, env ToolEnv) (string, error)
+
+	// OptIn keeps the tool out of the global default target list (no
+	// `targets =` line), as init keeps it out of the lines it writes:
+	// registering a tool must not make the next sync create its home.
+	// Opting in is a targets line or --targets.
+	OptIn bool
 }
 
 // DirForScope returns the absolute directory path for this tool at the
@@ -115,6 +121,10 @@ func (t Tool) HasScope(scope Scope) bool {
 //     ResolveGlobalDir resolver.
 //  5. For a tool that reads aggregated rule text, a row in
 //     channelSpecs (channel.go) naming its vendor read path.
+//  6. For a tool that reads only some buckets, a projectBuckets row
+//     (deliver.go), a shallowBuckets row if it reads them one level
+//     deep from its own dir, and the skip reasons in destination.go
+//     (skillsNative, agentSkips, commandSkips).
 //
 // The order of Tools should not be relied on for semantic behavior —
 // only for stable user-facing output ordering.
@@ -205,6 +215,19 @@ var Tools = []Tool{
 			ScopeLocal:  ".opencode",
 			ScopeGlobal: filepath.Join(".config", "opencode"),
 		},
+	},
+	{
+		// Cline (SPEC-016). It reads AGENTS.md and .agents/skills itself,
+		// so it gets only rules and workflows (shallowBuckets), folded
+		// into .cline/ in a project and linked one by one into ~/.cline
+		// ($CLINE_DIR when set) for the user.
+		ID: "cline",
+		DirByScope: map[Scope]string{
+			ScopeLocal:  ".cline",
+			ScopeGlobal: ".cline",
+		},
+		ResolveGlobalDir: resolveClineDir,
+		OptIn:            true,
 	},
 	{
 		// OpenClaw gateway agents (SPEC-012). Global only: a gateway

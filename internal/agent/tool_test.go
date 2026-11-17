@@ -54,11 +54,11 @@ func TestResolveTool_CaseSensitivity(t *testing.T) {
 
 // TestTools_Registry_HasExpectedIDs is a regression guard: SPEC-002
 // names 5 tools (claude, codeium, cursor, copilot, codex) and
-// SPEC-011 Part B adds opencode, SPEC-012 openclaw, SPEC-014 devin.
+// SPEC-011 Part B adds opencode, SPEC-012 openclaw, SPEC-014 devin, SPEC-016 cline.
 // Anything that changes that set should require an update here and a
 // corresponding spec change.
 func TestTools_Registry_HasExpectedIDs(t *testing.T) {
-	want := []string{"claude", "codeium", "devin", "cursor", "copilot", "codex", "opencode", "openclaw"}
+	want := []string{"claude", "codeium", "devin", "cursor", "copilot", "codex", "opencode", "cline", "openclaw"}
 	if got := ToolIDs(); !reflect.DeepEqual(got, want) {
 		t.Errorf("ToolIDs() = %v, want %v", got, want)
 	}

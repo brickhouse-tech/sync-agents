@@ -18,7 +18,7 @@ import (
 // The header lines mirror the comment style of the project-level
 // .agents/config so users who have seen one recognize the other.
 const GlobalConfigContent = `# sync-agents global configuration
-# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode, openclaw)
+# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode, cline, openclaw)
 # global sync, status, and clean use this list when --targets is omitted; without it, every tool.
 # Override per-command with: sync-agents global sync --targets claude,cursor
 # Only naming a tool in --targets consents to editing a file of yours that it reads; this list does not.
