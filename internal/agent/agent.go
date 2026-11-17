@@ -19,7 +19,7 @@ import (
 	"github.com/brickhouse-tech/sync-agents/v4/internal/version"
 )
 
-var AllTargets = []string{"claude", "windsurf", "cursor", "copilot"}
+var AllTargets = []string{"claude", "devin", "cursor", "copilot"}
 
 // App is the per-invocation state container for sync-agents commands.
 // One App is constructed by main(), populated from CLI flags in
@@ -145,14 +145,16 @@ func ResolveTargetDir(target, root string) string {
 	return filepath.Join(root, "."+target)
 }
 
-// dropGlobalOnlyTargets removes every registered tool with no project
-// scope (openclaw) from ActiveTargets, warning once per tool. Local
-// commands build the target dir as <project>/.<target>, so without
-// this a `--targets openclaw` would create .openclaw/ inside the repo.
-// Unregistered names (wave, ...) pass through untouched.
-func (a *App) dropGlobalOnlyTargets() {
+// resolveProjectTargets is the target boundary of the project commands.
+// It rewrites deprecated names in ActiveTargets (resolveTargetNames),
+// then removes every registered tool with no project scope (openclaw),
+// warning once per tool. Local commands build the target dir as
+// <project>/.<target>, so without this a `--targets openclaw` would
+// create .openclaw/ inside the repo. Unregistered names (wave, ...)
+// pass through untouched.
+func (a *App) resolveProjectTargets() {
 	var kept []string
-	for _, t := range a.ActiveTargets {
+	for _, t := range a.resolveTargetNames(a.ActiveTargets) {
 		if tool, ok := ResolveTool(t); ok && !tool.HasScope(ScopeLocal) {
 			a.Warn(fmt.Sprintf("target %q is global-only; skipping for project scope (use `sync-agents global sync --targets %s`)", t, tool.ID))
 			continue
@@ -160,6 +162,17 @@ func (a *App) dropGlobalOnlyTargets() {
 		kept = append(kept, t)
 	}
 	a.ActiveTargets = kept
+}
+
+// resolveTargetNames rewrites deprecated target names to the tool that
+// replaced them (canonicalTargets) and prints one warning per
+// deprecated name to stderr.
+func (a *App) resolveTargetNames(names []string) []string {
+	targets, deprecated := canonicalTargets(names)
+	for _, name := range deprecated {
+		fmt.Fprintln(a.Stderr, deprecatedTargets[name].warning(name))
+	}
+	return targets
 }
 
 func ResolveAgentsRel(target string) string {
@@ -289,7 +302,7 @@ func (a *App) CmdInit() error {
 	// Config
 	configFile := filepath.Join(agentsDir, "config")
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
-		content := "# sync-agents configuration\n# Comma-separated list of sync targets (available: claude, windsurf, cursor, copilot, codex, opencode)\n# Override per-command with: sync-agents sync --targets claude,cursor\ntargets = claude,windsurf,cursor,copilot\n" +
+		content := "# sync-agents configuration\n# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode)\n# Override per-command with: sync-agents sync --targets claude,cursor\ntargets = claude,devin,cursor,copilot\n" +
 			"# index = local      # local (default: .agents/index/ and its links are gitignored) | commit\n" +
 			"# claude-md = auto   # auto (default: link CLAUDE.md -> AGENTS.md only for Claude Code < 2.1.281) | link | off\n"
 		os.WriteFile(configFile, []byte(content), 0644)
@@ -403,7 +416,7 @@ func (a *App) CmdSync() error {
 	if err := a.EnsureAgentsDir(); err != nil {
 		return err
 	}
-	a.dropGlobalOnlyTargets()
+	a.resolveProjectTargets()
 
 	a.deprecateForce()
 
@@ -426,11 +439,17 @@ func (a *App) CmdSync() error {
 				continue
 			}
 			subdirPath := filepath.Join(a.ProjectRoot, ".agents", b.Dir)
-			if fi, err := os.Stat(subdirPath); err == nil && fi.IsDir() {
-				conflicts += a.linkBucket(targetDir, agentsRel, b).Conflicts
+			if fi, err := os.Stat(subdirPath); err != nil || !fi.IsDir() {
+				continue
 			}
+			if why := a.withheldFold(target, b); why != "" {
+				a.Info(why)
+				continue
+			}
+			conflicts += a.linkBucket(targetDir, agentsRel, b).Conflicts
 		}
 		a.pruneRetiredBucketLinks(targetDir, agentsRel)
+		a.pruneImportedTwice(target)
 	}
 
 	// Per-tool delivery channels (SPEC-013, deliver.go): rule bodies
@@ -484,7 +503,7 @@ func (a *App) CmdSync() error {
 }
 
 func (a *App) CmdStatus() error {
-	a.dropGlobalOnlyTargets()
+	a.resolveProjectTargets()
 	fmt.Fprintf(a.Stdout, "sync-agents v%s\n", version.Version)
 	fmt.Fprintln(a.Stdout)
 
@@ -527,6 +546,11 @@ func (a *App) CmdStatus() error {
 		if fi, err := os.Lstat(rulesLink); err == nil && fi.Mode()&os.ModeSymlink != 0 {
 			hasDirOrLinks = true
 		}
+		for _, b := range Buckets {
+			if linksBucket(target, b) && a.withheldFold(target, b) != "" {
+				hasDirOrLinks = true
+			}
+		}
 
 		if hasDirOrLinks {
 			fmt.Fprintf(a.Stdout, "%s/\n", displayDir)
@@ -536,7 +560,9 @@ func (a *App) CmdStatus() error {
 				}
 				sub := filepath.Join(targetDir, b.Dir)
 				sfi, serr := os.Lstat(sub)
-				if serr == nil && sfi.Mode()&os.ModeSymlink != 0 {
+				if why := a.withheldFold(target, b); why != "" && serr != nil {
+					fmt.Fprintf(a.Stdout, "  [skipped] %s (%s)\n", b.Dir, why)
+				} else if serr == nil && sfi.Mode()&os.ModeSymlink != 0 {
 					lt, _ := os.Readlink(sub)
 					fmt.Fprintf(a.Stdout, "  [synced] %s -> %s\n", b.Dir, lt)
 				} else if serr == nil && sfi.IsDir() {
@@ -563,6 +589,7 @@ func (a *App) CmdStatus() error {
 			fmt.Fprintf(a.Stdout, "[not synced] %s/\n", displayDir)
 		}
 	}
+	a.printRetiredLinks(a.statusTargets())
 	return a.printChannelRows()
 }
 
@@ -628,7 +655,8 @@ func (a *App) pruneRetiredBucketLinks(targetDir, agentsRel string) {
 }
 
 func (a *App) CmdClean() error {
-	a.dropGlobalOnlyTargets()
+	named := a.ActiveTargets
+	a.resolveProjectTargets()
 	a.Info("Removing synced symlinks...")
 
 	for _, target := range a.ActiveTargets {
@@ -638,10 +666,18 @@ func (a *App) CmdClean() error {
 			displayDir = targetDir[len(a.ProjectRoot)+1:]
 		}
 
-		for _, subdir := range append(BucketDirs(), retiredBucketDirs...) {
+		// Only a link sync could have placed goes: one into .agents/, at
+		// a bucket dir sync links for this tool. projectBuckets limits
+		// a tool that never received the others (devin), so a link
+		// there is the user's even when it points into .agents/.
+		dirs := append(BucketDirs(), retiredBucketDirs...)
+		if only, limited := projectBuckets[target]; limited {
+			dirs = only
+		}
+		for _, subdir := range dirs {
 			sub := filepath.Join(targetDir, subdir)
 			fi, err := os.Lstat(sub)
-			if err == nil && fi.Mode()&os.ModeSymlink != 0 {
+			if err == nil && fi.Mode()&os.ModeSymlink != 0 && pointsInto(sub, filepath.Join(a.ProjectRoot, ".agents")) {
 				os.Remove(sub)
 				a.Info(fmt.Sprintf("Removed: %s/%s", displayDir, subdir))
 			}
@@ -674,6 +710,7 @@ func (a *App) CmdClean() error {
 		}
 	}
 
+	a.noteRetiredLeftovers(named, func(t Tool) ([]string, error) { return a.retiredLinks(t), nil })
 	a.Info("Clean complete.")
 	return nil
 }
@@ -1041,7 +1078,7 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 	if err := a.EnsureAgentsDir(); err != nil {
 		return err
 	}
-	a.dropGlobalOnlyTargets()
+	a.resolveProjectTargets()
 	a.deprecateForce()
 	a.migrateAgentsMDOrWarn()
 
@@ -1245,6 +1282,10 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 				continue
 			}
 			if fi, err := os.Stat(filepath.Join(agentsAbs, subdir)); err != nil || !fi.IsDir() {
+				continue
+			}
+			if why := a.withheldFold(target, b); why != "" {
+				a.Info(why)
 				continue
 			}
 			res := a.linkBucket(targetDir, agentsRel, b)

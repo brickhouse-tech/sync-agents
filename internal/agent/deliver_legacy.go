@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -25,13 +26,13 @@ type legacyFold struct {
 // legacyFoldPaths lists the folds linksBucket now withholds: every
 // <tool dir>/<bucket> fold of a passive bucket into a tool that has a
 // local channel (.cursor/rules, .github/copilot/rules, .codex/rules,
-// .opencode/rules). It is derived from the same registry linksBucket
-// reads, so the two cannot disagree.
+// .opencode/rules). It is derived from channelWithholds, which
+// linksBucket also reads, so the two cannot disagree.
 func legacyFoldPaths(root string) []legacyFold {
 	var folds []legacyFold
 	for _, tool := range Tools {
 		for _, b := range Buckets {
-			if b.SyncsToTool(tool.ID) && !linksBucket(tool.ID, b) {
+			if b.SyncsToTool(tool.ID) && channelWithholds(tool.ID, b) {
 				folds = append(folds, legacyFold{
 					Path:   filepath.Join(ResolveTargetDir(tool.ID, root), b.Dir),
 					Source: filepath.Join(root, ".agents", b.Dir),
@@ -259,4 +260,159 @@ func (a *App) removeLinksInto(path, tree, stop string) []string {
 		a.pruneEmptyParents(filepath.Dir(removed[i]), stop)
 	}
 	return removed
+}
+
+// retiredRows returns one deprecated row per placement of a retired
+// tool (Tool.retired) still on disk at global scope, for each retired
+// tool whose replacement is in tools: its channel host while it carries
+// our region or old concat, and each link under its sweep dirs that
+// resolves into the global root. Those placements stay until the
+// release deprecatedTargets names (SPEC-014 E10); status reports them
+// (E11) by the proofs removal will use.
+func (a *App) retiredRows(tools []Tool) ([]StatusEntry, error) {
+	var rows []StatusEntry
+	for _, t := range retiredFor(toolIDs(tools)) {
+		paths, err := a.retiredGlobalPlacements(t)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range paths {
+			rows = append(rows, StatusEntry{Tool: t.ID, IsChannel: true, DestinationPath: p, State: "deprecated", Detail: "removed in " + deprecatedTargets[t.ID].RemovedIn})
+		}
+	}
+	return rows, nil
+}
+
+// retiredGlobalPlacements returns what earlier versions placed for
+// retired tool t at global scope and is still on disk: its channel host
+// while it carries our region or old concat, and each link under its
+// sweep dirs that resolves into the global root.
+func (a *App) retiredGlobalPlacements(t Tool) ([]string, error) {
+	root := a.ResolveGlobalRoot()
+	parent := a.ResolveGlobalRootParent()
+	var paths []string
+	if spec, ok := channelSpecs[t.ID][ScopeGlobal]; ok {
+		ch, err := a.bindChannel(t, ScopeGlobal, spec, root, parent, t.DirForScope(ScopeGlobal, parent), nil)
+		if err != nil {
+			return nil, err
+		}
+		facts, err := a.mountFacts(ch)
+		if err != nil {
+			return nil, err
+		}
+		if facts.CarriesOurs {
+			paths = append(paths, ch.Native)
+		}
+	}
+	for _, dir := range toolSweepDirs(t, parent) {
+		entries, _ := os.ReadDir(dir)
+		for _, e := range entries {
+			if p := filepath.Join(dir, e.Name()); e.Type()&os.ModeSymlink != 0 && pointsInto(p, root) {
+				paths = append(paths, p)
+			}
+		}
+	}
+	return paths, nil
+}
+
+// noteRetiredLeftovers is clean's answer to a deprecated target name:
+// the name now selects its replacement, so clean leaves the retired
+// tool's placements (SPEC-014 E10) and lists each one that leftovers
+// finds rather than implying it removed them (E11a). One note per
+// retired tool, under the first deprecated name that stood for it.
+func (a *App) noteRetiredLeftovers(names []string, leftovers func(Tool) ([]string, error)) {
+	noted := map[string]bool{}
+	for _, name := range names {
+		name = strings.ToLower(strings.TrimSpace(name))
+		d, ok := deprecatedTargets[name]
+		if !ok {
+			continue
+		}
+		for _, t := range retiredFor([]string{d.Use}) {
+			if noted[t.ID] {
+				continue
+			}
+			noted[t.ID] = true
+			paths, err := leftovers(t)
+			if err != nil {
+				a.Warn(fmt.Sprintf("%s leftovers: %v", t.ID, err))
+				continue
+			}
+			if len(paths) == 0 {
+				continue
+			}
+			a.Warn(fmt.Sprintf("target %q: %s. clean leaves what earlier versions wrote for it; sync removes it in %s. Left in place:", name, d.Why, d.RemovedIn))
+			for _, p := range paths {
+				fmt.Fprintf(a.Stdout, "  %s\n", a.display(p))
+			}
+		}
+	}
+}
+
+// printRetiredLinks prints one deprecated line per bucket link a retired
+// tool's project directory still holds: the <dir>/<bucket> fold, or each
+// link drilled into a real <dir>/<bucket> (agentsLinks).
+func (a *App) printRetiredLinks(targets []string) {
+	for _, t := range retiredFor(targets) {
+		for _, link := range a.retiredLinks(t) {
+			dest, _ := os.Readlink(link)
+			fmt.Fprintf(a.Stdout, "[deprecated] %s -> %s (removed in %s)\n", a.display(link), dest, deprecatedTargets[t.ID].RemovedIn)
+		}
+	}
+}
+
+// retiredLinks returns every bucket link an earlier sync left in retired
+// tool t's project directory.
+func (a *App) retiredLinks(t Tool) []string {
+	dir := t.DirForScope(ScopeLocal, a.ProjectRoot)
+	var links []string
+	for _, b := range Buckets {
+		links = append(links, a.agentsLinks(filepath.Join(dir, b.Dir), b)...)
+	}
+	return links
+}
+
+// importedTwice lists, per tool, the bucket dirs it imports from the
+// project directory of the retired tool it replaced while it also reads
+// the same bucket from .agents/ itself. Devin imports .windsurf/skills
+// and loads .agents/skills natively.
+var importedTwice = map[string][]string{"devin": {"skills"}}
+
+// pruneImportedTwice removes each importedTwice fold an earlier sync
+// made in a retired tool's directory, so target loads the bucket once
+// (SPEC-014 E10a). Only a symlink resolving into .agents/<bucket> goes:
+// a real directory or a link elsewhere is the user's.
+func (a *App) pruneImportedTwice(target string) {
+	for _, retired := range retiredFor([]string{target}) {
+		for _, dir := range importedTwice[target] {
+			link := filepath.Join(retired.DirForScope(ScopeLocal, a.ProjectRoot), dir)
+			fi, err := os.Lstat(link)
+			if err != nil || fi.Mode()&os.ModeSymlink == 0 || !pointsInto(link, filepath.Join(a.ProjectRoot, ".agents", dir)) {
+				continue
+			}
+			if a.removePath(link) {
+				a.Info(fmt.Sprintf("%s loads .agents/%s itself; the legacy %s link loaded each one twice", target, dir, a.display(link)))
+			}
+		}
+	}
+}
+
+// retiredFor returns the retired tools whose replacement is in ids, in
+// registry order.
+func retiredFor(ids []string) []Tool {
+	var out []Tool
+	for _, t := range Tools {
+		if t.retired() && slices.Contains(ids, deprecatedTargets[t.ID].Use) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func toolIDs(tools []Tool) []string {
+	ids := make([]string, len(tools))
+	for i, t := range tools {
+		ids[i] = t.ID
+	}
+	return ids
 }

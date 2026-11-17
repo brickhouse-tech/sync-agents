@@ -82,7 +82,7 @@ func (b Bucket) SyncsToTool(toolID string) bool {
 // TargetDestination's agent branch cannot drift apart; adding a
 // harness with subagents is a one-line change here plus its directory
 // mapping in the Tools registry.
-var subagentTools = []string{"claude", "cursor", "opencode"}
+var subagentTools = []string{"claude", "cursor", "devin", "opencode"}
 
 var Buckets = []Bucket{
 	{Dir: "rules", Artifact: ArtifactRule, InInit: true, NewTemplate: templates.Rule},
@@ -92,9 +92,11 @@ var Buckets = []Bucket{
 	// Part A). Restricted to the tools that have a native subagent
 	// surface reading markdown + YAML frontmatter of the same shape:
 	// Claude (.claude/agents/), Cursor (.cursor/agents/, since Cursor
-	// 2.4), and opencode (.opencode/agents/, ~/.config/opencode/agents/
-	// at user scope). Windsurf, Copilot, and Codex have no subagent
-	// concept and receive no agents.
+	// 2.4), Devin (~/.config/devin/agents/ at user scope; it reads
+	// .agents/agents in a project itself, see projectBuckets), and
+	// opencode (.opencode/agents/, ~/.config/opencode/agents/ at user
+	// scope). Copilot and Codex have no subagent concept and receive no
+	// agents.
 	//
 	// Frontmatter is NOT translated between harness dialects — Claude's
 	// `tools:`/`model:` and Cursor's `readonly:`/`is_background:` pass

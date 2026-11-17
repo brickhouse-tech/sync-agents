@@ -16,9 +16,9 @@ import (
 // the migration leaves it alone and no command may change its bytes.
 const deliverAgentsMD = "# AGENTS.md\n\nUse pnpm, not npm.\n"
 
-// allChannelTargets is every local target, Claude and Windsurf (fold)
+// allChannelTargets is every local target, Claude and Devin (fold)
 // plus the four channel tools.
-var allChannelTargets = []string{"claude", "windsurf", "cursor", "copilot", "codex", "opencode"}
+var allChannelTargets = []string{"claude", "devin", "cursor", "copilot", "codex", "opencode"}
 
 // newDeliverApp builds a project with two rules and a skill, a
 // user-owned AGENTS.md, and a separate global root holding one rule of
@@ -123,8 +123,7 @@ func TestDeliver_EveryTargetLinkSetAndIndexBytes(t *testing.T) {
 	wantLinks := map[string]string{
 		".claude/rules":                 "../.agents/rules",
 		".claude/skills":                "../.agents/skills",
-		".windsurf/rules":               "../.agents/rules",
-		".windsurf/skills":              "../.agents/skills",
+		".devin/rules":                  "../.agents/rules",
 		".cursor/skills":                "../.agents/skills",
 		".github/copilot/skills":        "../../.agents/skills",
 		".codex/skills":                 "../.agents/skills",
@@ -524,7 +523,8 @@ func TestLinksBucket(t *testing.T) {
 		want   bool
 	}{
 		{"claude", rules, true},
-		{"windsurf", rules, true},
+		{"devin", rules, true},
+		{"devin", skills, false},
 		{"wave", rules, true},
 		{"cursor", rules, false},
 		{"copilot", rules, false},

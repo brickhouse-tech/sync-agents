@@ -608,7 +608,7 @@ func main() {
 	// and docs/architecture/semantic-routing.md. Per-tool destinations
 	// are computed by TargetDestination; passive rules then reach each
 	// installed tool through its delivery channel (SPEC-013): regions in
-	// ~/.codex/AGENTS.md, Windsurf's global_rules.md and the OpenClaw
+	// ~/.codex/AGENTS.md, ~/.config/devin/AGENTS.md and the OpenClaw
 	// workspace AGENTS.md, a link in ~/.copilot/instructions/, and an
 	// entry in ~/.config/opencode/opencode.json.
 	var globalSyncTargets string

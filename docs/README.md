@@ -51,10 +51,10 @@ form that's easier to read end-to-end than scattered code comments.
   `.gitignore`, the CLAUDE.md policy, and which read paths are verified.
 - [Scope and target directories](./architecture/scope-and-targets.md) —
   How project scope (local) and user scope (global) compose with the
-  per-tool target directories (`.claude/`, `.windsurf/`, `.cursor/`,
-  `.github/copilot/`, `.codex/`). Explains the Windsurf-vs-Codeium
-  asymmetry: `.windsurf/` is the local-only Windsurf dir, while
-  `~/.codeium/` is the user-level Codeium dir.
+  per-tool target directories (`.claude/`, `.devin/`, `.cursor/`,
+  `.github/copilot/`, `.codex/`). Explains the per-scope asymmetry
+  (`.devin/` in a project, `~/.config/devin/` for the user) and the
+  deprecated `windsurf` and `codeium` target names.
 - [Global root resolution](./architecture/global-root-resolution.md) —
   The precedence chain that determines where the global `.agents/`
   tree lives: programmatic field → env var → `$HOME/.agents`. Also

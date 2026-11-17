@@ -190,13 +190,21 @@ func hasGlobalChannel(toolID string) bool {
 var skillsNative = map[string]string{
 	"codex":    "Codex",
 	"cursor":   "Cursor",
+	"devin":    "Devin",
 	"opencode": "opencode",
 	"openclaw": "OpenClaw",
 }
 
+// commandSkips gives the skip reason for an invocable rule or workflow
+// sent to a tool that has a better place for it than the generic
+// "no command surface".
+var commandSkips = map[string]string{
+	"devin": "Devin has no workflow surface; make it a skill",
+}
+
 // invocableSkip is the Skip for an invocable artifact sent to a tool
 // with no user-scope command or skill surface that sync-agents writes:
-// every tool except Claude and Windsurf. Passive content never reaches
+// every tool except Claude. Passive content never reaches
 // here (StrategyChannel); agents and reference docs are routed earlier.
 func invocableSkip(toolID string, typ ArtifactType, name string) Destination {
 	if typ == ArtifactSkill {
@@ -204,6 +212,9 @@ func invocableSkip(toolID string, typ ArtifactType, name string) Destination {
 			return Destination{Strategy: StrategySkip, SkipReason: brand + " loads ~/.agents/skills natively"}
 		}
 		return Destination{Strategy: StrategySkip, SkipReason: fmt.Sprintf("%s has no user-scope skill surface", toolID)}
+	}
+	if why, ok := commandSkips[toolID]; ok {
+		return Destination{Strategy: StrategySkip, SkipReason: why}
 	}
 	return Destination{
 		Strategy:   StrategySkip,

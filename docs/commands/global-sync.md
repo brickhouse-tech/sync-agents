@@ -20,8 +20,7 @@ sync-agents global sync [--targets t1,t2] [--dry-run] [--force] [--global-root P
    or the bucket default (see
    [Semantic routing](../architecture/semantic-routing.md)), then:
    - places a per-artifact **symlink** (Claude rules, commands, skills,
-     agents, plans, specs; Windsurf workflows; Cursor and
-     opencode agents);
+     agents, plans, specs; Cursor, Devin, and opencode agents);
    - hands **passive** content to the tool's delivery channel;
    - or **skips** with a reason (for example, Codex, Cursor, opencode,
      and OpenClaw load `~/.agents/skills` natively).
@@ -47,7 +46,7 @@ served every installed tool. If your line omits a tool you rely on
 | Tool | Invocable | Passive (rule content) |
 |---|---|---|
 | `claude` | `~/.claude/skills/<name>/SKILL.md` (skill) or `~/.claude/commands/<name>.md` (rule/workflow) | `~/.claude/rules/<name>.md` (one link per rule) |
-| `codeium` | `~/.codeium/windsurf/global_workflows/<name>.md` (single-file only) | region `codeium-rules` in `~/.codeium/windsurf/memories/global_rules.md` |
+| `devin` | skipped (skills load natively; no workflow surface, so the reason says to make it a skill) | region `devin-rules` in `~/.config/devin/AGENTS.md` |
 | `cursor` | skipped (skills load natively; no user-scope command surface) | none: Cursor has no user-rules file. User rules reach Cursor through each project's `.cursor/rules/sync-agents.mdc` |
 | `copilot` | skipped | link `~/.copilot/instructions/sync-agents.instructions.md` -> `~/.agents/index/copilot.md` |
 | `codex` | skipped (skills load natively) | region `codex-rules` in `$CODEX_HOME/AGENTS.md` (default `~/.codex`) |
@@ -60,10 +59,6 @@ them and the setting that raises the limit. See
 
 Skipped cases with a warning:
 
-- **Multi-file invocable skill → Codeium**: Windsurf workflows are
-  single `.md` files, so a skill dir with `SKILL.md` plus supporting
-  files can't be a workflow without flattening. The skill still syncs
-  to other tools.
 - **Passive skill → Claude**: a directory marked `invocable: false`
   has no clean Claude destination (Claude's passive surface is a
   single `rules/*.md` file). Decide whether to split the skill into
@@ -72,8 +67,9 @@ Skipped cases with a warning:
 ## Consent
 
 - **Creating** a file that does not exist needs no consent:
-  `~/.codex/AGENTS.md` when `~/.codex` exists, Windsurf's
-  `global_rules.md` when `~/.codeium` exists, a new `opencode.json`.
+  `~/.codex/AGENTS.md` when `~/.codex` exists,
+  `~/.config/devin/AGENTS.md` when `~/.config/devin` exists, a new
+  `opencode.json`.
 - **Editing** a file that exists with your content needs one run that
   names the tool, for example `sync-agents global sync --targets codex`.
   After that, the region markers or the config entry carry consent and
@@ -153,7 +149,7 @@ instead.
 
 | Flag | Default | Effect |
 |---|---|---|
-| `--targets <list>` | `targets =` in `~/.agents/config`, else every registered tool (each served only when installed) | Comma-separated tool IDs to sync. Aliases honored: `windsurf` resolves to `codeium`. Unknown names produce a warning and are skipped. Naming a tool consents to editing a file of yours it reads, and creates its home when missing (see [Consent](#consent)). |
+| `--targets <list>` | `targets =` in `~/.agents/config`, else every registered tool (each served only when installed) | Comma-separated tool IDs to sync. The deprecated names `windsurf` and `codeium` resolve to `devin`, with one warning on stderr per run. Unknown names produce a warning and are skipped. Naming a tool consents to editing a file of yours it reads, and creates its home when missing (see [Consent](#consent)). |
 | `--dry-run` | false | Print every planned operation prefixed with `[dry-run]`. No filesystem writes. |
 | `--force` | false | Replace non-symlink files in the way (saved as `*.replaced-by-sync-agents`). |
 | `--global-root <path>` | `$HOME/.agents` | Override the global root. See [Global root resolution](../architecture/global-root-resolution.md). |
@@ -169,8 +165,8 @@ sync-agents global sync
 # Only sync Claude and Cursor.
 sync-agents global sync --targets claude,cursor
 
-# Windsurf alias works.
-sync-agents global sync --targets windsurf
+# Sync Devin (formerly Windsurf).
+sync-agents global sync --targets devin
 
 # Preview without writing.
 sync-agents global sync --dry-run
@@ -212,7 +208,7 @@ preferable to all-or-nothing for fan-out operations.
 - It does not pull artifacts from upstream repos — that's
   SPEC-003 (shipped; spec retired to git history).
 - It does not regenerate per-project sync targets (the local
-  `.claude/`, `.windsurf/`, etc.). Use the existing `sync-agents
+  `.claude/`, `.devin/`, etc.). Use the existing `sync-agents
   sync` command for project scope.
 - It does not modify or delete content inside `~/.agents/`. The
   canonical tree is read-only from sync's perspective.

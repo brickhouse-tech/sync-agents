@@ -513,7 +513,7 @@ func TestCmdSync_ClaudeMD(t *testing.T) {
 
 	t.Run("claude not active means no CLAUDE.md handling", func(t *testing.T) {
 		app, dir, out := newClaudeMDApp(t, fakeClaude("2.1.276 (Claude Code)\n", nil))
-		app.ActiveTargets = []string{"windsurf"}
+		app.ActiveTargets = []string{"devin"}
 		if err := app.CmdSync(); err != nil {
 			t.Fatal(err)
 		}

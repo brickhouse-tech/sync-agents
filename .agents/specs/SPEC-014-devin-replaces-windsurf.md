@@ -46,10 +46,22 @@ character `global_rules.md` cap was Windsurf's.
 - **E2.** When local sync targets `devin`, sync shall fold
   `.devin/rules -> ../.agents/rules`, the same way it folds
   `.claude/rules`.
-- **E2a.** While a `.windsurf/rules` symlink resolves into `.agents/`,
-  sync shall skip the `.devin/rules` fold and report
-  `devin rules served by legacy .windsurf/rules link` (Devin imports
+- **E2a.** While `.windsurf/rules` serves rules from `.agents/rules`,
+  sync shall skip the `.devin/rules` fold (Devin imports
   `.windsurf/rules` by default, so both would load every rule twice).
+  It serves them when it is a symlink that resolves into
+  `.agents/rules` (the fold), reported as
+  `devin rules served by legacy .windsurf/rules link`, or a real
+  directory holding at least one symlink that resolves into
+  `.agents/rules` (the per-rule links an earlier sync drilled into a
+  directory Windsurf created), reported as
+  `devin rules served by legacy links in .windsurf/rules`.
+- **E2b.** While the project's `.agents/` is the global root (the
+  project is `$HOME`), local sync shall skip the `.devin/rules` fold
+  and report `devin rules: skipped at project scope`, with the same
+  reason sync prints for a channel it defers to global sync.
+  `~/.devin/rules` is Devin's user rules directory, and E3 already
+  delivers the same rules through `~/.config/devin/AGENTS.md`.
 - **E3.** When global sync targets `devin`, sync shall write the
   passive index into a `devin-rules` region of
   `~/.config/devin/AGENTS.md`, creating the file if absent, with no
@@ -62,6 +74,10 @@ character `global_rules.md` cap was Windsurf's.
 - **E6.** Invocable single-file rules and workflows shall be skipped
   for `devin` with reason "Devin has no workflow surface; make it a
   skill".
+- **E6a.** Local `clean` shall remove under `.devin/` only the
+  `.devin/rules` link, the one link sync places there, and for every
+  tool shall remove a `<tool>/<bucket>` symlink only when it resolves
+  into `.agents/`. Any other link is the user's.
 - **E7.** `init` and `global init` shall write `devin` in place of
   `windsurf`/`codeium` in the default `targets =` line.
 
@@ -76,9 +92,24 @@ character `global_rules.md` cap was Windsurf's.
 - **E10.** Paths written by earlier versions for `codeium`
   (`~/.codeium/windsurf/global_workflows/*` links, the `codeium-rules`
   region, `.windsurf/rules` fold) shall be left in place during 4.x.
-  Legacy Cascade still reads them.
+  Legacy Cascade still reads them. E10a is the one exception.
+- **E10a.** When local sync targets `devin`, it shall remove a
+  `.windsurf/skills` symlink that resolves into `.agents/skills` (the
+  fold 4.0.x made) and report it. Devin imports `.windsurf/skills` and
+  also reads `.agents/skills`, so the fold loads every skill twice. A
+  real `.windsurf/skills/` directory or a symlink elsewhere is the
+  user's and stays. `.windsurf/workflows` stays: only legacy Cascade
+  reads it, so nothing loads twice.
 - **E11.** `status` and `global status` shall list each surviving
-  `codeium` placement as `deprecated (removed in 5.0.0)`.
+  `codeium` placement as `deprecated (removed in 5.0.0)`. In a project
+  that is each `.windsurf/<bucket>` fold and each link drilled into a
+  real `.windsurf/<bucket>/` that resolves into `.agents/<bucket>`;
+  the user's own files there are not listed.
+- **E11a.** When `clean` or `global clean` is given `windsurf` or
+  `codeium`, it shall clean `devin`, leave the E10 placements in place,
+  and list each one it finds under
+  `target "windsurf": Windsurf is now Devin. clean leaves what earlier versions wrote for it; sync removes it in 5.0.0. Left in place:`
+  instead of implying it removed them.
 
 ### Part C: removal (5.0.0)
 

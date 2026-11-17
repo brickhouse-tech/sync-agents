@@ -24,12 +24,11 @@ The `config` file looks like:
 
 ```text
 # sync-agents global configuration
-# Comma-separated list of sync targets (available: claude, codeium, cursor, copilot, codex, opencode, openclaw)
-# Note: 'codeium' is the user-scope name for Windsurf; the project-scope dir is .windsurf/
+# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode, openclaw)
 # global sync, status, and clean use this list when --targets is omitted; without it, every tool.
 # Override per-command with: sync-agents global sync --targets claude,cursor
 # Only naming a tool in --targets consents to editing a file of yours that it reads; this list does not.
-targets = claude,codeium,cursor,copilot,codex
+targets = claude,devin,cursor,copilot,codex
 ```
 
 `global sync`, `global status`, and `global clean` operate on the tools
@@ -86,7 +85,7 @@ tree. After init:
 
 1. `promote` artifacts from a project into `~/.agents/`.
 2. (Future PR) `global sync` to fan them out into `~/.claude/`,
-   `~/.codeium/`, `~/.cursor/`, `~/.github/copilot/`, `~/.codex/`.
+   `~/.config/devin/`, `~/.cursor/`, `~/.copilot/`, `~/.codex/`.
 
 If you already have a `~/.agents/` from manual setup (as documented
 in the README's Inheritance section), running `global init` will

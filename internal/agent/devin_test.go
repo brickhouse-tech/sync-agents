@@ -1,0 +1,596 @@
+package agent
+
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+)
+
+// SPEC-014 Part A: the devin target.
+
+// SPEC-014 E1
+func TestDevinTool_Dirs(t *testing.T) {
+	devin := asTool(t, "devin")
+	if got, want := devin.DirForScope(ScopeLocal, "/proj"), filepath.Join("/proj", ".devin"); got != want {
+		t.Errorf("devin local dir = %q, want %q", got, want)
+	}
+	if got, want := devin.DirForScope(ScopeGlobal, "/home/u"), filepath.Join("/home/u", ".config", "devin"); got != want {
+		t.Errorf("devin global dir = %q, want %q", got, want)
+	}
+}
+
+// SPEC-014 E2
+func TestSync_DevinFoldsRulesOnly(t *testing.T) {
+	app, root, _ := newSyncApp(t, "devin")
+	writeFile(t, filepath.Join(root, ".agents", "agents", "reviewer.md"), "agent")
+	writeFile(t, filepath.Join(root, ".agents", "workflows", "ship.md"), "workflow")
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	assertResolvesTo(t, filepath.Join(root, ".devin", "rules"), filepath.Join(root, ".agents", "rules"))
+	// SPEC-014 E4, E5, E6: Devin reads .agents/skills and .agents/agents
+	// itself and has no workflow surface.
+	for _, dir := range []string{"skills", "agents", "workflows"} {
+		if exists(filepath.Join(root, ".devin", dir)) {
+			t.Errorf(".devin/%s was linked; Devin must not receive it at project scope", dir)
+		}
+	}
+}
+
+// SPEC-014 E2a
+func TestSync_DevinRulesServedByLegacyWindsurfLink(t *testing.T) {
+	app, root, buf := newSyncApp(t, "devin")
+	if err := os.MkdirAll(filepath.Join(root, ".windsurf"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("..", ".agents", "rules"), filepath.Join(root, ".windsurf", "rules")); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if exists(filepath.Join(root, ".devin", "rules")) {
+		t.Error(".devin/rules was folded although .windsurf/rules already serves the rules to Devin")
+	}
+	if !strings.Contains(buf.String(), "devin rules served by legacy .windsurf/rules link") {
+		t.Errorf("missing E2a report:\n%s", buf.String())
+	}
+	// SPEC-014 E10: the legacy link stays.
+	assertResolvesTo(t, filepath.Join(root, ".windsurf", "rules"), filepath.Join(root, ".agents", "rules"))
+}
+
+// drillWindsurfRules makes what an earlier sync left when .windsurf/rules
+// was already a real directory: one link per rule inside it, beside a
+// rule the user wrote there.
+func drillWindsurfRules(t *testing.T, root string) string {
+	t.Helper()
+	writeFile(t, filepath.Join(root, ".windsurf", "rules", "mine.md"), "hand-written")
+	link := filepath.Join(root, ".windsurf", "rules", "r.md")
+	if err := os.Symlink(filepath.Join("..", "..", ".agents", "rules", "r.md"), link); err != nil {
+		t.Fatal(err)
+	}
+	return link
+}
+
+// SPEC-014 E2a: per-rule links drilled into a real .windsurf/rules serve
+// Devin those rules as a fold would.
+func TestSync_DevinRulesServedByDrilledWindsurfLinks(t *testing.T) {
+	app, root, buf := newSyncApp(t, "devin")
+	link := drillWindsurfRules(t, root)
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if exists(filepath.Join(root, ".devin", "rules")) {
+		t.Error(".devin/rules was folded although links in .windsurf/rules already serve the rules to Devin")
+	}
+	if want := "devin rules served by legacy links in .windsurf/rules"; !strings.Contains(buf.String(), want) {
+		t.Errorf("missing %q in:\n%s", want, buf.String())
+	}
+	assertResolvesTo(t, link, filepath.Join(root, ".agents", "rules", "r.md"))
+}
+
+// SPEC-014 E11: status lists each drilled link, not the user's files.
+func TestStatus_DrilledWindsurfLinksDeprecated(t *testing.T) {
+	app, root, buf := newSyncApp(t, "devin")
+	drillWindsurfRules(t, root)
+	if err := app.CmdStatus(); err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	out := buf.String()
+	if want := "[deprecated] .windsurf/rules/r.md -> ../../.agents/rules/r.md (removed in 5.0.0)"; !strings.Contains(out, want) {
+		t.Errorf("missing %q in:\n%s", want, out)
+	}
+	if strings.Contains(out, "mine.md") {
+		t.Errorf("the user's rule was reported as a leftover:\n%s", out)
+	}
+}
+
+// SPEC-014 E2a: only a link into .agents/ withholds the fold.
+func TestSync_DevinFoldsRulesBesideForeignWindsurfRules(t *testing.T) {
+	app, root, _ := newSyncApp(t, "devin")
+	writeFile(t, filepath.Join(root, ".windsurf", "rules", "mine.md"), "hand-written")
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	assertResolvesTo(t, filepath.Join(root, ".devin", "rules"), filepath.Join(root, ".agents", "rules"))
+}
+
+// SPEC-014 E2b: in $HOME the project tree is the global tree, and
+// ~/.devin/rules is Devin's user rules dir. Global sync already delivers
+// those rules through ~/.config/devin/AGENTS.md, so a fold would load
+// every rule twice.
+func TestSync_DevinRulesNotFoldedWhenProjectIsGlobalRoot(t *testing.T) {
+	app, root, buf := newSyncApp(t, "devin")
+	app.GlobalRoot = filepath.Join(root, ".agents")
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if exists(filepath.Join(root, ".devin", "rules")) {
+		t.Error("sync folded ~/.devin/rules although global sync delivers the same rules to Devin")
+	}
+	if want := "devin rules: skipped at project scope: this project's .agents/ is the global root, so `sync-agents global sync` delivers it"; !strings.Contains(buf.String(), want) {
+		t.Errorf("missing %q in:\n%s", want, buf.String())
+	}
+}
+
+// SPEC-014 E6a: sync places only .devin/rules, so any other link under
+// .devin/ is the user's, even one into .agents/.
+func TestClean_DevinRemovesOnlyTheRulesFold(t *testing.T) {
+	app, root, _ := newSyncApp(t, "devin")
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	userLinks := map[string]string{
+		"skills": filepath.Join("..", "vendor", "skills"),
+		"agents": filepath.Join("..", ".agents", "agents"),
+	}
+	for dir, dest := range userLinks {
+		if err := os.Symlink(dest, filepath.Join(root, ".devin", dir)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := app.CmdClean(); err != nil {
+		t.Fatalf("clean: %v", err)
+	}
+	if exists(filepath.Join(root, ".devin", "rules")) {
+		t.Error("clean left the .devin/rules fold")
+	}
+	for dir := range userLinks {
+		if !exists(filepath.Join(root, ".devin", dir)) {
+			t.Errorf("clean removed the user's .devin/%s link", dir)
+		}
+	}
+}
+
+// SPEC-014 E6a: clean removes a bucket link only when it resolves into
+// .agents/, for every tool.
+func TestClean_KeepsBucketLinksOutsideAgents(t *testing.T) {
+	app, root, _ := newSyncApp(t, "claude")
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	foreign := filepath.Join(root, ".claude", "agents")
+	if err := os.Symlink(filepath.Join("..", "vendor", "agents"), foreign); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.CmdClean(); err != nil {
+		t.Fatalf("clean: %v", err)
+	}
+	for _, dir := range []string{"rules", "skills"} {
+		if exists(filepath.Join(root, ".claude", dir)) {
+			t.Errorf("clean left the .claude/%s fold", dir)
+		}
+	}
+	if !exists(foreign) {
+		t.Error("clean removed .claude/agents, which points outside .agents/")
+	}
+}
+
+// SPEC-014 E10a: Devin imports .windsurf/skills and reads .agents/skills
+// itself, so the 4.0.x fold loaded every skill twice. Sync removes that
+// fold, and only that: workflows stay for legacy Cascade.
+func TestSync_DevinRemovesLegacyWindsurfSkillsFold(t *testing.T) {
+	app, root, buf := newSyncApp(t, "devin")
+	writeFile(t, filepath.Join(root, ".agents", "workflows", "ship.md"), "workflow")
+	mkdirs(t, filepath.Join(root, ".windsurf"))
+	for _, b := range []string{"skills", "workflows"} {
+		if err := os.Symlink(filepath.Join("..", ".agents", b), filepath.Join(root, ".windsurf", b)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if exists(filepath.Join(root, ".windsurf", "skills")) {
+		t.Error("sync left .windsurf/skills, which Devin loads beside .agents/skills")
+	}
+	if want := "Removed: .windsurf/skills"; !strings.Contains(buf.String(), want) {
+		t.Errorf("missing %q in:\n%s", want, buf.String())
+	}
+	assertResolvesTo(t, filepath.Join(root, ".windsurf", "workflows"), filepath.Join(root, ".agents", "workflows"))
+}
+
+// SPEC-014 E10a: a real .windsurf/skills, or a link elsewhere, is the
+// user's.
+func TestSync_DevinKeepsForeignWindsurfSkills(t *testing.T) {
+	for name, place := range map[string]func(t *testing.T, path string){
+		"real dir": func(t *testing.T, path string) { writeFile(t, filepath.Join(path, "mine", "SKILL.md"), "mine") },
+		"foreign link": func(t *testing.T, path string) {
+			mkdirs(t, filepath.Dir(path))
+			if err := os.Symlink(filepath.Join("..", "vendor", "skills"), path); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			app, root, _ := newSyncApp(t, "devin")
+			path := filepath.Join(root, ".windsurf", "skills")
+			place(t, path)
+			if err := app.CmdSync(); err != nil {
+				t.Fatalf("sync: %v", err)
+			}
+			if !exists(path) {
+				t.Errorf("sync removed the user's .windsurf/skills (%s)", name)
+			}
+		})
+	}
+}
+
+// SPEC-014 E3
+func TestGlobalSync_DevinRulesRegion(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	big := strings.Repeat("Never commit secrets. ", 400) + "\n"
+	seedRule(t, a.GlobalRoot, "security", big)
+	globalSync(t, a, "devin")
+
+	host := filepath.Join(root, ".config", "devin", "AGENTS.md")
+	got := readFile(t, host)
+	want := DevinRulesRegion.Start() + "\n" + globalBanner + "\n\n## security\n\n" + big + "\n" + DevinRulesRegion.End() + "\n"
+	if got != want {
+		t.Errorf("%s =\n%q\nwant\n%q", host, got, want)
+	}
+	if DevinRulesRegion.Name != "devin-rules" {
+		t.Errorf("region name = %q, want devin-rules", DevinRulesRegion.Name)
+	}
+}
+
+// SPEC-014 E3: the host is the user's file; text outside the region
+// survives.
+func TestGlobalSync_DevinRegionKeepsUserText(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	seedRule(t, a.GlobalRoot, "security", "Never commit secrets.\n")
+	host := filepath.Join(root, ".config", "devin", "AGENTS.md")
+	writeFile(t, host, "Prefer tabs.\n")
+	globalSync(t, a, "devin")
+
+	got := readFile(t, host)
+	if !strings.HasPrefix(got, "Prefer tabs.\n") || !strings.Contains(got, "Never commit secrets.") {
+		t.Errorf("host = %q", got)
+	}
+}
+
+// SPEC-014 E4, E5, E6
+func TestTargetDestination_Devin(t *testing.T) {
+	devin := asTool(t, "devin")
+	cases := []struct {
+		name     string
+		typ      ArtifactType
+		sem      Semantic
+		strategy DestinationStrategy
+		path     string
+		reason   string
+	}{
+		{"skill", ArtifactSkill, Invocable, StrategySkip, "", "Devin loads ~/.agents/skills natively"},
+		{"agent", ArtifactAgent, Invocable, StrategySymlink, filepath.Join("/home/u", ".config", "devin", "agents", "reviewer.md"), ""},
+		{"workflow", ArtifactWorkflow, Invocable, StrategySkip, "", "Devin has no workflow surface; make it a skill"},
+		{"invocable rule", ArtifactRule, Invocable, StrategySkip, "", "Devin has no workflow surface; make it a skill"},
+		{"passive rule", ArtifactRule, Passive, StrategyChannel, "", ""},
+	}
+	for _, c := range cases {
+		d := TargetDestination(devin, c.typ, "reviewer", c.sem, "", "/home/u")
+		if d.Strategy != c.strategy || d.Path != c.path || d.SkipReason != c.reason {
+			t.Errorf("%s: got %+v, want strategy %v path %q reason %q", c.name, d, c.strategy, c.path, c.reason)
+		}
+	}
+}
+
+// SPEC-014 E5
+func TestGlobalSync_DevinAgentsLink(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	writeArtifact(t, a.GlobalRoot, filepath.Join("agents", "reviewer.md"), "---\nname: reviewer\n---\nReview.\n")
+	globalSync(t, a, "devin")
+	assertResolvesTo(t, filepath.Join(root, ".config", "devin", "agents", "reviewer.md"), filepath.Join(a.GlobalRoot, "agents", "reviewer.md"))
+}
+
+// SPEC-014 E3: like every tool with a global channel, devin is left
+// alone until it is installed or named.
+func TestGlobalSync_DevinNotInstalledGetsNothing(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	seedRule(t, a.GlobalRoot, "security", "Never commit secrets.\n")
+	globalSync(t, a)
+	if exists(filepath.Join(root, ".config", "devin")) {
+		t.Error("global sync created ~/.config/devin for a Devin that is not installed")
+	}
+	mkdirs(t, filepath.Join(root, ".config", "devin"))
+	globalSync(t, a)
+	if !exists(filepath.Join(root, ".config", "devin", "AGENTS.md")) {
+		t.Error("installed Devin did not get ~/.config/devin/AGENTS.md")
+	}
+}
+
+// SPEC-014 Part B: windsurf and codeium are deprecated names for devin.
+
+func deprecationWarning(name string) string {
+	return `warning: target "` + name + `" is deprecated; Windsurf is now Devin. Use "devin". Removed in 5.0.0.`
+}
+
+// stderrLines splits captured stderr into non-empty lines.
+func stderrLines(buf *bytes.Buffer) []string {
+	var out []string
+	for _, l := range strings.Split(buf.String(), "\n") {
+		if l != "" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// SPEC-014 E8, E9
+func TestCanonicalTargets(t *testing.T) {
+	got, deprecated := canonicalTargets([]string{"claude", "windsurf", "devin", "codeium", "cursor", "windsurf"})
+	if want := []string{"claude", "devin", "cursor"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("targets = %v, want %v", got, want)
+	}
+	if want := []string{"windsurf", "codeium"}; !reflect.DeepEqual(deprecated, want) {
+		t.Errorf("deprecated = %v, want %v", deprecated, want)
+	}
+}
+
+// SPEC-014 E8: a deprecated name in .agents/config syncs devin, with
+// one warning on stderr.
+func TestSync_DeprecatedConfigTargetSyncsDevin(t *testing.T) {
+	app, root, _ := newSyncApp(t)
+	writeFile(t, filepath.Join(root, ".agents", "config"), "targets = claude,windsurf\n")
+	app.ActiveTargets = ReadConfigTargets(root)
+	var stderr bytes.Buffer
+	app.Stderr = &stderr
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	assertResolvesTo(t, filepath.Join(root, ".devin", "rules"), filepath.Join(root, ".agents", "rules"))
+	if exists(filepath.Join(root, ".windsurf")) {
+		t.Error("sync created .windsurf/ for a deprecated target")
+	}
+	if got, want := stderrLines(&stderr), []string{deprecationWarning("windsurf")}; !reflect.DeepEqual(got, want) {
+		t.Errorf("stderr = %q, want %q", got, want)
+	}
+}
+
+// SPEC-014 E9: devin named twice over, through aliases and its own
+// name, syncs once, and each alias warns once.
+func TestSync_DevinAndAliasesSyncOnce(t *testing.T) {
+	app, root, stdout := newSyncApp(t, "devin", "codeium", "windsurf", "codeium")
+	var stderr bytes.Buffer
+	app.Stderr = &stderr
+	app.TargetsFromFlag = true
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if n := strings.Count(stdout.String(), "Syncing to .devin/"); n != 1 {
+		t.Errorf("devin synced %d times, want 1:\n%s", n, stdout.String())
+	}
+	want := []string{deprecationWarning("codeium"), deprecationWarning("windsurf")}
+	if got := stderrLines(&stderr); !reflect.DeepEqual(got, want) {
+		t.Errorf("stderr = %q, want %q", got, want)
+	}
+	assertResolvesTo(t, filepath.Join(root, ".devin", "rules"), filepath.Join(root, ".agents", "rules"))
+}
+
+// SPEC-014 E8: --targets windsurf on global sync names devin, which
+// opens devin's home gate as naming devin would.
+func TestGlobalSync_DeprecatedFlagTargetSyncsDevin(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	var stderr bytes.Buffer
+	a.Stderr = &stderr
+	seedRule(t, a.GlobalRoot, "security", "Never commit secrets.\n")
+	globalSync(t, a, "windsurf")
+
+	if !strings.Contains(readFile(t, filepath.Join(root, ".config", "devin", "AGENTS.md")), "Never commit secrets.") {
+		t.Error("global sync --targets windsurf did not deliver to devin")
+	}
+	if exists(filepath.Join(root, ".codeium")) {
+		t.Error("global sync --targets windsurf wrote ~/.codeium")
+	}
+	if got, want := stderrLines(&stderr), []string{deprecationWarning("windsurf")}; !reflect.DeepEqual(got, want) {
+		t.Errorf("stderr = %q, want %q", got, want)
+	}
+}
+
+// SPEC-014 E8: the same for the targets line of ~/.agents/config.
+func TestGlobalSync_DeprecatedConfigTargetSyncsDevin(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	var stderr bytes.Buffer
+	a.Stderr = &stderr
+	seedRule(t, a.GlobalRoot, "security", "Never commit secrets.\n")
+	writeFile(t, filepath.Join(a.GlobalRoot, "config"), "targets = claude,codeium\n")
+	mkdirs(t, filepath.Join(root, ".config", "devin"))
+	globalSync(t, a)
+
+	if !strings.Contains(readFile(t, filepath.Join(root, ".config", "devin", "AGENTS.md")), "Never commit secrets.") {
+		t.Error("targets = codeium did not deliver to devin")
+	}
+	if got, want := stderrLines(&stderr), []string{deprecationWarning("codeium")}; !reflect.DeepEqual(got, want) {
+		t.Errorf("stderr = %q, want %q", got, want)
+	}
+}
+
+// seedCodeiumLeftovers writes what global sync placed for codeium
+// before SPEC-014: the codeium-rules region and one workflow link.
+func seedCodeiumLeftovers(t *testing.T, a *App, root string) (host, link string) {
+	t.Helper()
+	seedWorkflow(t, a.GlobalRoot, "ship", "---\ninvocable: true\n---\nShip it.\n")
+	host = filepath.Join(root, ".codeium", "windsurf", "memories", "global_rules.md")
+	writeFile(t, host, "Remember: tabs.\n\n"+CodeiumRulesRegion.Start()+"\nold rules\n"+CodeiumRulesRegion.End()+"\n")
+	link = filepath.Join(root, ".codeium", "windsurf", "global_workflows", "ship.md")
+	mkdirs(t, filepath.Dir(link))
+	if err := os.Symlink(filepath.Join(a.GlobalRoot, "workflows", "ship.md"), link); err != nil {
+		t.Fatal(err)
+	}
+	return host, link
+}
+
+// SPEC-014 E10: no run touches what earlier versions wrote for codeium.
+func TestGlobal_CodeiumLeftoversStay(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	seedRule(t, a.GlobalRoot, "security", "Never commit secrets.\n")
+	host, link := seedCodeiumLeftovers(t, a, root)
+	before := readFile(t, host)
+
+	globalSync(t, a)
+	globalSync(t, a, "codeium")
+	if err := a.CmdGlobalClean(GlobalCleanOpts{}); err != nil {
+		t.Fatalf("global clean: %v", err)
+	}
+	if err := a.CmdGlobalClean(GlobalCleanOpts{Targets: []string{"windsurf"}}); err != nil {
+		t.Fatalf("global clean: %v", err)
+	}
+
+	if got := readFile(t, host); got != before {
+		t.Errorf("codeium region host changed:\n%q\nwant\n%q", got, before)
+	}
+	assertResolvesTo(t, link, filepath.Join(a.GlobalRoot, "workflows", "ship.md"))
+}
+
+const leftoverNote = `[warn] target "%s": Windsurf is now Devin. clean leaves what earlier versions wrote for it; sync removes it in 5.0.0. Left in place:`
+
+// SPEC-014 E11a: clean given a deprecated name says which Windsurf
+// leftovers it kept instead of implying it cleaned them.
+func TestClean_DeprecatedTargetNotesWindsurfLeftovers(t *testing.T) {
+	app, root, buf := newSyncApp(t, "windsurf")
+	app.TargetsFromFlag = true
+	mkdirs(t, filepath.Join(root, ".windsurf"))
+	fold := filepath.Join(root, ".windsurf", "rules")
+	if err := os.Symlink(filepath.Join("..", ".agents", "rules"), fold); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.CmdClean(); err != nil {
+		t.Fatalf("clean: %v", err)
+	}
+	out := buf.String()
+	if want := strings.Replace(leftoverNote, "%s", "windsurf", 1) + "\n  .windsurf/rules\n"; !strings.Contains(out, want) {
+		t.Errorf("missing %q in:\n%s", want, out)
+	}
+	assertResolvesTo(t, fold, filepath.Join(root, ".agents", "rules"))
+}
+
+// SPEC-014 E11a: the same for global clean.
+func TestGlobalClean_DeprecatedTargetNotesCodeiumLeftovers(t *testing.T) {
+	a, root, buf := newGlobalSyncTestApp(t)
+	host, link := seedCodeiumLeftovers(t, a, root)
+	if err := a.CmdGlobalClean(GlobalCleanOpts{Targets: []string{"codeium"}}); err != nil {
+		t.Fatalf("global clean: %v", err)
+	}
+	if want := strings.Replace(leftoverNote, "%s", "codeium", 1) + "\n  " + host + "\n  " + link + "\n"; !strings.Contains(buf.String(), want) {
+		t.Errorf("missing %q in:\n%s", want, buf.String())
+	}
+	assertResolvesTo(t, link, filepath.Join(a.GlobalRoot, "workflows", "ship.md"))
+}
+
+// SPEC-014 E11a: naming devin itself is not a question about Windsurf.
+func TestGlobalClean_DevinTargetNoLeftoverNote(t *testing.T) {
+	a, root, buf := newGlobalSyncTestApp(t)
+	seedCodeiumLeftovers(t, a, root)
+	if err := a.CmdGlobalClean(GlobalCleanOpts{Targets: []string{"devin"}}); err != nil {
+		t.Fatalf("global clean: %v", err)
+	}
+	if strings.Contains(buf.String(), "Left in place") {
+		t.Errorf("leftover note without a deprecated target:\n%s", buf.String())
+	}
+}
+
+// SPEC-014 E7
+func TestInit_DefaultTargetsNameDevin(t *testing.T) {
+	project := t.TempDir()
+	a := &App{ProjectRoot: project, GlobalRoot: filepath.Join(t.TempDir(), ".agents"), Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
+	if err := a.CmdInit(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	if err := a.CmdGlobalInit(); err != nil {
+		t.Fatalf("global init: %v", err)
+	}
+	for _, c := range []struct {
+		config string
+		want   []string
+	}{
+		{filepath.Join(project, ".agents", "config"), []string{"claude", "devin", "cursor", "copilot"}},
+		{filepath.Join(a.GlobalRoot, "config"), []string{"claude", "devin", "cursor", "copilot", "codex"}},
+	} {
+		if got := parseConfigTargets([]byte(readFile(t, c.config))); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s targets = %v, want %v", c.config, got, c.want)
+		}
+	}
+	if got, want := AllTargets, []string{"claude", "devin", "cursor", "copilot"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("AllTargets = %v, want %v", got, want)
+	}
+}
+
+// SPEC-014 E11: global status lists each codeium leftover as
+// deprecated, and only the ones that exist.
+func TestGlobalStatus_CodeiumLeftoversDeprecated(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	host, link := seedCodeiumLeftovers(t, a, root)
+	seedWorkflow(t, a.GlobalRoot, "never-linked", "---\ninvocable: true\n---\nNot placed.\n")
+	foreign := filepath.Join(root, ".codeium", "windsurf", "global_workflows", "mine.md")
+	writeFile(t, foreign, "a workflow the user wrote")
+
+	out := globalStatusOut(t, a)
+	for _, p := range []string{host, link} {
+		if want := "[deprecated] codeium -> " + p + "  (removed in 5.0.0)"; !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if n := strings.Count(out, "[deprecated]"); n != 2 {
+		t.Errorf("%d deprecated rows, want 2 (the user's workflow and never-placed ones are not leftovers):\n%s", n, out)
+	}
+}
+
+// SPEC-014 E11: nothing to report when nothing is left.
+func TestGlobalStatus_NoCodeiumLeftoversNoRows(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	seedRule(t, a.GlobalRoot, "security", "Never commit secrets.\n")
+	writeFile(t, filepath.Join(root, ".codeium", "windsurf", "memories", "global_rules.md"), "Remember: tabs.\n")
+	if out := globalStatusOut(t, a); strings.Contains(out, "[deprecated]") {
+		t.Errorf("deprecated row without a leftover:\n%s", out)
+	}
+}
+
+// SPEC-014 E11: project status lists the .windsurf folds an earlier
+// sync made.
+func TestStatus_WindsurfFoldsDeprecated(t *testing.T) {
+	app, root, buf := newSyncApp(t, "devin")
+	mkdirs(t, filepath.Join(root, ".windsurf"))
+	for _, b := range []string{"rules", "skills"} {
+		if err := os.Symlink(filepath.Join("..", ".agents", b), filepath.Join(root, ".windsurf", b)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, filepath.Join(root, ".windsurf", "workflows", "mine.md"), "the user's")
+	if err := app.CmdStatus(); err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	out := buf.String()
+	for _, b := range []string{"rules", "skills"} {
+		if want := "[deprecated] .windsurf/" + b + " -> ../.agents/" + b + " (removed in 5.0.0)"; !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "[deprecated] .windsurf/workflows") {
+		t.Errorf("a real directory was reported as a leftover:\n%s", out)
+	}
+	if !strings.Contains(out, "[skipped] rules (devin rules served by legacy .windsurf/rules link)") {
+		t.Errorf("status does not explain the withheld .devin/rules fold:\n%s", out)
+	}
+}
