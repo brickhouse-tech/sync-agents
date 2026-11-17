@@ -11,10 +11,15 @@ All notable changes to this project will be documented in this file. See [commit
 * **targets:** add the opt-in `gemini` target for Gemini CLI (SPEC-015). No default list names it. User rules go to the `gemini-rules` region of `~/.gemini/GEMINI.md`. In a project the region goes into `GEMINI.md` only when the file exists. Subagents link into `.gemini/agents/` and `~/.gemini/agents/`. Skills and workflows are skipped. `global sync` warns when `antigravity` and `gemini` are both targeted, because Antigravity CLI also reads `~/.gemini/GEMINI.md`.
 * **lint:** E010 flags a rule whose `trigger:` is missing or not one of `always_on`, `model_decision`, `glob`, `manual`; `--fix` adds `trigger: always_on` where the key is missing. W104 flags `model_decision` without `description` and `glob` without `globs`. `lint rules` runs only the rule checks.
 * **sync:** `sync` and `global sync` print one warning listing the rules Antigravity or Devin would drop for lack of a valid `trigger:`.
+* **targets:** add the opt-in `cline` target for Cline (SPEC-016). A project gets `.cline/rules -> ../.agents/rules` and `.cline/workflows -> ../.agents/workflows`. User rules and workflows link one by one into `~/.cline/rules/` and `~/.cline/workflows/`, or under `$CLINE_DIR` when it is set. Skills and agents are skipped, because Cline loads `.agents/skills` itself and its `agents/` format is undocumented. `init`, `global init`, and a global tree with no `targets =` line leave `cline` out; add it to opt in.
+* **sync:** Cline reads its rules and workflows one level deep, so when `.agents/rules` or `.agents/workflows` has an OS-scoped subdirectory for this host, sync links the entries flat into a real `.cline/rules/` (`macos/brew.md` as `macos-brew.md`). In `$HOME` the `.cline/` folds are left to `global sync`.
+* **sync:** `sync` names each bucket it skips for a tool that reads it from `.agents/` itself, with the reason, for example `devin skills: skipped: Devin loads .agents/skills natively`.
+* **status:** with `cline` targeted, `sync` and `status` report a real `.clinerules/` (Cline reads it as well, and sync leaves it alone) and, when `claude` is also a target, that Cline sees each skill twice through `.claude/skills`.
 
 ### Bug Fixes
 
 * **global clean:** cleaning one tool skips another tool's home inside it, so `global clean --targets gemini` leaves Antigravity's `~/.gemini/config/` links.
+* **clean:** `clean` now removes the per-entry links sync drilled into a real bucket directory, and the directory once it is empty. Before, a tool kept loading those rules after `clean`.
 
 ## [4.1.0](https://github.com/brickhouse-tech/sync-agents/compare/v4.0.8...v4.1.0) (2026-11-17)
 

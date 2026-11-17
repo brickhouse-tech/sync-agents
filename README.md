@@ -2,7 +2,7 @@
 
 **One `.agents/` directory. Every AI coding assistant. Always in sync.**
 
-`sync-agents` is a package manager and sync engine for AI-agent context — the rules, skills, workflows, subagents, plans, and specs you feed to Claude, Cursor, Devin, Copilot, Codex, Antigravity, Gemini CLI, opencode, and OpenClaw. Write everything once in `.agents/`, and `sync-agents` delivers it to every tool at the path that tool reads, and lets you pull shared context from other repos as safely and reproducibly as you'd install an npm package.
+`sync-agents` is a package manager and sync engine for AI-agent context — the rules, skills, workflows, subagents, plans, and specs you feed to Claude, Cursor, Devin, Copilot, Codex, Antigravity, Gemini CLI, opencode, Cline, and OpenClaw. Write everything once in `.agents/`, and `sync-agents` delivers it to every tool at the path that tool reads, and lets you pull shared context from other repos as safely and reproducibly as you'd install an npm package.
 
 ## Why you want this
 
@@ -89,7 +89,7 @@ Remote installs are treated like a hostile supply chain. Fetched artifacts are s
 Drop rules into `rules/macos/`, `rules/linux/`, or `rules/unix/` and they only sync on matching machines. One committed tree, no brew-rules noise on your Linux box. [OS routing →](docs/os-scoped-routing.md)
 
 ### 📬 Rule content for every tool — *new in 2.0.0*
-Each tool gets your rule bodies at a path its vendor documents. Claude and Devin read the linked rules folder. Antigravity reads `.agents/` natively in a project and gets one link per rule in `~/.gemini/config/rules/`. Gemini CLI (opt-in) gets a region in `GEMINI.md`. Cursor, Copilot, Codex, and opencode each get one generated file in `.agents/index/`, linked or listed where the tool looks, sized to the tool's limit. `CLAUDE.md -> AGENTS.md` is created only for Claude Code older than 2.1.281. Upgrading from 1.x? Read [the migration guide](docs/migration-v2.md). [Delivery channels →](docs/architecture/delivery-channels.md)
+Each tool gets your rule bodies at a path its vendor documents. Claude and Devin read the linked rules folder, and so does Cline when you opt in with `--targets cline` (it gets workflows too). Antigravity reads `.agents/` natively in a project and gets one link per rule in `~/.gemini/config/rules/`. Gemini CLI (opt-in) gets a region in `GEMINI.md`. Cursor, Copilot, Codex, and opencode each get one generated file in `.agents/index/`, linked or listed where the tool looks, sized to the tool's limit. `CLAUDE.md -> AGENTS.md` is created only for Claude Code older than 2.1.281. Upgrading from 1.x? Read [the migration guide](docs/migration-v2.md). [Delivery channels →](docs/architecture/delivery-channels.md)
 
 ### ✅ Lint for skill compliance
 `sync-agents lint` validates every `SKILL.md` against Claude's published authoring rules (name format, description quality, reserved words) and `--fix` mechanically repairs what it can. It checks each rule's `trigger:`, without which Antigravity and Devin drop the rule silently, and `--fix` adds `trigger: always_on`. It also flags `import: true` frontmatter, which has no effect since 2.0. CI-friendly exit codes. [Lint →](docs/commands/lint.md)

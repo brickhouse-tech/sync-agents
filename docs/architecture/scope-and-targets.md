@@ -11,8 +11,8 @@ of two scopes:
 
 | Scope | Canonical tree | Per-tool fan-out |
 |---|---|---|
-| **Local** (project) | `<project>/.agents/` | `<project>/.claude/`, `<project>/.devin/`, `<project>/.cursor/`, `<project>/.github/copilot/`, `<project>/.codex/`, `<project>/.opencode/`, `<project>/.gemini/` |
-| **Global** (user) | `$HOME/.agents/` (overridable, see [global-root-resolution.md](./global-root-resolution.md)) | `$HOME/.claude/`, `$HOME/.config/devin/`, `$HOME/.cursor/`, `$HOME/.copilot/`, `$HOME/.codex/`, `$HOME/.config/opencode/`, `$HOME/.gemini/config/`, `$HOME/.gemini/` |
+| **Local** (project) | `<project>/.agents/` | `<project>/.claude/`, `<project>/.devin/`, `<project>/.cursor/`, `<project>/.github/copilot/`, `<project>/.codex/`, `<project>/.opencode/`, `<project>/.cline/`, `<project>/.gemini/` |
+| **Global** (user) | `$HOME/.agents/` (overridable, see [global-root-resolution.md](./global-root-resolution.md)) | `$HOME/.claude/`, `$HOME/.config/devin/`, `$HOME/.cursor/`, `$HOME/.copilot/`, `$HOME/.codex/`, `$HOME/.config/opencode/`, `$HOME/.cline/`, `$HOME/.gemini/config/`, `$HOME/.gemini/` |
 
 The canonical tree is the **single source of truth**. The per-tool
 directories are derived from it: `sync` creates symlinks that point
@@ -47,6 +47,7 @@ known tools.
 | `copilot` | `.github/copilot/` | `~/.copilot/` |
 | `codex` | `.codex/` | `~/.codex/` |
 | `opencode` | `.opencode/` | `~/.config/opencode/` |
+| `cline` | `.cline/` | `$CLINE_DIR`, default `~/.cline/` |
 | `openclaw` | none (global only) | resolved OpenClaw workspace, default `~/.openclaw/workspace/` |
 | `antigravity` | none (reads `.agents/` natively) | `~/.gemini/config/` |
 | `gemini` (opt-in) | `.gemini/` | `~/.gemini/` |
@@ -94,6 +95,20 @@ the latter would produce a directory opencode never reads.
 to the registry makes it available to opt into (via `.agents/config`
 or `--targets`); it does not enroll existing users, whose `.opencode/`
 directories may be hand-managed.
+
+`cline` (SPEC-016) is registered but not enabled by default either.
+`init` and `global init` leave it out of the `targets =` line they
+write, and a global tree with no `targets =` line leaves it out too
+(`Tool.OptIn`), so no sync creates `~/.cline/` until you name it. Its
+user dir follows `$CLINE_DIR` the way Codex follows `$CODEX_HOME`.
+Cline reads `AGENTS.md` and `.agents/skills` itself, so it receives only
+rules and workflows: folded into `.cline/` in a project, and linked one
+by one into `~/.cline/rules/` and `~/.cline/workflows/` for the user.
+Cline reads those directories one level deep, so an OS-scoped rule is
+linked flat as `<scope>-<name>.md` (see
+[Delivery channels](./delivery-channels.md#per-tool-delivery)). In
+`$HOME` the project's `.cline/` is the user dir, so local sync leaves it
+to `global sync`.
 
 `copilot` is the other shape-changer: at project scope it lives nested
 under `.github/` rather than as a top-level dot-dir. At user scope its

@@ -15,6 +15,8 @@ setup() {
   export HOME="$TEST_DIR"
   # OpenClaw's workspace follows these vars even with HOME redirected.
   unset OPENCLAW_HOME OPENCLAW_STATE_DIR OPENCLAW_CONFIG_PATH OPENCLAW_WORKSPACE_DIR OPENCLAW_PROFILE
+  # Cline's user dir follows $CLINE_DIR.
+  unset CLINE_DIR
   # The CLAUDE.md policy (SPEC-013) runs `claude --version`. A fake
   # claude first on PATH keeps every test off the real install; the
   # default is a release that reads AGENTS.md natively.
@@ -493,6 +495,72 @@ fake_claude() {
   [ -L "$TEST_DIR/.windsurf/rules" ]
   run "$SCRIPT" -d "$TEST_DIR" --targets devin status
   [[ "$output" == *"[deprecated] .windsurf/rules -> ../.agents/rules (removed in 5.0.0)"* ]]
+}
+
+@test "sync --targets cline folds rules and workflows and skips skills and agents (SPEC-016 E2, E4-E6)" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.agents/agents"
+  echo agent > "$TEST_DIR/.agents/agents/reviewer.md"
+  run "$SCRIPT" -d "$TEST_DIR" --targets cline sync
+  [ "$status" -eq 0 ]
+  [ "$(readlink "$TEST_DIR/.cline/rules")" = "../.agents/rules" ]
+  [ "$(readlink "$TEST_DIR/.cline/workflows")" = "../.agents/workflows" ]
+  [ ! -e "$TEST_DIR/.cline/skills" ]
+  [ ! -e "$TEST_DIR/.cline/agents" ]
+  [[ "$output" == *"cline skills: skipped: Cline loads .agents/skills natively"* ]]
+  [[ "$output" == *"cline agents: skipped: Cline's agents/ format is undocumented"* ]]
+  grep -qxF ".cline/" "$TEST_DIR/.gitignore"
+}
+
+@test "sync --targets cline links OS-scoped rules flat, and clean removes them (SPEC-016 E3)" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  echo "os = darwin" >> "$TEST_DIR/.agents/config"
+  mkdir -p "$TEST_DIR/.agents/rules/macos" "$TEST_DIR/.agents/rules/linux"
+  echo brew > "$TEST_DIR/.agents/rules/macos/brew.md"
+  echo apt > "$TEST_DIR/.agents/rules/linux/apt.md"
+  run "$SCRIPT" -d "$TEST_DIR" --targets cline sync
+  [ "$status" -eq 0 ]
+  [ -d "$TEST_DIR/.cline/rules" ]
+  [ ! -L "$TEST_DIR/.cline/rules" ]
+  [ "$(readlink "$TEST_DIR/.cline/rules/macos-brew.md")" = "../../.agents/rules/macos/brew.md" ]
+  [ "$(readlink "$TEST_DIR/.cline/rules/state.md")" = "../../.agents/rules/state.md" ]
+  [ ! -e "$TEST_DIR/.cline/rules/linux-apt.md" ]
+  run "$SCRIPT" -d "$TEST_DIR" --targets cline status
+  [[ "$output" == *"[merged] rules (2/2 linked)"* ]]
+  run "$SCRIPT" -d "$TEST_DIR" --targets cline clean
+  [ "$status" -eq 0 ]
+  [ ! -e "$TEST_DIR/.cline" ]
+}
+
+@test "sync --targets cline leaves a real .clinerules/ alone and reports it (SPEC-016 E8)" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.clinerules"
+  echo mine > "$TEST_DIR/.clinerules/mine.md"
+  run "$SCRIPT" -d "$TEST_DIR" --targets cline sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cline: .clinerules/ is yours and left alone; Cline reads it as well as .cline/rules"* ]]
+  [ "$(cat "$TEST_DIR/.clinerules/mine.md")" = "mine" ]
+}
+
+@test "status notes duplicate skills when claude and cline are both targets (SPEC-016)" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.agents/skills/deploy"
+  echo skill > "$TEST_DIR/.agents/skills/deploy/SKILL.md"
+  "$SCRIPT" -d "$TEST_DIR" --targets claude,cline sync
+  run "$SCRIPT" -d "$TEST_DIR" --targets claude,cline status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[note] Cline reads .claude/skills as well as .agents/skills, so each skill linked for claude loads twice"* ]]
+  run "$SCRIPT" -d "$TEST_DIR" --targets cline status
+  [[ "$output" != *"loads twice"* ]]
+}
+
+@test "init leaves cline out of the default targets (SPEC-016 E7)" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  run grep -E "^targets = .*cline" "$TEST_DIR/.agents/config"
+  [ "$status" -ne 0 ]
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [ ! -e "$TEST_DIR/.cline" ]
 }
 
 # --------------------------------------------------------------------------

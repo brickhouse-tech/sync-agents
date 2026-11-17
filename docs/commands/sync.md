@@ -54,6 +54,14 @@ Before the buckets, sync migrates a 1.x generated `AGENTS.md` once
 (see [migration-v2.md](../migration-v2.md)). It never writes
 `AGENTS.md` otherwise.
 
+`cline` is opt-in. It gets `.cline/rules` and `.cline/workflows` only,
+because Cline loads `.agents/skills` itself. When `.agents/rules` or
+`.agents/workflows` has an OS-scoped subdirectory for this host, sync
+makes the Cline directory real and links each entry flat
+(`macos/brew.md` as `macos-brew.md`), because Cline reads one level
+deep. A real `.clinerules/` is yours: sync leaves it alone and says
+that Cline reads it as well.
+
 The passive `rules` bucket is not folded into Cursor, Copilot, Codex, or
 opencode directories: those tools have a delivery channel instead. sync
 removes the 1.x `.cursor/rules`, `.github/copilot/rules`,

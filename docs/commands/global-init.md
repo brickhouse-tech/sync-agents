@@ -24,7 +24,7 @@ The `config` file looks like:
 
 ```text
 # sync-agents global configuration
-# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode, openclaw, antigravity, gemini)
+# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode, cline, openclaw, antigravity, gemini)
 # global sync, status, and clean use this list when --targets is omitted; without it, every tool.
 # Override per-command with: sync-agents global sync --targets claude,cursor
 # Only naming a tool in --targets consents to editing a file of yours that it reads; this list does not.
@@ -38,7 +38,7 @@ still serves a listed tool
 only when its home directory exists. The line selects tools but is not
 consent to edit a file you own; that takes one `--targets` run (see
 [global sync § Consent](./global-sync.md#consent)). The default line
-omits `opencode`, `openclaw`, and `gemini`, so add them to opt in.
+omits `opencode`, `cline`, `openclaw`, and `gemini`, so add them to opt in.
 Gemini CLI and Antigravity CLI both read `~/.gemini/GEMINI.md`, so
 list `gemini` only if you drop `antigravity`.
 
