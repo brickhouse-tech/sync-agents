@@ -2,19 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
-## Unreleased
+## [4.3.0](https://github.com/brickhouse-tech/sync-agents/compare/v4.2.0...v4.3.0) (2026-11-17)
 
 ### Features
 
-* **targets:** add the `antigravity` target for Antigravity App and CLI (SPEC-015). Antigravity reads a project's `.agents/` natively, so local sync places nothing for it. At user scope, global sync links each passive rule into `~/.gemini/config/rules/` (OS-scoped rules flattened, as `macos-brew.md`), each skill into `~/.gemini/config/skills/<name>/`, and each subagent into `~/.gemini/config/agents/`. Invocable rules and workflows are skipped, because Antigravity workflows are deprecated.
-* **targets:** `init` and `global init` write `antigravity` in the default `targets =` line.
-* **targets:** add the opt-in `gemini` target for Gemini CLI (SPEC-015). No default list names it. User rules go to the `gemini-rules` region of `~/.gemini/GEMINI.md`. In a project the region goes into `GEMINI.md` only when the file exists. Subagents link into `.gemini/agents/` and `~/.gemini/agents/`. Skills and workflows are skipped. `global sync` warns when `antigravity` and `gemini` are both targeted, because Antigravity CLI also reads `~/.gemini/GEMINI.md`.
-* **lint:** E010 flags a rule whose `trigger:` is missing or not one of `always_on`, `model_decision`, `glob`, `manual`; `--fix` adds `trigger: always_on` where the key is missing. W104 flags `model_decision` without `description` and `glob` without `globs`. `lint rules` runs only the rule checks.
-* **sync:** `sync` and `global sync` print one warning listing the rules Antigravity or Devin would drop for lack of a valid `trigger:`.
+* **lint:** check rule triggers (SPEC-015 C1-C3) ([bc87120](https://github.com/brickhouse-tech/sync-agents/commit/bc87120c5b2646fd141d14bed4a54778cbe61990))
+* **sync:** warn about rules antigravity and devin drop (SPEC-015 C4) ([122495d](https://github.com/brickhouse-tech/sync-agents/commit/122495d4d2a503d0ec16bee7619936f9a53fd623))
+* **targets:** add antigravity target (SPEC-015 A1-A6) ([1ab2ee6](https://github.com/brickhouse-tech/sync-agents/commit/1ab2ee6f302c2dc21d1ed7bc44efed2f0c84e841))
+* **targets:** add opt-in gemini target (SPEC-015 B1-B5) ([67493f6](https://github.com/brickhouse-tech/sync-agents/commit/67493f6ccabdfb8801c700f5164bf99f1d133eca))
 
 ### Bug Fixes
 
-* **global clean:** cleaning one tool skips another tool's home inside it, so `global clean --targets gemini` leaves Antigravity's `~/.gemini/config/` links.
+* **global:** keep antigravity and gemini from stepping on each other (SPEC-015) ([a88e3ba](https://github.com/brickhouse-tech/sync-agents/commit/a88e3bae1ac778f59d5d169b58c0952babcfe7b1))
+* **status:** list no project dir for antigravity (SPEC-015 A1) ([d74b96b](https://github.com/brickhouse-tech/sync-agents/commit/d74b96be750985ea3df133f43330b5a44ca93e74))
 
 ## [4.2.0](https://github.com/brickhouse-tech/sync-agents/compare/v4.1.0...v4.2.0) (2026-11-17)
 
