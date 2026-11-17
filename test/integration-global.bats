@@ -21,6 +21,8 @@ setup() {
   # OpenClaw's workspace follows these vars; exported ones would point
   # the openclaw target at a live workspace instead of $TEST_DIR.
   unset OPENCLAW_HOME OPENCLAW_STATE_DIR OPENCLAW_CONFIG_PATH OPENCLAW_WORKSPACE_DIR OPENCLAW_PROFILE
+  # Cline's user dir follows $CLINE_DIR.
+  unset CLINE_DIR
 
   TEST_DIR="$(mktemp -d)"
   GLOBAL_ROOT="$TEST_DIR/.agents"   # per-tool dirs live under $TEST_DIR
@@ -38,6 +40,7 @@ setup() {
   COPILOT_DIR="$TEST_DIR/.copilot"
   CODEX_DIR="$TEST_DIR/.codex"
   OPENCODE_DIR="$TEST_DIR/.config/opencode"
+  CLINE_DIR_PATH="$TEST_DIR/.cline"
   LEGACY_COPILOT="$TEST_DIR/.github/copilot/instructions.md"
 }
 
@@ -439,6 +442,45 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"[deprecated] codeium -> $CODEIUM_DIR/memories/global_rules.md  (removed in 5.0.0)"* ]]
   [[ "$output" == *"[deprecated] codeium -> $CODEIUM_DIR/global_workflows/deploy-flow.md  (removed in 5.0.0)"* ]]
+}
+
+@test "global sync: cline links rules and workflows into ~/.cline and skips skills (SPEC-016 E2, E4, E5)" {
+  "$SCRIPT" global init --global-root "$GLOBAL_ROOT"
+  make_global_passive_rule "no-secrets"
+  make_global_invocable_workflow "deploy-flow"
+  make_global_single_skill "cool"
+
+  run "$SCRIPT" global sync --global-root "$GLOBAL_ROOT" --targets cline
+  [ "$status" -eq 0 ]
+  [ "$(readlink "$CLINE_DIR_PATH/rules/no-secrets.md")" = "$GLOBAL_ROOT/rules/no-secrets.md" ]
+  [ "$(readlink "$CLINE_DIR_PATH/workflows/deploy-flow.md")" = "$GLOBAL_ROOT/workflows/deploy-flow.md" ]
+  [[ "$output" == *'[cline] skip skill "cool": Cline loads ~/.agents/skills natively'* ]]
+  [ ! -e "$CLINE_DIR_PATH/skills" ]
+
+  run "$SCRIPT" global clean --global-root "$GLOBAL_ROOT" --targets cline
+  [ "$status" -eq 0 ]
+  [ ! -e "$CLINE_DIR_PATH" ]
+}
+
+@test "global sync: cline follows \$CLINE_DIR (SPEC-016 E1)" {
+  "$SCRIPT" global init --global-root "$GLOBAL_ROOT"
+  make_global_passive_rule "no-secrets"
+
+  CLINE_DIR="$TEST_DIR/cline-data" run "$SCRIPT" global sync --global-root "$GLOBAL_ROOT" --targets cline
+  [ "$status" -eq 0 ]
+  [ -L "$TEST_DIR/cline-data/rules/no-secrets.md" ]
+  [ ! -e "$CLINE_DIR_PATH" ]
+}
+
+@test "global sync: cline is opt-in (SPEC-016 E7)" {
+  "$SCRIPT" global init --global-root "$GLOBAL_ROOT"
+  make_global_passive_rule "no-secrets"
+  run grep -E "^targets = .*cline" "$GLOBAL_ROOT/config"
+  [ "$status" -ne 0 ]
+
+  run "$SCRIPT" global sync --global-root "$GLOBAL_ROOT"
+  [ "$status" -eq 0 ]
+  [ ! -e "$CLINE_DIR_PATH" ]
 }
 
 # ---------------------------------------------------------------------------

@@ -302,7 +302,7 @@ func (a *App) CmdInit() error {
 	// Config
 	configFile := filepath.Join(agentsDir, "config")
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
-		content := "# sync-agents configuration\n# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode)\n# Override per-command with: sync-agents sync --targets claude,cursor\ntargets = claude,devin,cursor,copilot\n" +
+		content := "# sync-agents configuration\n# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode, cline)\n# Override per-command with: sync-agents sync --targets claude,cursor\ntargets = claude,devin,cursor,copilot\n" +
 			"# index = local      # local (default: .agents/index/ and its links are gitignored) | commit\n" +
 			"# claude-md = auto   # auto (default: link CLAUDE.md -> AGENTS.md only for Claude Code < 2.1.281) | link | off\n"
 		os.WriteFile(configFile, []byte(content), 0644)
@@ -435,21 +435,31 @@ func (a *App) CmdSync() error {
 		a.Info(fmt.Sprintf("Syncing to %s/", relDisplay))
 
 		for _, b := range Buckets {
-			if !linksBucket(target, b) {
-				continue
-			}
 			subdirPath := filepath.Join(a.ProjectRoot, ".agents", b.Dir)
 			if fi, err := os.Stat(subdirPath); err != nil || !fi.IsDir() {
+				continue
+			}
+			if !linksBucket(target, b) {
+				if why := projectSkipReason(target, b); why != "" {
+					a.Info(fmt.Sprintf("%s %s: skipped: %s", target, b.Dir, why))
+				}
 				continue
 			}
 			if why := a.withheldFold(target, b); why != "" {
 				a.Info(why)
 				continue
 			}
-			conflicts += a.linkBucket(targetDir, agentsRel, b).Conflicts
+			conflicts += a.linkBucket(target, targetDir, agentsRel, b).Conflicts
 		}
 		a.pruneRetiredBucketLinks(targetDir, agentsRel)
 		a.pruneImportedTwice(target)
+	}
+	for _, target := range a.ActiveTargets {
+		if notes, ok := toolNotes[target]; ok {
+			for _, note := range notes(a) {
+				a.Info(target + ": " + note)
+			}
+		}
 	}
 
 	// Per-tool delivery channels (SPEC-013, deliver.go): rule bodies
@@ -564,9 +574,14 @@ func (a *App) CmdStatus() error {
 					fmt.Fprintf(a.Stdout, "  [skipped] %s (%s)\n", b.Dir, why)
 				} else if serr == nil && sfi.Mode()&os.ModeSymlink != 0 {
 					lt, _ := os.Readlink(sub)
-					fmt.Fprintf(a.Stdout, "  [synced] %s -> %s\n", b.Dir, lt)
+					if _, flat := a.bucketClaims(target, b); flat {
+						fmt.Fprintf(a.Stdout, "  [stale] %s -> %s (%s reads one level deep; sync links the OS-scoped entries flat)\n", b.Dir, lt, target)
+					} else {
+						fmt.Fprintf(a.Stdout, "  [synced] %s -> %s\n", b.Dir, lt)
+					}
 				} else if serr == nil && sfi.IsDir() {
-					stats := bucketMergeStats(sub, filepath.Join(a.ProjectRoot, ".agents", b.Dir))
+					claims, _ := a.bucketClaims(target, b)
+					stats := bucketMergeStats(sub, claims)
 					conflictNote := ""
 					if stats.Conflicts > 0 {
 						conflictNote = fmt.Sprintf(", %d conflict(s)", stats.Conflicts)
@@ -587,6 +602,11 @@ func (a *App) CmdStatus() error {
 			}
 		} else {
 			fmt.Fprintf(a.Stdout, "[not synced] %s/\n", displayDir)
+		}
+		if notes, ok := toolNotes[target]; ok {
+			for _, note := range notes(a) {
+				fmt.Fprintf(a.Stdout, "  [note] %s\n", note)
+			}
 		}
 	}
 	a.printRetiredLinks(a.statusTargets())
@@ -667,9 +687,11 @@ func (a *App) CmdClean() error {
 		}
 
 		// Only a link sync could have placed goes: one into .agents/, at
-		// a bucket dir sync links for this tool. projectBuckets limits
-		// a tool that never received the others (devin), so a link
-		// there is the user's even when it points into .agents/.
+		// a bucket dir sync links for this tool, or one into
+		// .agents/<bucket> drilled into a real bucket dir, which goes too
+		// once it is empty. projectBuckets limits a tool that never
+		// received the others (devin), so a link there is the user's even
+		// when it points into .agents/.
 		dirs := append(BucketDirs(), retiredBucketDirs...)
 		if only, limited := projectBuckets[target]; limited {
 			dirs = only
@@ -677,9 +699,23 @@ func (a *App) CmdClean() error {
 		for _, subdir := range dirs {
 			sub := filepath.Join(targetDir, subdir)
 			fi, err := os.Lstat(sub)
-			if err == nil && fi.Mode()&os.ModeSymlink != 0 && pointsInto(sub, filepath.Join(a.ProjectRoot, ".agents")) {
+			if err != nil {
+				continue
+			}
+			if fi.Mode()&os.ModeSymlink != 0 {
+				if pointsInto(sub, filepath.Join(a.ProjectRoot, ".agents")) {
+					os.Remove(sub)
+					a.Info(fmt.Sprintf("Removed: %s/%s", displayDir, subdir))
+				}
+				continue
+			}
+			links := a.agentsLinks(sub, Bucket{Dir: subdir})
+			for _, link := range links {
+				os.Remove(link)
+				a.Info(fmt.Sprintf("Removed: %s/%s/%s", displayDir, subdir, filepath.Base(link)))
+			}
+			if rest, _ := os.ReadDir(sub); len(links) > 0 && len(rest) == 0 {
 				os.Remove(sub)
-				a.Info(fmt.Sprintf("Removed: %s/%s", displayDir, subdir))
 			}
 		}
 
@@ -1288,7 +1324,7 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 				a.Info(why)
 				continue
 			}
-			res := a.linkBucket(targetDir, agentsRel, b)
+			res := a.linkBucket(target, targetDir, agentsRel, b)
 			conflicts += res.Conflicts
 			if res.changed() {
 				repaired++

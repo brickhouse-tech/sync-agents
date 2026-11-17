@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -75,58 +76,104 @@ func (a *App) deprecateForce() {
 //     flag).
 //   - Real directory at dest: drill. The directory is the tool's own
 //     (e.g. a real ~/.wave/skills that the tool created) and is never
-//     moved, renamed, or deleted under any flag. Each entry of
-//     .agents/<bucket>/ is linked individually inside it as
-//     <dest>/<name> -> <relative path to .agents/<bucket>/<name>>.
-//     Entries the tool owns that .agents/ does not claim are foreign
-//     and are neither touched nor reported. A real file or directory
-//     at <dest>/<name> that shadows a claimed artifact is a conflict:
-//     warned and counted, and only moved aside (never deleted) when
-//     App.Overwrite is set.
+//     moved, renamed, or deleted under any flag. Each of bucketClaims
+//     is linked individually inside it as <dest>/<name> -> <relative
+//     path to its source>. Entries the tool owns that .agents/ does not
+//     claim are foreign and are neither touched nor reported. A real
+//     file or directory at <dest>/<name> that shadows a claimed
+//     artifact is a conflict: warned and counted, and only moved aside
+//     (never deleted) when App.Overwrite is set.
 //   - Real file at dest: conflict with the same rule as a per-entry
 //     conflict; under Overwrite it is moved aside and the bucket is
 //     folded.
 //
+// When bucketClaims says the bucket must be flat (SPEC-016 E3), a fold
+// would hide claimed files from the tool, so a symlink at dest is
+// removed and the claims are drilled into a real directory instead.
+//
 // Both CmdSync and CmdFix call this so the two commands cannot
 // diverge in what they consider conformant.
-func (a *App) linkBucket(targetDir, agentsRel string, b Bucket) BucketLinkResult {
+func (a *App) linkBucket(target, targetDir, agentsRel string, b Bucket) BucketLinkResult {
 	var r BucketLinkResult
 	dest := filepath.Join(targetDir, b.Dir)
-	srcAbs := filepath.Join(a.ProjectRoot, ".agents", b.Dir)
-	foldSource := agentsRel + "/" + b.Dir
+	claims, flat := a.bucketClaims(target, b)
 
 	fi, err := os.Lstat(dest)
-	if err == nil && fi.Mode()&os.ModeSymlink == 0 && fi.IsDir() {
-		a.drillBucket(dest, srcAbs, b, &r)
+	realDir := err == nil && fi.Mode()&os.ModeSymlink == 0 && fi.IsDir()
+	if flat && err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		if !a.removePath(dest) {
+			return r
+		}
+		realDir = true
+	}
+	if realDir || (flat && os.IsNotExist(err)) {
+		a.drillBucket(dest, claims, b, &r)
 		return r
 	}
 
-	a.placeClaimed(foldSource, dest, ".agents/"+b.Dir, &r)
+	a.placeClaimed(agentsRel+"/"+b.Dir, dest, ".agents/"+b.Dir, &r)
 	return r
 }
 
-// drillBucket links each entry of .agents/<bucket>/ as a whole
-// (<dest>/<name> -> ../../.agents/skills/<name>), not its SKILL.md as
-// global sync does, so a skill's supporting files resolve through the
-// link too. filepath.Rel keeps the link text correct at any depth,
-// including .github/copilot/.
-func (a *App) drillBucket(dest, srcAbs string, b Bucket, r *BucketLinkResult) {
-	entries, err := os.ReadDir(srcAbs)
-	if err != nil {
-		return
-	}
+// claim is one link a drilled bucket directory holds: Name inside the
+// directory, pointing at Src under .agents/<bucket>.
+type claim struct {
+	Name string
+	Src  string
+}
+
+// bucketClaims lists what target's <bucket> directory links when it is
+// drilled: each entry of .agents/<bucket> under its own name.
+//
+// For a bucket the tool reads one level deep (shallowBuckets), OS scope
+// directories are not entries: the files of each scope that matches
+// this host are claimed flat as <scope>-<file> instead. flat is true
+// when there is at least one, because a fold would hide them.
+func (a *App) bucketClaims(target string, b Bucket) (claims []claim, flat bool) {
+	agentsDir := filepath.Join(a.ProjectRoot, ".agents")
+	src := filepath.Join(agentsDir, b.Dir)
+	shallow := slices.Contains(shallowBuckets[target], b.Dir)
+	goos := effectiveGOOS(agentsDir)
+	entries, _ := os.ReadDir(src)
 	for _, e := range entries {
 		name := e.Name()
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
-		srcEntry := filepath.Join(srcAbs, name)
-		rel, err := filepath.Rel(dest, srcEntry)
-		if err != nil {
-			a.Warn(fmt.Sprintf("cannot compute relative link for %s: %v", srcEntry, err))
+		path := filepath.Join(src, name)
+		if !shallow || !e.IsDir() || !isOSScopeDir(name) {
+			claims = append(claims, claim{name, path})
 			continue
 		}
-		a.placeClaimed(rel, filepath.Join(dest, name), ".agents/"+b.Dir+"/"+name, r)
+		if !osScopes[name](goos) {
+			continue
+		}
+		scoped, _ := os.ReadDir(path)
+		for _, f := range scoped {
+			if strings.HasPrefix(f.Name(), ".") || entryIsDir(filepath.Join(path, f.Name()), f) {
+				continue
+			}
+			claims = append(claims, claim{flatName(name + "/" + f.Name()), filepath.Join(path, f.Name())})
+			flat = true
+		}
+	}
+	return claims, flat
+}
+
+// drillBucket links each claim as a whole (<dest>/<name> ->
+// ../../.agents/skills/<name>), not a skill's SKILL.md as global sync
+// does, so a skill's supporting files resolve through the link too.
+// filepath.Rel keeps the link text correct at any depth, including
+// .github/copilot/.
+func (a *App) drillBucket(dest string, claims []claim, b Bucket, r *BucketLinkResult) {
+	for _, c := range claims {
+		rel, err := filepath.Rel(dest, c.Src)
+		if err != nil {
+			a.Warn(fmt.Sprintf("cannot compute relative link for %s: %v", c.Src, err))
+			continue
+		}
+		label, _ := filepath.Rel(filepath.Join(a.ProjectRoot, ".agents"), c.Src)
+		a.placeClaimed(rel, filepath.Join(dest, c.Name), ".agents/"+filepath.ToSlash(label), r)
 	}
 }
 
@@ -288,24 +335,16 @@ type BucketMergeStats struct {
 	Conflicts int
 }
 
-func bucketMergeStats(dest, srcAbs string) BucketMergeStats {
+func bucketMergeStats(dest string, claims []claim) BucketMergeStats {
 	var s BucketMergeStats
-	entries, err := os.ReadDir(srcAbs)
-	if err != nil {
-		return s
-	}
-	for _, e := range entries {
-		name := e.Name()
-		if strings.HasPrefix(name, ".") {
-			continue
-		}
+	for _, c := range claims {
 		s.Total++
-		entryDest := filepath.Join(dest, name)
+		entryDest := filepath.Join(dest, c.Name)
 		fi, err := os.Lstat(entryDest)
 		if err != nil {
 			continue
 		}
-		rel, err := filepath.Rel(dest, filepath.Join(srcAbs, name))
+		rel, err := filepath.Rel(dest, c.Src)
 		if err != nil {
 			continue
 		}
@@ -315,7 +354,7 @@ func bucketMergeStats(dest, srcAbs string) BucketMergeStats {
 			}
 			continue
 		}
-		if foldedResolves(entryDest, filepath.Join(srcAbs, name)) {
+		if foldedResolves(entryDest, c.Src) {
 			s.Linked++
 			continue
 		}

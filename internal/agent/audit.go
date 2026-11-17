@@ -40,6 +40,7 @@ const (
 // out of bounds — in particular the tool root, which holds the tool's
 // own application state.
 //
+// A tool in shallowBuckets sweeps those bucket dirs in its home.
 // Copilot, Codex, opencode, and OpenClaw have no per-artifact dirs
 // here (their rules arrive through one channel, reported by
 // channelRows), so they sweep nothing.
@@ -58,9 +59,12 @@ func toolSweepDirs(tool Tool, parent string) []string {
 		return []string{filepath.Join(parent, ".codeium", "windsurf", "global_workflows")}
 	case "cursor":
 		return []string{filepath.Join(parent, ".cursor", "rules")}
-	default:
-		return nil
 	}
+	var dirs []string
+	for _, b := range shallowBuckets[tool.ID] {
+		dirs = append(dirs, filepath.Join(tool.DirForScope(ScopeGlobal, parent), b))
+	}
+	return dirs
 }
 
 // sweepUnmanaged enumerates the managed subdirs of each tool and

@@ -4,7 +4,7 @@ title: "`cline` target"
 status: 📝 draft
 owner: nmccready
 created: 2026-11-17
-updated: 2026-11-17
+updated: 2026-11-17  # rev 2: user-scope delivery is per artifact
 related: SPEC-002, SPEC-013
 ---
 
@@ -55,6 +55,15 @@ means always on; `paths: []` means never. `CLINE_DIR` replaces
   for other tools.)
 - **E4.** Workflows shall be folded `.cline/workflows ->
   ../.agents/workflows` at both scopes.
+
+  *Implementation (rev 2).* At user scope E2 and E4 are met with one
+  link per artifact (`~/.cline/rules/<name>.md`), not a directory fold.
+  `global sync` has no fold step (SPEC-010 Phase 3 left global
+  unification open), and per-artifact links give E3's flat names, the
+  host OS gate, `global status` rows, and `global clean` from the code
+  every other tool's user links already use. A new rule needs a
+  `global sync` to appear. In `$HOME` local sync skips both folds,
+  because `$HOME/.cline` is the user dir `global sync` links into.
 - **E5.** Skills shall be skipped at both scopes with reason
   "Cline loads .agents/skills natively" (`skillsNative`).
 - **E6.** The agents bucket shall be skipped with reason "Cline's
