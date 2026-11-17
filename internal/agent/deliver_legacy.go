@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -259,4 +260,84 @@ func (a *App) removeLinksInto(path, tree, stop string) []string {
 		a.pruneEmptyParents(filepath.Dir(removed[i]), stop)
 	}
 	return removed
+}
+
+// retiredRows returns one deprecated row per placement of a retired
+// tool (Tool.retired) still on disk at global scope, for each retired
+// tool whose replacement is in tools: its channel host while it carries
+// our region or old concat, and each link under its sweep dirs that
+// resolves into the global root. Those placements stay until the
+// release deprecatedTargets names (SPEC-014 E10); status reports them
+// (E11) by the proofs removal will use.
+func (a *App) retiredRows(tools []Tool) ([]StatusEntry, error) {
+	root := a.ResolveGlobalRoot()
+	parent := a.ResolveGlobalRootParent()
+	var rows []StatusEntry
+	for _, t := range retiredFor(toolIDs(tools)) {
+		var paths []string
+		if spec, ok := channelSpecs[t.ID][ScopeGlobal]; ok {
+			ch, err := a.bindChannel(t, ScopeGlobal, spec, root, parent, t.DirForScope(ScopeGlobal, parent), nil)
+			if err != nil {
+				return nil, err
+			}
+			facts, err := a.mountFacts(ch)
+			if err != nil {
+				return nil, err
+			}
+			if facts.CarriesOurs {
+				paths = append(paths, ch.Native)
+			}
+		}
+		for _, dir := range toolSweepDirs(t, parent) {
+			entries, _ := os.ReadDir(dir)
+			for _, e := range entries {
+				if p := filepath.Join(dir, e.Name()); e.Type()&os.ModeSymlink != 0 && pointsInto(p, root) {
+					paths = append(paths, p)
+				}
+			}
+		}
+		for _, p := range paths {
+			rows = append(rows, StatusEntry{Tool: t.ID, IsChannel: true, DestinationPath: p, State: "deprecated", Detail: "removed in " + deprecatedTargets[t.ID].RemovedIn})
+		}
+	}
+	return rows, nil
+}
+
+// printRetiredFolds prints one deprecated line per bucket fold a retired
+// tool's project directory still holds: <dir>/<bucket> as a symlink into
+// .agents/.
+func (a *App) printRetiredFolds(targets []string) {
+	agents := filepath.Join(a.ProjectRoot, ".agents")
+	for _, t := range retiredFor(targets) {
+		dir := t.DirForScope(ScopeLocal, a.ProjectRoot)
+		for _, b := range Buckets {
+			link := filepath.Join(dir, b.Dir)
+			fi, err := os.Lstat(link)
+			if err != nil || fi.Mode()&os.ModeSymlink == 0 || !pointsInto(link, agents) {
+				continue
+			}
+			dest, _ := os.Readlink(link)
+			fmt.Fprintf(a.Stdout, "[deprecated] %s -> %s (removed in %s)\n", a.display(link), dest, deprecatedTargets[t.ID].RemovedIn)
+		}
+	}
+}
+
+// retiredFor returns the retired tools whose replacement is in ids, in
+// registry order.
+func retiredFor(ids []string) []Tool {
+	var out []Tool
+	for _, t := range Tools {
+		if t.retired() && slices.Contains(ids, deprecatedTargets[t.ID].Use) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func toolIDs(tools []Tool) []string {
+	ids := make([]string, len(tools))
+	for i, t := range tools {
+		ids[i] = t.ID
+	}
+	return ids
 }

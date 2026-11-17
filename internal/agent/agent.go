@@ -545,6 +545,9 @@ func (a *App) CmdStatus() error {
 		if fi, err := os.Lstat(rulesLink); err == nil && fi.Mode()&os.ModeSymlink != 0 {
 			hasDirOrLinks = true
 		}
+		if rules, _ := BucketForDir("rules"); a.withheldByLegacy(target, rules) != "" {
+			hasDirOrLinks = true
+		}
 
 		if hasDirOrLinks {
 			fmt.Fprintf(a.Stdout, "%s/\n", displayDir)
@@ -583,6 +586,7 @@ func (a *App) CmdStatus() error {
 			fmt.Fprintf(a.Stdout, "[not synced] %s/\n", displayDir)
 		}
 	}
+	a.printRetiredFolds(a.statusTargets())
 	return a.printChannelRows()
 }
 

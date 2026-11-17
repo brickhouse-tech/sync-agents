@@ -124,6 +124,11 @@ func (a *App) CmdGlobalStatus(opts GlobalStatusOpts) error {
 	if err != nil {
 		return err
 	}
+	retired, err := a.retiredRows(tools)
+	if err != nil {
+		return err
+	}
+	channelRows = append(channelRows, retired...)
 
 	a.Info(fmt.Sprintf("global status (%d artifacts, %d tool(s)):", len(artifacts), len(tools)))
 

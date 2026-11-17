@@ -322,3 +322,61 @@ func TestInit_DefaultTargetsNameDevin(t *testing.T) {
 		t.Errorf("AllTargets = %v, want %v", got, want)
 	}
 }
+
+// SPEC-014 E11: global status lists each codeium leftover as
+// deprecated, and only the ones that exist.
+func TestGlobalStatus_CodeiumLeftoversDeprecated(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	host, link := seedCodeiumLeftovers(t, a, root)
+	seedWorkflow(t, a.GlobalRoot, "never-linked", "---\ninvocable: true\n---\nNot placed.\n")
+	foreign := filepath.Join(root, ".codeium", "windsurf", "global_workflows", "mine.md")
+	writeFile(t, foreign, "a workflow the user wrote")
+
+	out := globalStatusOut(t, a)
+	for _, p := range []string{host, link} {
+		if want := "[deprecated] codeium -> " + p + "  (removed in 5.0.0)"; !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if n := strings.Count(out, "[deprecated]"); n != 2 {
+		t.Errorf("%d deprecated rows, want 2 (the user's workflow and never-placed ones are not leftovers):\n%s", n, out)
+	}
+}
+
+// SPEC-014 E11: nothing to report when nothing is left.
+func TestGlobalStatus_NoCodeiumLeftoversNoRows(t *testing.T) {
+	a, root, _ := newGlobalSyncTestApp(t)
+	seedRule(t, a.GlobalRoot, "security", "Never commit secrets.\n")
+	writeFile(t, filepath.Join(root, ".codeium", "windsurf", "memories", "global_rules.md"), "Remember: tabs.\n")
+	if out := globalStatusOut(t, a); strings.Contains(out, "[deprecated]") {
+		t.Errorf("deprecated row without a leftover:\n%s", out)
+	}
+}
+
+// SPEC-014 E11: project status lists the .windsurf folds an earlier
+// sync made.
+func TestStatus_WindsurfFoldsDeprecated(t *testing.T) {
+	app, root, buf := newSyncApp(t, "devin")
+	mkdirs(t, filepath.Join(root, ".windsurf"))
+	for _, b := range []string{"rules", "skills"} {
+		if err := os.Symlink(filepath.Join("..", ".agents", b), filepath.Join(root, ".windsurf", b)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, filepath.Join(root, ".windsurf", "workflows", "mine.md"), "the user's")
+	if err := app.CmdStatus(); err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	out := buf.String()
+	for _, b := range []string{"rules", "skills"} {
+		if want := "[deprecated] .windsurf/" + b + " -> ../.agents/" + b + " (removed in 5.0.0)"; !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "[deprecated] .windsurf/workflows") {
+		t.Errorf("a real directory was reported as a leftover:\n%s", out)
+	}
+	if !strings.Contains(out, "[skipped] rules (devin rules served by legacy .windsurf/rules link)") {
+		t.Errorf("status does not explain the withheld .devin/rules fold:\n%s", out)
+	}
+}
