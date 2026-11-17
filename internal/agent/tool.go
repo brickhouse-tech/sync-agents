@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"path/filepath"
 	"sort"
 )
@@ -11,15 +12,12 @@ import (
 // Each Tool carries a stable ID (used in config files, CLI flags, and
 // log messages) and a map from Scope to the per-scope directory name
 // that the tool reads. Most tools use the same name at both scopes,
-// but Windsurf/Codeium intentionally differs: ".windsurf" at project
-// scope, ".codeium" at user scope. The DirByScope map captures that
+// but some differ: Devin reads ".devin" at project scope and
+// ".config/devin" at user scope. The DirByScope map captures that
 // asymmetry once so callers never need to special-case it.
 //
-// Aliases let users refer to a Tool by multiple names from the
-// command line and from .agents/config. For instance, "windsurf" and
-// "codeium" both resolve to the same Tool — which one the user types
-// is a matter of which mental model they're working from on a given
-// day. Resolution is case-sensitive (lowercase canonical).
+// A name a tool used to go by lives in deprecatedTargets, not on the
+// Tool: it resolves at the target boundary, with a warning.
 //
 // See docs/architecture/scope-and-targets.md for the conceptual model
 // and SPEC-002 §Filesystem conventions for the canonical per-tool
@@ -27,24 +25,15 @@ import (
 type Tool struct {
 	// ID is the canonical, stable identifier used in config files,
 	// CLI flags, log messages, and the `Tools` registry. Lowercase,
-	// no punctuation. Examples: "claude", "codeium", "cursor",
+	// no punctuation. Examples: "claude", "devin", "cursor",
 	// "copilot", "codex".
 	ID string
-
-	// Aliases are alternate strings that resolve to this Tool when
-	// passed to ResolveTool. ID itself need not appear in Aliases;
-	// ResolveTool checks both.
-	//
-	// The primary use is the windsurf/codeium pair: the canonical ID
-	// is "codeium" (matching the user-scope dir), but "windsurf" is a
-	// universally-recognized alias for the same Tool.
-	Aliases []string
 
 	// DirByScope maps a Scope to the path *segment* (not the absolute
 	// path) where this tool's data lives at that scope. Examples:
 	//
 	//   Claude:    {ScopeLocal: ".claude",         ScopeGlobal: ".claude"}
-	//   Codeium:   {ScopeLocal: ".windsurf",       ScopeGlobal: ".codeium"}
+	//   Devin:     {ScopeLocal: ".devin",          ScopeGlobal: ".config/devin"}
 	//   Copilot:   {ScopeLocal: ".github/copilot", ScopeGlobal: ".copilot"}
 	//
 	// The segment is joined to a scope-appropriate parent (project
@@ -111,28 +100,13 @@ func (t Tool) HasScope(scope Scope) bool {
 	return ok && seg != ""
 }
 
-// Matches reports whether the given name resolves to this Tool. The
-// match is case-sensitive against ID and Aliases — keep CLI inputs
-// lowercased before calling.
-func (t Tool) Matches(name string) bool {
-	if t.ID == name {
-		return true
-	}
-	for _, a := range t.Aliases {
-		if a == name {
-			return true
-		}
-	}
-	return false
-}
-
 // Tools is the registry of every Tool sync-agents knows about. The
 // order here is the canonical ordering used for status output and the
 // default --targets list.
 //
 // Adding a new tool requires:
 //
-//  1. An entry here with ID, Aliases, and DirByScope filled in.
+//  1. An entry here with ID and DirByScope filled in.
 //  2. Verification that no existing call site hardcodes a tool name
 //     (grep for the string).
 //  3. A doc table update in docs/architecture/scope-and-targets.md
@@ -153,11 +127,12 @@ var Tools = []Tool{
 		},
 	},
 	{
-		// Canonical ID is "codeium" (matching the user-scope dir).
-		// "windsurf" is the alias because that's what the IDE is
-		// branded as and what users will type more often.
-		ID:      "codeium",
-		Aliases: []string{"windsurf"},
+		// Windsurf, now Devin (SPEC-014). Retired: deprecatedTargets
+		// sends its names to devin, so no run selects it. It stays
+		// registered because its rows describe what earlier versions
+		// wrote, which status reports as deprecated (E11) and stays in
+		// place for legacy Cascade until 5.0.0 (E10).
+		ID: "codeium",
 		DirByScope: map[Scope]string{
 			ScopeLocal:  ".windsurf",
 			ScopeGlobal: ".codeium",
@@ -249,8 +224,15 @@ var Tools = []Tool{
 	},
 }
 
-// ResolveTool returns the Tool whose ID or alias matches the given
-// name, plus a bool indicating success. The bool is false when no
+// retired reports whether t is a registered tool that no target name
+// selects any more (deprecatedTargets). Default target lists skip it.
+func (t Tool) retired() bool {
+	_, ok := deprecatedTargets[t.ID]
+	return ok
+}
+
+// ResolveTool returns the Tool whose ID matches the given name, plus a
+// bool indicating success. The bool is false when no
 // registered tool matches; callers should surface that as a
 // user-facing error since the name almost certainly came from a CLI
 // flag or config file.
@@ -261,11 +243,61 @@ var Tools = []Tool{
 // "Windsurf" and complicating the surface contract.
 func ResolveTool(name string) (Tool, bool) {
 	for _, t := range Tools {
-		if t.Matches(name) {
+		if t.ID == name {
 			return t, true
 		}
 	}
 	return Tool{}, false
+}
+
+// deprecatedTargets maps a target name that no longer names a tool to
+// the tool that replaced it. The target boundaries
+// (resolveProjectTargets, resolveSyncTools) rewrite these names and
+// warn once per name per run. SPEC-014 Part C turns them into errors.
+// A registered tool whose ID is a key here is retired.
+var deprecatedTargets = map[string]deprecatedTarget{
+	"windsurf": {Use: "devin", Why: "Windsurf is now Devin", RemovedIn: "5.0.0"},
+	"codeium":  {Use: "devin", Why: "Windsurf is now Devin", RemovedIn: "5.0.0"},
+}
+
+// deprecatedTarget is a deprecatedTargets entry.
+type deprecatedTarget struct {
+	Use       string // the replacement tool ID
+	Why       string
+	RemovedIn string // the release that stops resolving the name
+}
+
+func (d deprecatedTarget) warning(name string) string {
+	return fmt.Sprintf("warning: target %q is deprecated; %s. Use %q. Removed in %s.", name, d.Why, d.Use, d.RemovedIn)
+}
+
+// canonicalName returns the tool ID that replaced name, or name itself
+// when it is not deprecated.
+func canonicalName(name string) string {
+	if d, ok := deprecatedTargets[name]; ok {
+		return d.Use
+	}
+	return name
+}
+
+// canonicalTargets rewrites each deprecated name to its replacement and
+// drops repeats, keeping first-seen order, so a list that names a tool
+// twice (devin and windsurf) syncs it once. deprecated lists each
+// deprecated name the input used, once, in order.
+func canonicalTargets(names []string) (targets, deprecated []string) {
+	seen := map[string]bool{}
+	warned := map[string]bool{}
+	for _, name := range names {
+		if _, ok := deprecatedTargets[name]; ok && !warned[name] {
+			warned[name] = true
+			deprecated = append(deprecated, name)
+		}
+		if id := canonicalName(name); !seen[id] {
+			seen[id] = true
+			targets = append(targets, id)
+		}
+	}
+	return targets, deprecated
 }
 
 // ToolIDs returns the canonical IDs of every registered tool, in the

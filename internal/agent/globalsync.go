@@ -13,9 +13,9 @@ import (
 // zero value is "sync all registered tools, no force, no dry-run".
 //
 // Targets, when non-empty, filters the set of tools to operate on.
-// Names are matched against each Tool's ID and Aliases (so
-// {"windsurf"} resolves to the codeium Tool). Unknown names are
-// flagged as errors but do not abort the whole sync.
+// Names are matched against each Tool's ID; a deprecated name
+// ({"windsurf"}) resolves to its replacement with a warning. Unknown
+// names are flagged as errors but do not abort the whole sync.
 type GlobalSyncOpts struct {
 	Targets []string
 }
@@ -39,10 +39,11 @@ type GlobalSyncOpts struct {
 //
 // After the per-artifact pass, deliverChannels renders every passive
 // artifact into each tool's channel once (SPEC-013): the codex-rules
-// region in ~/.codex/AGENTS.md, the codeium-rules region in Windsurf's
-// global_rules.md, the Copilot instructions link, the opencode.json
-// entry, and OpenClaw's openclaw-rules region. It also removes the
-// pre-SPEC-013 placements (legacy concat files, ~/.cursor/rules links).
+// region in ~/.codex/AGENTS.md, the devin-rules region in
+// ~/.config/devin/AGENTS.md, the Copilot instructions link, the
+// opencode.json entry, and OpenClaw's openclaw-rules region. It also
+// removes the pre-SPEC-013 placements (legacy concat files,
+// ~/.cursor/rules links).
 // Every write preserves mtime when content is unchanged (idempotency).
 //
 // A tool with a global channel is delivered to only when it is
@@ -209,7 +210,7 @@ func (a *App) CmdGlobalSync(opts GlobalSyncOpts) error {
 
 // artifactGate limits the per-artifact pass for one tool.
 type artifactGate struct {
-	// link: place symlinks (Windsurf workflows, opencode agents).
+	// link: place symlinks (Devin and opencode agents).
 	link bool
 
 	// warn: print skip reasons.
@@ -259,10 +260,12 @@ func anyMountable(chans []Channel) bool {
 
 // resolveSyncTools filters the Tools registry by the --targets list,
 // else by the `targets =` line in <global root>/config, else returns
-// every tool with a global scope. Names map through ResolveTool so
-// aliases work. Unknown names are reported as warnings; the function
-// returns successfully even when some targets are unknown, because
-// partial progress is more useful than failing the whole sync.
+// every tool with a global scope except retired ones. It is the
+// target boundary of the global commands: deprecated names resolve to
+// their replacement with a warning (resolveTargetNames). Unknown names
+// are reported as warnings; the function returns successfully even
+// when some targets are unknown, because partial progress is more
+// useful than failing the whole sync.
 //
 // The config list only selects tools. Consent to edit a user's file
 // comes from the --targets flag alone (ChannelRun.Explicit), which
@@ -279,10 +282,10 @@ func (a *App) resolveSyncTools(targets []string) ([]Tool, error) {
 		targets = parseConfigTargets(data)
 	}
 	if len(targets) == 0 {
-		// Default: all tools with a global mapping.
+		// Default: all tools with a global mapping, except retired ones.
 		var out []Tool
 		for _, t := range Tools {
-			if !t.HasScope(ScopeGlobal) {
+			if !t.HasScope(ScopeGlobal) || t.retired() {
 				continue
 			}
 			if bound, ok := a.bindTool(t); ok {
@@ -292,13 +295,15 @@ func (a *App) resolveSyncTools(targets []string) ([]Tool, error) {
 		return out, nil
 	}
 
+	var names []string
+	for _, name := range targets {
+		if name = strings.TrimSpace(strings.ToLower(name)); name != "" {
+			names = append(names, name)
+		}
+	}
 	var out []Tool
 	seen := map[string]bool{}
-	for _, name := range targets {
-		name = strings.TrimSpace(strings.ToLower(name))
-		if name == "" {
-			continue
-		}
+	for _, name := range a.resolveTargetNames(names) {
 		tool, ok := ResolveTool(name)
 		if !ok {
 			a.Warn(fmt.Sprintf("unknown target %q; skipping", name))

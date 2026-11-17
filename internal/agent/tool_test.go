@@ -12,7 +12,8 @@ import (
 // being violated.
 //
 // Local scope MUST resolve to .windsurf; global scope MUST resolve to
-// .codeium. Reversing this would break every Windsurf user.
+// .codeium. The retired codeium tool (SPEC-014) still names where
+// earlier versions wrote for Windsurf.
 func TestTool_DirForScope_Codeium(t *testing.T) {
 	codeium, ok := ResolveTool("codeium")
 	if !ok {
@@ -27,20 +28,6 @@ func TestTool_DirForScope_Codeium(t *testing.T) {
 	global := codeium.DirForScope(ScopeGlobal, "/home/u")
 	if global != filepath.Join("/home/u", ".codeium") {
 		t.Errorf("codeium global dir = %q, want %q", global, filepath.Join("/home/u", ".codeium"))
-	}
-}
-
-// TestResolveTool_AliasResolution covers the windsurf alias: a user
-// who types "windsurf" should get the same Tool as one who types
-// "codeium".
-func TestResolveTool_AliasResolution(t *testing.T) {
-	w, okW := ResolveTool("windsurf")
-	c, okC := ResolveTool("codeium")
-	if !okW || !okC {
-		t.Fatalf("expected both windsurf and codeium to resolve; got okW=%v okC=%v", okW, okC)
-	}
-	if w.ID != c.ID {
-		t.Errorf("windsurf and codeium resolved to different IDs: %q vs %q", w.ID, c.ID)
 	}
 }
 

@@ -13,7 +13,7 @@ import (
 // are only for filtering which tools to clean.
 type GlobalCleanOpts struct {
 	// Targets, when non-empty, filters which tools' global dirs to
-	// clean. Aliases honored via ResolveTool.
+	// clean. Deprecated names resolve as in GlobalSyncOpts.
 	Targets []string
 }
 

@@ -20,7 +20,7 @@ import (
 // IO, no absolute paths.
 //
 // A tool/scope pair with no spec gets passive content another way
-// (Claude and Windsurf read the folded .agents/rules directory) or not
+// (Claude and Devin read the folded .agents/rules directory) or not
 // at all (channelGaps says why).
 type ChannelSpec struct {
 	// Format is the dialect of the generated index file.
@@ -53,11 +53,14 @@ type ChannelSpec struct {
 // changes and nothing else in the package does.
 //
 // Keys are canonical Tool IDs. Claude has no row: it reads
-// .claude/rules natively. Windsurf has no local row for the same
-// reason (.windsurf/rules). OpenClaw has no local row: it is a
+// .claude/rules natively. Devin has no local row for the same reason
+// (.devin/rules). OpenClaw has no local row: it is a
 // global-only target (SPEC-012).
 var channelSpecs = map[string]map[Scope]ChannelSpec{
 	"codeium": {
+		// Retired (SPEC-014): no run selects codeium, so this row only
+		// describes what earlier versions wrote.
+		//
 		// Windsurf loads global_rules.md always-on and keeps 6,000
 		// characters of it. Its UI edits the same file, so this is a
 		// region, not an owned file or a symlink.

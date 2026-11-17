@@ -71,7 +71,7 @@ type StatusEntry struct {
 // value is "all registered tools, plain text output."
 type GlobalStatusOpts struct {
 	// Targets, when non-empty, filters which tools are reported on.
-	// Aliases honored via ResolveTool.
+	// Deprecated names resolve as in GlobalSyncOpts.
 	Targets []string
 }
 

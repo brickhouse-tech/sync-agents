@@ -19,7 +19,7 @@ import (
 	"github.com/brickhouse-tech/sync-agents/v4/internal/version"
 )
 
-var AllTargets = []string{"claude", "windsurf", "cursor", "copilot"}
+var AllTargets = []string{"claude", "devin", "cursor", "copilot"}
 
 // App is the per-invocation state container for sync-agents commands.
 // One App is constructed by main(), populated from CLI flags in
@@ -145,14 +145,16 @@ func ResolveTargetDir(target, root string) string {
 	return filepath.Join(root, "."+target)
 }
 
-// dropGlobalOnlyTargets removes every registered tool with no project
-// scope (openclaw) from ActiveTargets, warning once per tool. Local
-// commands build the target dir as <project>/.<target>, so without
-// this a `--targets openclaw` would create .openclaw/ inside the repo.
-// Unregistered names (wave, ...) pass through untouched.
-func (a *App) dropGlobalOnlyTargets() {
+// resolveProjectTargets is the target boundary of the project commands.
+// It rewrites deprecated names in ActiveTargets (resolveTargetNames),
+// then removes every registered tool with no project scope (openclaw),
+// warning once per tool. Local commands build the target dir as
+// <project>/.<target>, so without this a `--targets openclaw` would
+// create .openclaw/ inside the repo. Unregistered names (wave, ...)
+// pass through untouched.
+func (a *App) resolveProjectTargets() {
 	var kept []string
-	for _, t := range a.ActiveTargets {
+	for _, t := range a.resolveTargetNames(a.ActiveTargets) {
 		if tool, ok := ResolveTool(t); ok && !tool.HasScope(ScopeLocal) {
 			a.Warn(fmt.Sprintf("target %q is global-only; skipping for project scope (use `sync-agents global sync --targets %s`)", t, tool.ID))
 			continue
@@ -160,6 +162,17 @@ func (a *App) dropGlobalOnlyTargets() {
 		kept = append(kept, t)
 	}
 	a.ActiveTargets = kept
+}
+
+// resolveTargetNames rewrites deprecated target names to the tool that
+// replaced them (canonicalTargets) and prints one warning per
+// deprecated name to stderr.
+func (a *App) resolveTargetNames(names []string) []string {
+	targets, deprecated := canonicalTargets(names)
+	for _, name := range deprecated {
+		fmt.Fprintln(a.Stderr, deprecatedTargets[name].warning(name))
+	}
+	return targets
 }
 
 func ResolveAgentsRel(target string) string {
@@ -403,7 +416,7 @@ func (a *App) CmdSync() error {
 	if err := a.EnsureAgentsDir(); err != nil {
 		return err
 	}
-	a.dropGlobalOnlyTargets()
+	a.resolveProjectTargets()
 
 	a.deprecateForce()
 
@@ -489,7 +502,7 @@ func (a *App) CmdSync() error {
 }
 
 func (a *App) CmdStatus() error {
-	a.dropGlobalOnlyTargets()
+	a.resolveProjectTargets()
 	fmt.Fprintf(a.Stdout, "sync-agents v%s\n", version.Version)
 	fmt.Fprintln(a.Stdout)
 
@@ -635,7 +648,7 @@ func (a *App) pruneRetiredBucketLinks(targetDir, agentsRel string) {
 }
 
 func (a *App) CmdClean() error {
-	a.dropGlobalOnlyTargets()
+	a.resolveProjectTargets()
 	a.Info("Removing synced symlinks...")
 
 	for _, target := range a.ActiveTargets {
@@ -1048,7 +1061,7 @@ func (a *App) CmdFix(fixType string, noClobber bool) error {
 	if err := a.EnsureAgentsDir(); err != nil {
 		return err
 	}
-	a.dropGlobalOnlyTargets()
+	a.resolveProjectTargets()
 	a.deprecateForce()
 	a.migrateAgentsMDOrWarn()
 

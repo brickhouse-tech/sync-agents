@@ -289,7 +289,7 @@ func (a *App) bindChannel(tool Tool, scope Scope, spec ChannelSpec, tree, base, 
 		Home:   home,
 	}
 	for _, name := range explicit {
-		if tool.Matches(strings.ToLower(strings.TrimSpace(name))) {
+		if tool.ID == canonicalName(strings.ToLower(strings.TrimSpace(name))) {
 			ch.Explicit = true
 		}
 	}

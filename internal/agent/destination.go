@@ -204,7 +204,7 @@ var commandSkips = map[string]string{
 
 // invocableSkip is the Skip for an invocable artifact sent to a tool
 // with no user-scope command or skill surface that sync-agents writes:
-// every tool except Claude and Windsurf. Passive content never reaches
+// every tool except Claude. Passive content never reaches
 // here (StrategyChannel); agents and reference docs are routed earlier.
 func invocableSkip(toolID string, typ ArtifactType, name string) Destination {
 	if typ == ArtifactSkill {

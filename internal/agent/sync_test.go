@@ -328,14 +328,14 @@ func TestCmdSync_DrilledRuleFileIsLinkedAsFile(t *testing.T) {
 }
 
 func TestCmdSync_ConflictInOneTargetStillSyncsOthers(t *testing.T) {
-	app, root, buf := newSyncApp(t, "wave", "windsurf")
+	app, root, buf := newSyncApp(t, "wave", "claude")
 	seedShadowingSkill(t, root)
 
 	if err := app.CmdSync(); err == nil {
 		t.Fatalf("CmdSync should fail on a conflict\n%s", buf)
 	}
 
-	assertResolvesTo(t, filepath.Join(root, ".windsurf", "skills"), filepath.Join(root, ".agents", "skills"))
+	assertResolvesTo(t, filepath.Join(root, ".claude", "skills"), filepath.Join(root, ".agents", "skills"))
 }
 
 func TestCmdSync_NoConflictReportsComplete(t *testing.T) {
