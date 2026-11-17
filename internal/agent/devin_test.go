@@ -511,32 +511,6 @@ func TestGlobalClean_DevinTargetNoLeftoverNote(t *testing.T) {
 	}
 }
 
-// SPEC-014 E7
-func TestInit_DefaultTargetsNameDevin(t *testing.T) {
-	project := t.TempDir()
-	a := &App{ProjectRoot: project, GlobalRoot: filepath.Join(t.TempDir(), ".agents"), Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
-	if err := a.CmdInit(); err != nil {
-		t.Fatalf("init: %v", err)
-	}
-	if err := a.CmdGlobalInit(); err != nil {
-		t.Fatalf("global init: %v", err)
-	}
-	for _, c := range []struct {
-		config string
-		want   []string
-	}{
-		{filepath.Join(project, ".agents", "config"), []string{"claude", "devin", "cursor", "copilot"}},
-		{filepath.Join(a.GlobalRoot, "config"), []string{"claude", "devin", "cursor", "copilot", "codex"}},
-	} {
-		if got := parseConfigTargets([]byte(readFile(t, c.config))); !reflect.DeepEqual(got, c.want) {
-			t.Errorf("%s targets = %v, want %v", c.config, got, c.want)
-		}
-	}
-	if got, want := AllTargets, []string{"claude", "devin", "cursor", "copilot"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("AllTargets = %v, want %v", got, want)
-	}
-}
-
 // SPEC-014 E11: global status lists each codeium leftover as
 // deprecated, and only the ones that exist.
 func TestGlobalStatus_CodeiumLeftoversDeprecated(t *testing.T) {

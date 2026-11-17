@@ -58,7 +58,7 @@ func TestResolveTool_CaseSensitivity(t *testing.T) {
 // Anything that changes that set should require an update here and a
 // corresponding spec change.
 func TestTools_Registry_HasExpectedIDs(t *testing.T) {
-	want := []string{"claude", "codeium", "devin", "cursor", "copilot", "codex", "opencode", "openclaw"}
+	want := []string{"claude", "codeium", "devin", "cursor", "copilot", "codex", "opencode", "openclaw", "antigravity"}
 	if got := ToolIDs(); !reflect.DeepEqual(got, want) {
 		t.Errorf("ToolIDs() = %v, want %v", got, want)
 	}
@@ -94,8 +94,9 @@ func TestTools_OpencodeNotInDefaultTargets(t *testing.T) {
 }
 
 // globalOnlyTools have no project-scope surface (SPEC-012: OpenClaw's
-// workspace is per user).
-var globalOnlyTools = map[string]bool{"openclaw": true}
+// workspace is per user; SPEC-015 A1: Antigravity reads .agents/
+// itself).
+var globalOnlyTools = map[string]bool{"openclaw": true, "antigravity": true}
 
 // TestTool_HasScope covers the LocalOnly opt-out and the standard
 // case: every tool has a global scope unless LocalOnly, and a local

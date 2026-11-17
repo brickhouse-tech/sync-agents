@@ -52,6 +52,12 @@ type Tool struct {
 	// Tool where LocalOnly is true.
 	LocalOnly bool
 
+	// ReadsProjectAgents marks a tool with no project directory because
+	// it reads the project's .agents/ tree itself (Antigravity). Project
+	// commands report that instead of warning that the tool is
+	// global-only.
+	ReadsProjectAgents bool
+
 	// ResolveGlobalDir computes the global directory for a tool whose
 	// root is not <parent>/<segment>: Codex honors $CODEX_HOME, and
 	// OpenClaw's workspace moves with env vars and its own config. Nil
@@ -221,6 +227,18 @@ var Tools = []Tool{
 			ScopeGlobal: filepath.Join(".openclaw", "workspace"),
 		},
 		ResolveGlobalDir: resolveOpenClawWorkspace,
+	},
+	{
+		// Antigravity App and CLI (SPEC-015 Part A), which replaced
+		// Gemini CLI for consumer users. A project's .agents/ is read
+		// natively, so local sync writes nothing. The user-scope home
+		// is ~/.gemini/config, where rules, skills, and agents are
+		// linked one by one (antigravityDestination).
+		ID: "antigravity",
+		DirByScope: map[Scope]string{
+			ScopeGlobal: filepath.Join(".gemini", "config"),
+		},
+		ReadsProjectAgents: true,
 	},
 }
 

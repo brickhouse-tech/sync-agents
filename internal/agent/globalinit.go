@@ -9,8 +9,8 @@ import (
 // GlobalConfigContent is the canonical body of ~/.agents/config that
 // CmdGlobalInit writes when no config file is present.
 //
-// The target list is fixed at five tools (claude, devin, cursor,
-// copilot, codex). It is intentionally not derived from the local
+// The target list is fixed at six tools (claude, devin, cursor,
+// copilot, codex, antigravity). It is intentionally not derived from the local
 // .agents/config: the global config should not change based on which
 // project happens to be the cwd when `global init` runs. SPEC-002
 // AC-11 codifies this independence.
@@ -18,11 +18,11 @@ import (
 // The header lines mirror the comment style of the project-level
 // .agents/config so users who have seen one recognize the other.
 const GlobalConfigContent = `# sync-agents global configuration
-# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode, openclaw)
+# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode, openclaw, antigravity)
 # global sync, status, and clean use this list when --targets is omitted; without it, every tool.
 # Override per-command with: sync-agents global sync --targets claude,cursor
 # Only naming a tool in --targets consents to editing a file of yours that it reads; this list does not.
-targets = claude,devin,cursor,copilot,codex
+targets = claude,devin,cursor,copilot,codex,antigravity
 `
 
 // CmdGlobalInit initializes the user's global .agents/ tree.
