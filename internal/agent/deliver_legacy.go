@@ -303,21 +303,27 @@ func (a *App) retiredRows(tools []Tool) ([]StatusEntry, error) {
 	return rows, nil
 }
 
-// printRetiredFolds prints one deprecated line per bucket fold a retired
-// tool's project directory still holds: <dir>/<bucket> as a symlink into
-// .agents/.
-func (a *App) printRetiredFolds(targets []string) {
+// printRetiredLinks prints one deprecated line per bucket link a retired
+// tool's project directory still holds: the <dir>/<bucket> fold, or each
+// link drilled into a real <dir>/<bucket> (agentsLinks).
+func (a *App) printRetiredLinks(targets []string) {
 	for _, t := range retiredFor(targets) {
-		dir := t.DirForScope(ScopeLocal, a.ProjectRoot)
-		for _, b := range Buckets {
-			link := filepath.Join(dir, b.Dir)
-			if !a.isAgentsFold(link) {
-				continue
-			}
+		for _, link := range a.retiredLinks(t) {
 			dest, _ := os.Readlink(link)
 			fmt.Fprintf(a.Stdout, "[deprecated] %s -> %s (removed in %s)\n", a.display(link), dest, deprecatedTargets[t.ID].RemovedIn)
 		}
 	}
+}
+
+// retiredLinks returns every bucket link an earlier sync left in retired
+// tool t's project directory.
+func (a *App) retiredLinks(t Tool) []string {
+	dir := t.DirForScope(ScopeLocal, a.ProjectRoot)
+	var links []string
+	for _, b := range Buckets {
+		links = append(links, a.agentsLinks(filepath.Join(dir, b.Dir), b)...)
+	}
+	return links
 }
 
 // retiredFor returns the retired tools whose replacement is in ids, in

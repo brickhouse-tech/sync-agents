@@ -14,11 +14,12 @@ For every active target (from `--targets`, else `.agents/config`, else
 `claude,devin,cursor,copilot`) and every bucket that exists under
 `.agents/`, sync makes `<tool>/<bucket>` resolve to `.agents/<bucket>`.
 Devin receives only `rules`: it reads `.agents/skills` and
-`.agents/agents` itself and has no workflow surface. While a
-`.windsurf/rules` link from an earlier version points into `.agents/`,
-sync skips the `.devin/rules` fold and prints `devin rules served by
-legacy .windsurf/rules link`, because Devin imports `.windsurf/rules`
-too. Run in `$HOME`, where `.agents/` is the global root, sync skips
+`.agents/agents` itself and has no workflow surface. While an earlier
+version's links in `.windsurf/rules` point into `.agents/rules` (the
+`.windsurf/rules` link itself, or per-rule links inside a real
+`.windsurf/rules/`), sync skips the `.devin/rules` fold and prints
+`devin rules served by legacy .windsurf/rules link` (or `legacy links
+in .windsurf/rules`), because Devin imports `.windsurf/rules` too. Run in `$HOME`, where `.agents/` is the global root, sync skips
 the fold as well: `~/.devin/rules` is Devin's user rules directory, and
 `sync-agents global sync` already delivers those rules through
 `~/.config/devin/AGENTS.md`.

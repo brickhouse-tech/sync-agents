@@ -46,10 +46,16 @@ character `global_rules.md` cap was Windsurf's.
 - **E2.** When local sync targets `devin`, sync shall fold
   `.devin/rules -> ../.agents/rules`, the same way it folds
   `.claude/rules`.
-- **E2a.** While a `.windsurf/rules` symlink resolves into `.agents/`,
-  sync shall skip the `.devin/rules` fold and report
-  `devin rules served by legacy .windsurf/rules link` (Devin imports
+- **E2a.** While `.windsurf/rules` serves rules from `.agents/rules`,
+  sync shall skip the `.devin/rules` fold (Devin imports
   `.windsurf/rules` by default, so both would load every rule twice).
+  It serves them when it is a symlink that resolves into
+  `.agents/rules` (the fold), reported as
+  `devin rules served by legacy .windsurf/rules link`, or a real
+  directory holding at least one symlink that resolves into
+  `.agents/rules` (the per-rule links an earlier sync drilled into a
+  directory Windsurf created), reported as
+  `devin rules served by legacy links in .windsurf/rules`.
 - **E2b.** While the project's `.agents/` is the global root (the
   project is `$HOME`), local sync shall skip the `.devin/rules` fold
   and report `devin rules: skipped at project scope`, with the same
@@ -84,7 +90,10 @@ character `global_rules.md` cap was Windsurf's.
   region, `.windsurf/rules` fold) shall be left in place during 4.x.
   Legacy Cascade still reads them.
 - **E11.** `status` and `global status` shall list each surviving
-  `codeium` placement as `deprecated (removed in 5.0.0)`.
+  `codeium` placement as `deprecated (removed in 5.0.0)`. In a project
+  that is each `.windsurf/<bucket>` fold and each link drilled into a
+  real `.windsurf/<bucket>/` that resolves into `.agents/<bucket>`;
+  the user's own files there are not listed.
 
 ### Part C: removal (5.0.0)
 

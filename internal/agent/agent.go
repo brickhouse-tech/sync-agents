@@ -588,7 +588,7 @@ func (a *App) CmdStatus() error {
 			fmt.Fprintf(a.Stdout, "[not synced] %s/\n", displayDir)
 		}
 	}
-	a.printRetiredFolds(a.statusTargets())
+	a.printRetiredLinks(a.statusTargets())
 	return a.printChannelRows()
 }
 

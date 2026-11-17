@@ -184,8 +184,13 @@ func (a *App) withheldFold(target string, b Bucket) string {
 		}
 	}
 	for _, retired := range retiredFor([]string{target}) {
-		if link := filepath.Join(retired.DirForScope(ScopeLocal, a.ProjectRoot), b.Dir); a.isAgentsFold(link) {
-			return fmt.Sprintf("%s %s served by legacy %s link", target, b.Dir, a.display(link))
+		dest := filepath.Join(retired.DirForScope(ScopeLocal, a.ProjectRoot), b.Dir)
+		switch links := a.agentsLinks(dest, b); {
+		case len(links) == 0:
+		case links[0] == dest:
+			return fmt.Sprintf("%s %s served by legacy %s link", target, b.Dir, a.display(dest))
+		default:
+			return fmt.Sprintf("%s %s served by legacy links in %s", target, b.Dir, a.display(dest))
 		}
 	}
 	return ""
@@ -197,11 +202,32 @@ func deferredToGlobal(what string) string {
 	return what + ": skipped at project scope: this project's .agents/ is the global root, so `sync-agents global sync` delivers it"
 }
 
-// isAgentsFold reports whether link is a symlink that resolves into the
-// project's .agents/.
-func (a *App) isAgentsFold(link string) bool {
-	fi, err := os.Lstat(link)
-	return err == nil && fi.Mode()&os.ModeSymlink != 0 && pointsInto(link, filepath.Join(a.ProjectRoot, ".agents"))
+// agentsLinks returns what linkBucket placed at dest for bucket b: dest
+// itself when it is a symlink into .agents/<b.Dir> (the fold), else each
+// symlink into .agents/<b.Dir> directly inside a real dest directory
+// (the drill). Everything else at dest is the user's.
+func (a *App) agentsLinks(dest string, b Bucket) []string {
+	src := filepath.Join(a.ProjectRoot, ".agents", b.Dir)
+	fi, err := os.Lstat(dest)
+	switch {
+	case err != nil:
+		return nil
+	case fi.Mode()&os.ModeSymlink != 0:
+		if pointsInto(dest, src) {
+			return []string{dest}
+		}
+		return nil
+	case !fi.IsDir():
+		return nil
+	}
+	entries, _ := os.ReadDir(dest)
+	var links []string
+	for _, e := range entries {
+		if p := filepath.Join(dest, e.Name()); e.Type()&os.ModeSymlink != 0 && pointsInto(p, src) {
+			links = append(links, p)
+		}
+	}
+	return links
 }
 
 // sameTree reports whether the project's .agents/ is the global root:

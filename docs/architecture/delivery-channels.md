@@ -28,7 +28,7 @@ size limit).
 |---|---|---|---|---|---|
 | Claude | project | `.claude/rules/*.md`; `CLAUDE.md`, else `AGENTS.md` | `.claude/rules -> ../.agents/rules`; `CLAUDE.md -> AGENTS.md` per the [CLAUDE.md policy](#claudemd-policy) | fold | none |
 | Claude | user | `~/.claude/rules/*.md` | one link per rule into `~/.agents/rules/` | per artifact | none |
-| Devin | project | `.devin/rules/*.md`, `.windsurf/rules/*.md`, root `AGENTS.md` | `.devin/rules -> ../.agents/rules`, skipped while a legacy `.windsurf/rules` link into `.agents/` exists, and in `$HOME` (global sync delivers there) | fold | none |
+| Devin | project | `.devin/rules/*.md`, `.windsurf/rules/*.md`, root `AGENTS.md` | `.devin/rules -> ../.agents/rules`, skipped while legacy `.windsurf/rules` links into `.agents/rules` exist, and in `$HOME` (global sync delivers there) | fold | none |
 | Devin | user | `~/.config/devin/AGENTS.md` | `~/.agents/index/devin.md`; region `devin-rules` | region | none |
 | Cursor | project | `.cursor/rules/*.mdc`, `AGENTS.md` | `.agents/index/cursor.mdc`; link `.cursor/rules/sync-agents.mdc` | link | none |
 | Cursor | user | app settings only, no file | nothing (status shows a `gap` row) | none | n/a |
@@ -49,8 +49,10 @@ What earlier versions wrote for Windsurf stays in place during 4.x: the
 `.windsurf/rules` fold and the `codeium-rules` region in
 `~/.codeium/windsurf/memories/global_rules.md`. `status` and `global
 status` list each one as deprecated. Devin imports `.windsurf/rules` by
-default, so sync skips the `.devin/rules` fold while the legacy link
-exists. Each rule then loads once.
+default, so sync skips the `.devin/rules` fold while the legacy fold,
+or any per-rule link an earlier sync drilled into a real
+`.windsurf/rules/`, still points into `.agents/rules`. Each rule then
+loads once.
 
 The generated files:
 

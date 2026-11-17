@@ -62,6 +62,52 @@ func TestSync_DevinRulesServedByLegacyWindsurfLink(t *testing.T) {
 	assertResolvesTo(t, filepath.Join(root, ".windsurf", "rules"), filepath.Join(root, ".agents", "rules"))
 }
 
+// drillWindsurfRules makes what an earlier sync left when .windsurf/rules
+// was already a real directory: one link per rule inside it, beside a
+// rule the user wrote there.
+func drillWindsurfRules(t *testing.T, root string) string {
+	t.Helper()
+	writeFile(t, filepath.Join(root, ".windsurf", "rules", "mine.md"), "hand-written")
+	link := filepath.Join(root, ".windsurf", "rules", "r.md")
+	if err := os.Symlink(filepath.Join("..", "..", ".agents", "rules", "r.md"), link); err != nil {
+		t.Fatal(err)
+	}
+	return link
+}
+
+// SPEC-014 E2a: per-rule links drilled into a real .windsurf/rules serve
+// Devin those rules as a fold would.
+func TestSync_DevinRulesServedByDrilledWindsurfLinks(t *testing.T) {
+	app, root, buf := newSyncApp(t, "devin")
+	link := drillWindsurfRules(t, root)
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if exists(filepath.Join(root, ".devin", "rules")) {
+		t.Error(".devin/rules was folded although links in .windsurf/rules already serve the rules to Devin")
+	}
+	if want := "devin rules served by legacy links in .windsurf/rules"; !strings.Contains(buf.String(), want) {
+		t.Errorf("missing %q in:\n%s", want, buf.String())
+	}
+	assertResolvesTo(t, link, filepath.Join(root, ".agents", "rules", "r.md"))
+}
+
+// SPEC-014 E11: status lists each drilled link, not the user's files.
+func TestStatus_DrilledWindsurfLinksDeprecated(t *testing.T) {
+	app, root, buf := newSyncApp(t, "devin")
+	drillWindsurfRules(t, root)
+	if err := app.CmdStatus(); err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	out := buf.String()
+	if want := "[deprecated] .windsurf/rules/r.md -> ../../.agents/rules/r.md (removed in 5.0.0)"; !strings.Contains(out, want) {
+		t.Errorf("missing %q in:\n%s", want, out)
+	}
+	if strings.Contains(out, "mine.md") {
+		t.Errorf("the user's rule was reported as a leftover:\n%s", out)
+	}
+}
+
 // SPEC-014 E2a: only a link into .agents/ withholds the fold.
 func TestSync_DevinFoldsRulesBesideForeignWindsurfRules(t *testing.T) {
 	app, root, _ := newSyncApp(t, "devin")
