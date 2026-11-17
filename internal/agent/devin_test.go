@@ -136,6 +136,59 @@ func TestSync_DevinRulesNotFoldedWhenProjectIsGlobalRoot(t *testing.T) {
 	}
 }
 
+// SPEC-014 E6a: sync places only .devin/rules, so any other link under
+// .devin/ is the user's, even one into .agents/.
+func TestClean_DevinRemovesOnlyTheRulesFold(t *testing.T) {
+	app, root, _ := newSyncApp(t, "devin")
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	userLinks := map[string]string{
+		"skills": filepath.Join("..", "vendor", "skills"),
+		"agents": filepath.Join("..", ".agents", "agents"),
+	}
+	for dir, dest := range userLinks {
+		if err := os.Symlink(dest, filepath.Join(root, ".devin", dir)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := app.CmdClean(); err != nil {
+		t.Fatalf("clean: %v", err)
+	}
+	if exists(filepath.Join(root, ".devin", "rules")) {
+		t.Error("clean left the .devin/rules fold")
+	}
+	for dir := range userLinks {
+		if !exists(filepath.Join(root, ".devin", dir)) {
+			t.Errorf("clean removed the user's .devin/%s link", dir)
+		}
+	}
+}
+
+// SPEC-014 E6a: clean removes a bucket link only when it resolves into
+// .agents/, for every tool.
+func TestClean_KeepsBucketLinksOutsideAgents(t *testing.T) {
+	app, root, _ := newSyncApp(t, "claude")
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	foreign := filepath.Join(root, ".claude", "agents")
+	if err := os.Symlink(filepath.Join("..", "vendor", "agents"), foreign); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.CmdClean(); err != nil {
+		t.Fatalf("clean: %v", err)
+	}
+	for _, dir := range []string{"rules", "skills"} {
+		if exists(filepath.Join(root, ".claude", dir)) {
+			t.Errorf("clean left the .claude/%s fold", dir)
+		}
+	}
+	if !exists(foreign) {
+		t.Error("clean removed .claude/agents, which points outside .agents/")
+	}
+}
+
 // SPEC-014 E3
 func TestGlobalSync_DevinRulesRegion(t *testing.T) {
 	a, root, _ := newGlobalSyncTestApp(t)

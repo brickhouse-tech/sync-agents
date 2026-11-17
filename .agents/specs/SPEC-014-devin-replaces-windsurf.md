@@ -74,6 +74,10 @@ character `global_rules.md` cap was Windsurf's.
 - **E6.** Invocable single-file rules and workflows shall be skipped
   for `devin` with reason "Devin has no workflow surface; make it a
   skill".
+- **E6a.** Local `clean` shall remove under `.devin/` only the
+  `.devin/rules` link, the one link sync places there, and for every
+  tool shall remove a `<tool>/<bucket>` symlink only when it resolves
+  into `.agents/`. Any other link is the user's.
 - **E7.** `init` and `global init` shall write `devin` in place of
   `windsurf`/`codeium` in the default `targets =` line.
 

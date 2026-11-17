@@ -664,10 +664,18 @@ func (a *App) CmdClean() error {
 			displayDir = targetDir[len(a.ProjectRoot)+1:]
 		}
 
-		for _, subdir := range append(BucketDirs(), retiredBucketDirs...) {
+		// Only a link sync could have placed goes: one into .agents/, at
+		// a bucket dir sync links for this tool. projectBuckets limits
+		// a tool that never received the others (devin), so a link
+		// there is the user's even when it points into .agents/.
+		dirs := append(BucketDirs(), retiredBucketDirs...)
+		if only, limited := projectBuckets[target]; limited {
+			dirs = only
+		}
+		for _, subdir := range dirs {
 			sub := filepath.Join(targetDir, subdir)
 			fi, err := os.Lstat(sub)
-			if err == nil && fi.Mode()&os.ModeSymlink != 0 {
+			if err == nil && fi.Mode()&os.ModeSymlink != 0 && pointsInto(sub, filepath.Join(a.ProjectRoot, ".agents")) {
 				os.Remove(sub)
 				a.Info(fmt.Sprintf("Removed: %s/%s", displayDir, subdir))
 			}
