@@ -302,7 +302,7 @@ func (a *App) CmdInit() error {
 	// Config
 	configFile := filepath.Join(agentsDir, "config")
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
-		content := "# sync-agents configuration\n# Comma-separated list of sync targets (available: claude, windsurf, cursor, copilot, codex, opencode)\n# Override per-command with: sync-agents sync --targets claude,cursor\ntargets = claude,windsurf,cursor,copilot\n" +
+		content := "# sync-agents configuration\n# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode)\n# Override per-command with: sync-agents sync --targets claude,cursor\ntargets = claude,devin,cursor,copilot\n" +
 			"# index = local      # local (default: .agents/index/ and its links are gitignored) | commit\n" +
 			"# claude-md = auto   # auto (default: link CLAUDE.md -> AGENTS.md only for Claude Code < 2.1.281) | link | off\n"
 		os.WriteFile(configFile, []byte(content), 0644)
