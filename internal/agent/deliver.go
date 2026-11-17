@@ -201,17 +201,17 @@ func channelWithholds(target string, b Bucket) bool {
 // target's directory although linksBucket allows it, or "". Both
 // reasons keep a tool from loading the same rules twice:
 //
-//   - In $HOME the project's .agents/ is the global root (sameTree). A
-//     tool with a global channel gets the passive bucket from global
-//     sync, as bindChannels defers its local channel. Devin also reads
-//     ~/.devin/rules as user rules (SPEC-014 E2b).
+//   - In $HOME the project's .agents/ is the global root (sameTree), and
+//     global sync delivers the bucket to the tool (globalDelivers), as
+//     bindChannels defers a local channel. Devin also reads
+//     ~/.devin/rules as user rules (SPEC-014 E2b). $HOME/.cline is
+//     Cline's user dir, which global sync links into; with $CLINE_DIR
+//     set it would be workspace rules beside the user ones.
 //   - A tool that replaced a retired one may still read the retired
 //     tool's folds: Devin imports .windsurf/rules by default (E2a).
 func (a *App) withheldFold(target string, b Bucket) string {
-	if tool, ok := ResolveTool(target); ok && BucketDefaultSemantic(b.Artifact) == Passive {
-		if _, global := channelSpecs[tool.ID][ScopeGlobal]; global && a.sameTree() {
-			return deferredToGlobal(target + " " + b.Dir)
-		}
+	if globalDelivers(target, b) && a.sameTree() {
+		return deferredToGlobal(target + " " + b.Dir)
 	}
 	for _, retired := range retiredFor([]string{target}) {
 		dest := filepath.Join(retired.DirForScope(ScopeLocal, a.ProjectRoot), b.Dir)
@@ -224,6 +224,17 @@ func (a *App) withheldFold(target string, b Bucket) string {
 		}
 	}
 	return ""
+}
+
+// globalDelivers reports whether global sync gives target bucket b's
+// content: a passive bucket through the tool's global channel, or a
+// bucket it links one by one (shallowBuckets).
+func globalDelivers(target string, b Bucket) bool {
+	if slices.Contains(shallowBuckets[target], b.Dir) {
+		return true
+	}
+	_, channel := channelSpecs[target][ScopeGlobal]
+	return channel && BucketDefaultSemantic(b.Artifact) == Passive
 }
 
 // deferredToGlobal is the report for what local sync leaves to global

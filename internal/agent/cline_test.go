@@ -321,3 +321,26 @@ func TestStatus_ClineFoldHidingScopedRulesIsStale(t *testing.T) {
 		t.Errorf("missing %q in:\n%s", want, buf.String())
 	}
 }
+
+// In $HOME the project tree is the global tree, and $HOME/.cline is
+// Cline's user dir, which global sync links each rule and workflow
+// into. A fold there would give the dir two owners, and with $CLINE_DIR
+// set Cline would load every rule twice when it opens $HOME (once as
+// workspace rules, once as user rules). Local sync defers to global.
+func TestSync_ClineDefersToGlobalWhenProjectIsGlobalRoot(t *testing.T) {
+	app, root, buf := newSyncApp(t, "cline")
+	app.GlobalRoot = filepath.Join(root, ".agents")
+	writeFile(t, filepath.Join(root, ".agents", "workflows", "ship.md"), "workflow")
+	if err := app.CmdSync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	for _, dir := range []string{"rules", "workflows"} {
+		if exists(filepath.Join(root, ".cline", dir)) {
+			t.Errorf("sync placed ~/.cline/%s although global sync delivers it", dir)
+		}
+		want := "cline " + dir + ": skipped at project scope: this project's .agents/ is the global root, so `sync-agents global sync` delivers it"
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("missing %q in:\n%s", want, buf.String())
+		}
+	}
+}
