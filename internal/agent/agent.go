@@ -654,6 +654,7 @@ func (a *App) pruneRetiredBucketLinks(targetDir, agentsRel string) {
 }
 
 func (a *App) CmdClean() error {
+	named := a.ActiveTargets
 	a.resolveProjectTargets()
 	a.Info("Removing synced symlinks...")
 
@@ -708,6 +709,7 @@ func (a *App) CmdClean() error {
 		}
 	}
 
+	a.noteRetiredLeftovers(named, func(t Tool) ([]string, error) { return a.retiredLinks(t), nil })
 	a.Info("Clean complete.")
 	return nil
 }

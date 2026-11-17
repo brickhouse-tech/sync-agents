@@ -98,6 +98,11 @@ character `global_rules.md` cap was Windsurf's.
   that is each `.windsurf/<bucket>` fold and each link drilled into a
   real `.windsurf/<bucket>/` that resolves into `.agents/<bucket>`;
   the user's own files there are not listed.
+- **E11a.** When `clean` or `global clean` is given `windsurf` or
+  `codeium`, it shall clean `devin`, leave the E10 placements in place,
+  and list each one it finds under
+  `target "windsurf": Windsurf is now Devin. clean leaves what earlier versions wrote for it; sync removes it in 5.0.0. Left in place:`
+  instead of implying it removed them.
 
 ### Part C: removal (5.0.0)
 

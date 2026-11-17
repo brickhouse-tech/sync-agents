@@ -98,6 +98,7 @@ func (a *App) CmdGlobalClean(opts GlobalCleanOpts) error {
 		}
 	}
 
+	a.noteRetiredLeftovers(opts.Targets, a.retiredGlobalPlacements)
 	if a.DryRun {
 		a.Info(fmt.Sprintf("[dry-run] would remove %d item(s) across %d tool(s)", totalRemoved, len(tools)))
 	} else {

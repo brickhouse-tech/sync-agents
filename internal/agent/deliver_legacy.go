@@ -270,37 +270,83 @@ func (a *App) removeLinksInto(path, tree, stop string) []string {
 // release deprecatedTargets names (SPEC-014 E10); status reports them
 // (E11) by the proofs removal will use.
 func (a *App) retiredRows(tools []Tool) ([]StatusEntry, error) {
-	root := a.ResolveGlobalRoot()
-	parent := a.ResolveGlobalRootParent()
 	var rows []StatusEntry
 	for _, t := range retiredFor(toolIDs(tools)) {
-		var paths []string
-		if spec, ok := channelSpecs[t.ID][ScopeGlobal]; ok {
-			ch, err := a.bindChannel(t, ScopeGlobal, spec, root, parent, t.DirForScope(ScopeGlobal, parent), nil)
-			if err != nil {
-				return nil, err
-			}
-			facts, err := a.mountFacts(ch)
-			if err != nil {
-				return nil, err
-			}
-			if facts.CarriesOurs {
-				paths = append(paths, ch.Native)
-			}
-		}
-		for _, dir := range toolSweepDirs(t, parent) {
-			entries, _ := os.ReadDir(dir)
-			for _, e := range entries {
-				if p := filepath.Join(dir, e.Name()); e.Type()&os.ModeSymlink != 0 && pointsInto(p, root) {
-					paths = append(paths, p)
-				}
-			}
+		paths, err := a.retiredGlobalPlacements(t)
+		if err != nil {
+			return nil, err
 		}
 		for _, p := range paths {
 			rows = append(rows, StatusEntry{Tool: t.ID, IsChannel: true, DestinationPath: p, State: "deprecated", Detail: "removed in " + deprecatedTargets[t.ID].RemovedIn})
 		}
 	}
 	return rows, nil
+}
+
+// retiredGlobalPlacements returns what earlier versions placed for
+// retired tool t at global scope and is still on disk: its channel host
+// while it carries our region or old concat, and each link under its
+// sweep dirs that resolves into the global root.
+func (a *App) retiredGlobalPlacements(t Tool) ([]string, error) {
+	root := a.ResolveGlobalRoot()
+	parent := a.ResolveGlobalRootParent()
+	var paths []string
+	if spec, ok := channelSpecs[t.ID][ScopeGlobal]; ok {
+		ch, err := a.bindChannel(t, ScopeGlobal, spec, root, parent, t.DirForScope(ScopeGlobal, parent), nil)
+		if err != nil {
+			return nil, err
+		}
+		facts, err := a.mountFacts(ch)
+		if err != nil {
+			return nil, err
+		}
+		if facts.CarriesOurs {
+			paths = append(paths, ch.Native)
+		}
+	}
+	for _, dir := range toolSweepDirs(t, parent) {
+		entries, _ := os.ReadDir(dir)
+		for _, e := range entries {
+			if p := filepath.Join(dir, e.Name()); e.Type()&os.ModeSymlink != 0 && pointsInto(p, root) {
+				paths = append(paths, p)
+			}
+		}
+	}
+	return paths, nil
+}
+
+// noteRetiredLeftovers is clean's answer to a deprecated target name:
+// the name now selects its replacement, so clean leaves the retired
+// tool's placements (SPEC-014 E10) and lists each one that leftovers
+// finds rather than implying it removed them (E11a). One note per
+// retired tool, under the first deprecated name that stood for it.
+func (a *App) noteRetiredLeftovers(names []string, leftovers func(Tool) ([]string, error)) {
+	noted := map[string]bool{}
+	for _, name := range names {
+		name = strings.ToLower(strings.TrimSpace(name))
+		d, ok := deprecatedTargets[name]
+		if !ok {
+			continue
+		}
+		for _, t := range retiredFor([]string{d.Use}) {
+			if noted[t.ID] {
+				continue
+			}
+			noted[t.ID] = true
+			paths, err := leftovers(t)
+			if err != nil {
+				a.Warn(fmt.Sprintf("%s leftovers: %v", t.ID, err))
+				continue
+			}
+			if len(paths) == 0 {
+				continue
+			}
+			a.Warn(fmt.Sprintf("target %q: %s. clean leaves what earlier versions wrote for it; sync removes it in %s. Left in place:", name, d.Why, d.RemovedIn))
+			for _, p := range paths {
+				fmt.Fprintf(a.Stdout, "  %s\n", a.display(p))
+			}
+		}
+	}
 }
 
 // printRetiredLinks prints one deprecated line per bucket link a retired

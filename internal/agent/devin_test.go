@@ -414,6 +414,53 @@ func TestGlobal_CodeiumLeftoversStay(t *testing.T) {
 	assertResolvesTo(t, link, filepath.Join(a.GlobalRoot, "workflows", "ship.md"))
 }
 
+const leftoverNote = `[warn] target "%s": Windsurf is now Devin. clean leaves what earlier versions wrote for it; sync removes it in 5.0.0. Left in place:`
+
+// SPEC-014 E11a: clean given a deprecated name says which Windsurf
+// leftovers it kept instead of implying it cleaned them.
+func TestClean_DeprecatedTargetNotesWindsurfLeftovers(t *testing.T) {
+	app, root, buf := newSyncApp(t, "windsurf")
+	app.TargetsFromFlag = true
+	mkdirs(t, filepath.Join(root, ".windsurf"))
+	fold := filepath.Join(root, ".windsurf", "rules")
+	if err := os.Symlink(filepath.Join("..", ".agents", "rules"), fold); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.CmdClean(); err != nil {
+		t.Fatalf("clean: %v", err)
+	}
+	out := buf.String()
+	if want := strings.Replace(leftoverNote, "%s", "windsurf", 1) + "\n  .windsurf/rules\n"; !strings.Contains(out, want) {
+		t.Errorf("missing %q in:\n%s", want, out)
+	}
+	assertResolvesTo(t, fold, filepath.Join(root, ".agents", "rules"))
+}
+
+// SPEC-014 E11a: the same for global clean.
+func TestGlobalClean_DeprecatedTargetNotesCodeiumLeftovers(t *testing.T) {
+	a, root, buf := newGlobalSyncTestApp(t)
+	host, link := seedCodeiumLeftovers(t, a, root)
+	if err := a.CmdGlobalClean(GlobalCleanOpts{Targets: []string{"codeium"}}); err != nil {
+		t.Fatalf("global clean: %v", err)
+	}
+	if want := strings.Replace(leftoverNote, "%s", "codeium", 1) + "\n  " + host + "\n  " + link + "\n"; !strings.Contains(buf.String(), want) {
+		t.Errorf("missing %q in:\n%s", want, buf.String())
+	}
+	assertResolvesTo(t, link, filepath.Join(a.GlobalRoot, "workflows", "ship.md"))
+}
+
+// SPEC-014 E11a: naming devin itself is not a question about Windsurf.
+func TestGlobalClean_DevinTargetNoLeftoverNote(t *testing.T) {
+	a, root, buf := newGlobalSyncTestApp(t)
+	seedCodeiumLeftovers(t, a, root)
+	if err := a.CmdGlobalClean(GlobalCleanOpts{Targets: []string{"devin"}}); err != nil {
+		t.Fatalf("global clean: %v", err)
+	}
+	if strings.Contains(buf.String(), "Left in place") {
+		t.Errorf("leftover note without a deprecated target:\n%s", buf.String())
+	}
+}
+
 // SPEC-014 E7
 func TestInit_DefaultTargetsNameDevin(t *testing.T) {
 	project := t.TempDir()

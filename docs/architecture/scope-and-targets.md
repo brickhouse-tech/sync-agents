@@ -70,11 +70,14 @@ for global commands.
 The `codeium` tool stays in the registry as a retired tool. No target
 name selects it, and the default global target list skips it. Its
 entries still describe what earlier versions wrote: the
-`.windsurf/<bucket>` folds, the `codeium-rules` region in
+`.windsurf/<bucket>` folds (or the per-entry links drilled into a real
+`.windsurf/<bucket>/`), the `codeium-rules` region in
 `~/.codeium/windsurf/memories/global_rules.md`, and the workflow links
 in `~/.codeium/windsurf/global_workflows/`. Sync leaves these in place
 during 4.x because legacy Cascade still reads them. `status` and
 `global status` list each one as `deprecated (removed in 5.0.0)`.
+`clean` and `global clean` given `windsurf` or `codeium` clean `devin`
+and list the Windsurf placements they left.
 
 `opencode` also differs by scope, by convention rather than by
 branding. It uses a plain `.opencode/`

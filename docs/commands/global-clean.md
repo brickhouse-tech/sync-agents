@@ -48,7 +48,9 @@ errs on the side of preservation, sync errs on the side of detection.
 - Nothing an earlier version wrote for the retired `codeium` target
   (Windsurf). `--targets windsurf` or `--targets codeium` cleans `devin`.
   The `codeium-rules` region and the `~/.codeium/windsurf/global_workflows/`
-  links stay in place during 4.x (SPEC-014).
+  links stay in place during 4.x (SPEC-014). Given one of those names,
+  global clean lists each such placement it found and left, under a
+  `Left in place:` warning.
 - **The `claude-imports` block** in `~/.claude/CLAUDE.md`. The file is
   removed only when nothing else is left in it.
 - **1.x concat files** that start with the old banner.
