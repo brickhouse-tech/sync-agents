@@ -46,13 +46,16 @@ const (
 // channelRows), so they sweep nothing.
 func toolSweepDirs(tool Tool, parent string) []string {
 	switch tool.ID {
-	case "claude":
-		base := filepath.Join(parent, ".claude")
+	case "claude", "wave":
+		names := []string{"skills", "commands", "rules", "agents"}
+		if tool.ID == "claude" {
+			// adrs stays swept after the bucket's removal (v4) so links
+			// left by v3 surface as orphaned and `global clean` prunes them.
+			names = append(names, "plans", "specs", "adrs")
+		}
 		var dirs []string
-		// adrs stays swept after the bucket's removal (v4) so links
-		// left by v3 surface as orphaned and `global clean` prunes them.
-		for _, d := range []string{"skills", "commands", "rules", "agents", "plans", "specs", "adrs"} {
-			dirs = append(dirs, filepath.Join(base, d))
+		for _, d := range names {
+			dirs = append(dirs, filepath.Join(tool.DirForScope(ScopeGlobal, parent), d))
 		}
 		return dirs
 	case "codeium":

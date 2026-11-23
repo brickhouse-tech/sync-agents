@@ -98,6 +98,7 @@ func seedShadowingSkill(t *testing.T, root string) string {
 	return mine
 }
 
+// SPEC-017 E8: a real .wave/skills/ is drilled, not replaced.
 func TestCmdSync_RealDirIsDrilled(t *testing.T) {
 	app, root, buf := newSyncApp(t, "wave")
 	native := seedWaveSkillsDir(t, root)

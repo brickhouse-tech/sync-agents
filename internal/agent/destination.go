@@ -171,7 +171,7 @@ func TargetDestination(
 	}
 
 	switch tool.ID {
-	case "claude":
+	case "claude", "wave":
 		return claudeLayoutDestination(tool.ID, typ, name, sem, tool.DirForScope(ScopeGlobal, globalRootParent))
 	case "codeium":
 		return codeiumDestination(typ, name, sem, artifactSourcePath, globalRootParent)
@@ -229,7 +229,7 @@ var commandSkips = map[string]string{
 
 // invocableSkip is the Skip for an invocable artifact sent to a tool
 // with no user-scope command or skill surface that sync-agents writes:
-// every tool except Claude. Passive content never reaches
+// every tool except Claude and Wave. Passive content never reaches
 // here (StrategyChannel); agents and reference docs are routed earlier.
 func invocableSkip(toolID string, typ ArtifactType, name string) Destination {
 	if typ == ArtifactSkill {
@@ -247,8 +247,8 @@ func invocableSkip(toolID string, typ ArtifactType, name string) Destination {
 	}
 }
 
-// claudeLayoutDestination implements the Claude routing row under
-// home, the tool's global dir:
+// claudeLayoutDestination implements the routing row of Claude and of
+// Wave (SPEC-017 E4), which reads the same layout under its own home:
 //
 //   - Invocable skill (dir): <home>/skills/<name>/SKILL.md
 //   - Invocable rule/workflow (single file): <home>/commands/<name>.md
