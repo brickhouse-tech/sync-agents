@@ -11,8 +11,8 @@ of two scopes:
 
 | Scope | Canonical tree | Per-tool fan-out |
 |---|---|---|
-| **Local** (project) | `<project>/.agents/` | `<project>/.claude/`, `<project>/.devin/`, `<project>/.cursor/`, `<project>/.github/copilot/`, `<project>/.codex/`, `<project>/.opencode/`, `<project>/.cline/`, `<project>/.gemini/` |
-| **Global** (user) | `$HOME/.agents/` (overridable, see [global-root-resolution.md](./global-root-resolution.md)) | `$HOME/.claude/`, `$HOME/.config/devin/`, `$HOME/.cursor/`, `$HOME/.copilot/`, `$HOME/.codex/`, `$HOME/.config/opencode/`, `$HOME/.cline/`, `$HOME/.gemini/config/`, `$HOME/.gemini/` |
+| **Local** (project) | `<project>/.agents/` | `<project>/.claude/`, `<project>/.wave/`, `<project>/.devin/`, `<project>/.cursor/`, `<project>/.github/copilot/`, `<project>/.codex/`, `<project>/.opencode/`, `<project>/.cline/`, `<project>/.gemini/` |
+| **Global** (user) | `$HOME/.agents/` (overridable, see [global-root-resolution.md](./global-root-resolution.md)) | `$HOME/.claude/`, `$HOME/.wave/`, `$HOME/.config/devin/`, `$HOME/.cursor/`, `$HOME/.copilot/`, `$HOME/.codex/`, `$HOME/.config/opencode/`, `$HOME/.cline/`, `$HOME/.gemini/config/`, `$HOME/.gemini/` |
 
 The canonical tree is the **single source of truth**. The per-tool
 directories are derived from it: `sync` creates symlinks that point
@@ -42,6 +42,7 @@ known tools.
 | Tool | Local dir | Global dir |
 |---|---|---|
 | `claude` | `.claude/` | `~/.claude/` |
+| `wave` (opt-in) | `.wave/` | `~/.wave/` |
 | `devin` | `.devin/` | `~/.config/devin/` |
 | `cursor` | `.cursor/` | `~/.cursor/` |
 | `copilot` | `.github/copilot/` | `~/.copilot/` |
@@ -109,6 +110,16 @@ linked flat as `<scope>-<name>.md` (see
 [Delivery channels](./delivery-channels.md#per-tool-delivery)). In
 `$HOME` the project's `.cline/` is the user dir, so local sync leaves it
 to `global sync`.
+
+`wave` (SPEC-017) is registered opt-in as well (`Tool.OptIn`). Wave
+reads Claude's layout from its own directory: `rules/`, `skills/<name>/`,
+`agents/`, and `commands/`. A project gets the same folds as
+`.claude/`: rules, skills, workflows, and agents. At user scope global
+sync routes each artifact as it does for Claude, under `~/.wave/`. Wave
+gets nothing that only Claude Code reads: no plans or specs, no hooks
+merged into `settings.json`, no `CLAUDE.md`, and no Claude Code version
+check. The layout is the owner's statement, not vendor documentation
+(SPEC-017 open question 1).
 
 `copilot` is the other shape-changer: at project scope it lives nested
 under `.github/` rather than as a top-level dot-dir. At user scope its

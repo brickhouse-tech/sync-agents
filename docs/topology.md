@@ -37,7 +37,7 @@ workflows, and state for your agents:
 
 Running `sync-agents sync` creates symlinks from `.agents/`
 subdirectories into `.claude/`, `.devin/` (rules only), `.cursor/`,
-`.github/copilot/`, and, when enabled, `.codex/`, `.opencode/`,
+`.github/copilot/`, and, when enabled, `.wave/`, `.codex/`, `.opencode/`,
 `.cline/` (rules and workflows only), and `.gemini/` (agents only). Antigravity reads `.agents/` itself and gets
 nothing.
 Changes to `.agents/` show up in those directories at once, because they
@@ -109,7 +109,7 @@ sync with progress.
 
 ```
 # sync-agents configuration
-# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode, cline, antigravity, gemini)
+# Comma-separated list of sync targets (available: claude, wave, devin, cursor, copilot, codex, opencode, cline, antigravity, gemini)
 # Override per-command with: sync-agents sync --targets claude,cursor
 targets = claude,devin,cursor,copilot,antigravity
 # index = local      # local (default: .agents/index/ and its links are gitignored) | commit
