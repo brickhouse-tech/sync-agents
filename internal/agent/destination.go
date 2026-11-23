@@ -172,7 +172,7 @@ func TargetDestination(
 
 	switch tool.ID {
 	case "claude":
-		return claudeDestination(typ, name, sem, globalRootParent)
+		return claudeLayoutDestination(tool.ID, typ, name, sem, tool.DirForScope(ScopeGlobal, globalRootParent))
 	case "codeium":
 		return codeiumDestination(typ, name, sem, artifactSourcePath, globalRootParent)
 	case "antigravity":
@@ -247,33 +247,33 @@ func invocableSkip(toolID string, typ ArtifactType, name string) Destination {
 	}
 }
 
-// claudeDestination implements the Claude row of the routing table:
+// claudeLayoutDestination implements the Claude routing row under
+// home, the tool's global dir:
 //
-//   - Invocable skill (dir): ~/.claude/skills/<name>/SKILL.md
-//   - Invocable rule/workflow (single file): ~/.claude/commands/<name>.md
-//   - Passive (any bucket): ~/.claude/rules/<name>.md (single file)
+//   - Invocable skill (dir): <home>/skills/<name>/SKILL.md
+//   - Invocable rule/workflow (single file): <home>/commands/<name>.md
+//   - Passive (any bucket): <home>/rules/<name>.md (single file)
 //
 // The "passive multi-file" case (a skill explicitly marked
-// invocable: false) is awkward — Claude's passive surface is a single
+// invocable: false) is awkward — the passive surface is a single
 // rules/*.md file, not a directory. We currently treat it as
 // StrategySkip with a warning, leaving the artifact untouched in this
 // tool. A future revision could flatten the skill's SKILL.md into
 // rules/. Tracking that as a non-blocking decision.
-func claudeDestination(typ ArtifactType, name string, sem Semantic, parent string) Destination {
-	claudeDir := filepath.Join(parent, ".claude")
+func claudeLayoutDestination(toolID string, typ ArtifactType, name string, sem Semantic, home string) Destination {
 	switch sem {
 	case Invocable:
 		if typ == ArtifactSkill {
 			return Destination{
 				Strategy: StrategySymlink,
-				Path:     filepath.Join(claudeDir, "skills", name, "SKILL.md"),
+				Path:     filepath.Join(home, "skills", name, "SKILL.md"),
 			}
 		}
 		// Single-file invocable (rule or workflow marked
-		// invocable: true) — lands in Claude's commands/ surface.
+		// invocable: true) — lands in the commands/ surface.
 		return Destination{
 			Strategy: StrategySymlink,
-			Path:     filepath.Join(claudeDir, "commands", name+".md"),
+			Path:     filepath.Join(home, "commands", name+".md"),
 		}
 	case Passive:
 		if typ == ArtifactSkill {
@@ -283,12 +283,12 @@ func claudeDestination(typ ArtifactType, name string, sem Semantic, parent strin
 			// skill or accept the gap.
 			return Destination{
 				Strategy:   StrategySkip,
-				SkipReason: fmt.Sprintf("passive skill %q has no single-file Claude destination", name),
+				SkipReason: fmt.Sprintf("passive skill %q has no single-file %s destination", name, toolID),
 			}
 		}
 		return Destination{
 			Strategy: StrategySymlink,
-			Path:     filepath.Join(claudeDir, "rules", name+".md"),
+			Path:     filepath.Join(home, "rules", name+".md"),
 		}
 	}
 	return Destination{Strategy: StrategySkip, SkipReason: "unknown semantic"}
