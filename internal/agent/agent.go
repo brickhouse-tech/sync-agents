@@ -152,7 +152,7 @@ func ResolveTargetDir(target, root string) string {
 // antigravity), reporting once per tool. Local commands build the
 // target dir as <project>/.<target>, so without this a `--targets
 // openclaw` would create .openclaw/ inside the repo. Unregistered names
-// (wave, ...) pass through untouched.
+// (zed, ...) pass through untouched.
 //
 // It returns the resolved names before that removal: every tool the
 // run was asked about, including the ones with nothing to place.
@@ -312,7 +312,7 @@ func (a *App) CmdInit() error {
 	// Config
 	configFile := filepath.Join(agentsDir, "config")
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
-		content := "# sync-agents configuration\n# Comma-separated list of sync targets (available: claude, devin, cursor, copilot, codex, opencode, cline, antigravity, gemini)\n# Override per-command with: sync-agents sync --targets claude,cursor\ntargets = claude,devin,cursor,copilot,antigravity\n" +
+		content := "# sync-agents configuration\n# Comma-separated list of sync targets (available: claude, wave, devin, cursor, copilot, codex, opencode, cline, antigravity, gemini)\n# Override per-command with: sync-agents sync --targets claude,cursor\ntargets = claude,devin,cursor,copilot,antigravity\n" +
 			"# index = local      # local (default: .agents/index/ and its links are gitignored) | commit\n" +
 			"# claude-md = auto   # auto (default: link CLAUDE.md -> AGENTS.md only for Claude Code < 2.1.281) | link | off\n"
 		os.WriteFile(configFile, []byte(content), 0644)

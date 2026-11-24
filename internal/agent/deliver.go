@@ -136,9 +136,9 @@ type ChannelResult struct {
 // the passive bucket (rules) is not folded into the tool's directory.
 // That frees .cursor/rules for the .mdc link and retires the
 // .github/copilot/rules, .codex/rules, and .opencode/rules links,
-// which no tool read. Claude and Devin have no local channel (they read
-// the folded .agents/rules natively) and keep the rules fold, as do
-// unregistered targets (wave). projectBuckets narrows a tool to the
+// which no tool read. Claude, Wave, and Devin have no local channel
+// (they read the folded .agents/rules natively) and keep the rules
+// fold, as do unregistered targets. projectBuckets narrows a tool to the
 // buckets it cannot read from .agents/ itself. Every other bucket
 // follows Bucket.SyncsToTool as before.
 func linksBucket(target string, b Bucket) bool {

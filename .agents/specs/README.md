@@ -44,5 +44,6 @@ treat retired spec content as current intent.
 | SPEC-014 | `devin` target replaces `windsurf`/`codeium` (deprecate 4.x, remove 5.0) | 📝 draft | — (active) | — |
 | SPEC-015 | `antigravity` + `gemini` targets, rule `trigger` lint | 📝 draft | — (active) | — |
 | SPEC-016 | `cline` target | 📝 draft | — (active) | — |
+| SPEC-017 | `wave` target mirroring Claude's delivery | 📝 draft | — (active) | — |
 
-Next spec ID: **SPEC-017**.
+Next spec ID: **SPEC-018**.

@@ -554,6 +554,29 @@ fake_claude() {
   [[ "$output" != *"loads twice"* ]]
 }
 
+@test "sync --targets wave links rules, skills, workflows, and agents into .wave (SPEC-017 E2, E3)" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  mkdir -p "$TEST_DIR/.agents/agents" "$TEST_DIR/.agents/plans"
+  echo agent > "$TEST_DIR/.agents/agents/reviewer.md"
+  echo plan > "$TEST_DIR/.agents/plans/p.md"
+  run "$SCRIPT" -d "$TEST_DIR" --targets wave sync
+  [ "$status" -eq 0 ]
+  for b in rules skills workflows agents; do
+    [ "$(readlink "$TEST_DIR/.wave/$b")" = "../.agents/$b" ]
+  done
+  [ ! -e "$TEST_DIR/.wave/plans" ]
+  [ ! -e "$TEST_DIR/.wave/settings.json" ]
+}
+
+@test "init leaves wave out of the default targets (SPEC-017 E7)" {
+  "$SCRIPT" -d "$TEST_DIR" init
+  run grep -E "^targets = .*wave" "$TEST_DIR/.agents/config"
+  [ "$status" -ne 0 ]
+  run "$SCRIPT" -d "$TEST_DIR" sync
+  [ "$status" -eq 0 ]
+  [ ! -e "$TEST_DIR/.wave" ]
+}
+
 @test "init leaves cline out of the default targets (SPEC-016 E7)" {
   "$SCRIPT" -d "$TEST_DIR" init
   run grep -E "^targets = .*cline" "$TEST_DIR/.agents/config"

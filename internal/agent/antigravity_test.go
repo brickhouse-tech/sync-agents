@@ -146,9 +146,9 @@ func TestStatus_NoAntigravityDir(t *testing.T) {
 // SPEC-015 A1: the same holds when antigravity is an active target that
 // did not pass through resolveProjectTargets.
 func TestStatusTargets_SkipsToolsWithoutProjectDir(t *testing.T) {
-	app := &App{ActiveTargets: []string{"antigravity", "openclaw", "wave", "claude"}}
+	app := &App{ActiveTargets: []string{"antigravity", "openclaw", "zed", "claude"}}
 	got := app.statusTargets()
-	want := []string{"claude", "devin", "cursor", "copilot", "wave"}
+	want := []string{"claude", "devin", "cursor", "copilot", "zed"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("statusTargets() = %v, want %v", got, want)
 	}

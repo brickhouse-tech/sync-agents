@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## Unreleased
+
+### Features
+
+* **targets:** add the opt-in `wave` target (SPEC-017). Wave reads Claude's layout, so a project gets `.wave/rules`, `.wave/skills`, `.wave/workflows`, and now `.wave/agents`, and `global sync --targets wave` links each artifact under `~/.wave/` the way it does under `~/.claude/` (`rules/`, `skills/<name>/SKILL.md`, `commands/`, `agents/`). Before, `global sync` rejected `wave` as an unknown target. Wave gets no plans, specs, hooks, or `CLAUDE.md`. `init`, `global init`, and a global tree with no `targets =` line leave it out; add it to opt in.
+
 ## [4.3.0](https://github.com/brickhouse-tech/sync-agents/compare/v4.2.0...v4.3.0) (2026-11-17)
 
 ### Features

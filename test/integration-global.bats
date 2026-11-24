@@ -43,6 +43,7 @@ setup() {
   ANTIGRAVITY_DIR="$TEST_DIR/.gemini/config"
   GEMINI_DIR="$TEST_DIR/.gemini"
   CLINE_DIR_PATH="$TEST_DIR/.cline"
+  WAVE_DIR="$TEST_DIR/.wave"
   LEGACY_COPILOT="$TEST_DIR/.github/copilot/instructions.md"
 }
 
@@ -483,6 +484,39 @@ EOF
   run "$SCRIPT" global sync --global-root "$GLOBAL_ROOT"
   [ "$status" -eq 0 ]
   [ ! -e "$CLINE_DIR_PATH" ]
+}
+
+@test "global sync: wave routes like claude under ~/.wave (SPEC-017 E4, E6)" {
+  "$SCRIPT" global init --global-root "$GLOBAL_ROOT"
+  make_global_passive_rule "no-secrets"
+  make_global_invocable_rule "onboarding"
+  make_global_single_skill "cool"
+  make_global_agent "reviewer"
+
+  run "$SCRIPT" global sync --global-root "$GLOBAL_ROOT" --targets wave
+  [ "$status" -eq 0 ]
+  [[ "$output" != *'unknown target'* ]]
+  [ "$(readlink "$WAVE_DIR/rules/no-secrets.md")" = "$GLOBAL_ROOT/rules/no-secrets.md" ]
+  [ "$(readlink "$WAVE_DIR/commands/onboarding.md")" = "$GLOBAL_ROOT/rules/onboarding.md" ]
+  [ "$(readlink "$WAVE_DIR/skills/cool/SKILL.md")" = "$GLOBAL_ROOT/skills/cool/SKILL.md" ]
+  [ "$(readlink "$WAVE_DIR/agents/reviewer.md")" = "$GLOBAL_ROOT/agents/reviewer.md" ]
+  [ ! -e "$TEST_DIR/.claude" ]
+
+  run "$SCRIPT" global clean --global-root "$GLOBAL_ROOT" --targets wave
+  [ "$status" -eq 0 ]
+  [ ! -e "$WAVE_DIR/rules/no-secrets.md" ]
+  [ ! -e "$WAVE_DIR/agents/reviewer.md" ]
+}
+
+@test "global sync: wave is opt-in (SPEC-017 E7)" {
+  "$SCRIPT" global init --global-root "$GLOBAL_ROOT"
+  make_global_passive_rule "no-secrets"
+  run grep -E "^targets = .*wave" "$GLOBAL_ROOT/config"
+  [ "$status" -ne 0 ]
+
+  run "$SCRIPT" global sync --global-root "$GLOBAL_ROOT"
+  [ "$status" -eq 0 ]
+  [ ! -e "$WAVE_DIR" ]
 }
 
 # ---------------------------------------------------------------------------

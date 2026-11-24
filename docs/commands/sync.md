@@ -47,8 +47,13 @@ The target names `windsurf` and `codeium` are deprecated. Sync treats
 each as `devin` and prints one warning to stderr per run. See
 [Scope and targets](../architecture/scope-and-targets.md#retired-tools-and-deprecated-names).
 A target name maps to `.<name>/` at the project root (`copilot` maps to
-`.github/copilot/`), so a custom target such as `wave` syncs into
-`.wave/`.
+`.github/copilot/`), so an unregistered target such as `zed` gets
+`rules`, `skills`, and `workflows` in `.zed/`.
+
+`wave` is opt-in. Wave reads Claude's layout from `.wave/`, so it gets
+the same folds as `.claude/`: `rules`, `skills`, `workflows`, and
+`agents`. It gets none of what only Claude Code reads: no `plans` or
+`specs`, no hooks, and no `CLAUDE.md`.
 
 Before the buckets, sync migrates a 1.x generated `AGENTS.md` once
 (see [migration-v2.md](../migration-v2.md)). It never writes
@@ -185,8 +190,9 @@ states are listed in
 
 ### A tool already created its skills directory
 
-The project targets `wave`. Wave created `.wave/skills/` and installed
-its own `wave-native` skill there. `.agents/skills/` holds
+The project targets `wave` (it is opt-in; name it in `--targets` or
+the `targets =` line). Wave created `.wave/skills/` and installed its
+own `wave-native` skill there. `.agents/skills/` holds
 `code-review` and `debugging`.
 
 ```bash

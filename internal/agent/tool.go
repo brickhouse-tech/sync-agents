@@ -149,6 +149,18 @@ var Tools = []Tool{
 		},
 	},
 	{
+		// Wave (SPEC-017) reads Claude's layout from its own dir, so it
+		// shares Claude's global routing (claudeLayoutDestination). It
+		// gets none of what only Claude Code reads: plans, specs, hooks,
+		// CLAUDE.md. Opt-in, like cline and gemini.
+		ID: "wave",
+		DirByScope: map[Scope]string{
+			ScopeLocal:  ".wave",
+			ScopeGlobal: ".wave",
+		},
+		OptIn: true,
+	},
+	{
 		// Windsurf, now Devin (SPEC-014). Retired: deprecatedTargets
 		// sends its names to devin, so no run selects it. It stays
 		// registered because its rows describe what earlier versions
